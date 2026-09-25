@@ -1,0 +1,36 @@
+[package]
+name = "agent-sign"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "agent_sign"
+path = "src/lib.rs"
+
+[[bin]]
+name = "agent-sign"
+path = "src/bin/agent_sign.rs"
+
+[[bin]]
+name = "agent-git"
+path = "src/bin/agent_git.rs"
+
+[[bin]]
+name = "agent-signd"
+path = "src/bin/agent_signd.rs"
+
+[dependencies]
+clap = { version = "4.5", features = ["derive", "env"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+toml = "0.8"
+uuid = { version = "1.10", features = ["v4"] }
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+sha2 = "0.10"
+rand = "0.8"
+base64 = "0.22"
+zeroize = "1.8"
+
+[dev-dependencies]
+tempfile = "3.12"
+
