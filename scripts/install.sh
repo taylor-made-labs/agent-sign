@@ -32,45 +32,91 @@ echo -e "${BOLD}║         Agent-Sign Toolchain Installer           ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 
-# ─── Step 0: Prerequisites ───────────────────────────────────────────────────
-step "Checking prerequisites"
-
-if ! command -v cargo &>/dev/null; then
-    err "Rust/Cargo not found. Install from https://rustup.rs"
-    exit 1
-fi
-ok "Cargo found: $(cargo --version)"
-
-if ! command -v git &>/dev/null; then
-    err "Git not found."
-    exit 1
-fi
-ok "Git found: $(git --version)"
-
-# ─── Step 1: Build ───────────────────────────────────────────────────────────
-step "Building release binaries"
-cargo build --release --quiet 2>&1 | tail -5
-ok "Build complete"
-
-# ─── Step 2: Install binaries ────────────────────────────────────────────────
-step "Installing binaries"
+# ─── Step 0: Prerequisites & Binary Resolution ──────────────────────────────
+step "Resolving binaries"
 
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$KEYS_DIR"
 chmod 700 "$CONFIG_DIR"
 chmod 700 "$KEYS_DIR"
 
-cp target/release/agent-signd "$INSTALL_DIR/agent-signd"
-cp target/release/agent-sign  "$INSTALL_DIR/agent-sign"
-cp target/release/agent-git   "$INSTALL_DIR/agent-git"
-cp target/release/agent-git   "$INSTALL_DIR/git"
+VERSION="v0.1.0"
+REPO="taylor-made-labs/agent-sign"
+INSTALLED_FROM_RELEASE=false
+
+# Check if we are running in the source repo with target/release already built
+if [ -f "target/release/agent-signd" ] && [ -f "target/release/agent-sign" ] && [ -f "target/release/agent-git" ]; then
+    info "Using existing local release binaries from target/release/"
+    cp target/release/agent-signd "$INSTALL_DIR/agent-signd"
+    cp target/release/agent-sign  "$INSTALL_DIR/agent-sign"
+    cp target/release/agent-git   "$INSTALL_DIR/agent-git"
+    cp target/release/agent-git   "$INSTALL_DIR/git"
+    INSTALLED_FROM_RELEASE=true
+fi
+
+# If not already installed and no cargo, or if running via curl/standalone, attempt GitHub Release download
+if [ "$INSTALLED_FROM_RELEASE" = false ]; then
+    OS="$(uname -s)"
+    ARCH="$(uname -m)"
+    TARGET_TRIPLE=""
+
+    if [ "$OS" = "Darwin" ]; then
+        if [ "$ARCH" = "arm64" ]; then
+            TARGET_TRIPLE="aarch64-apple-darwin"
+        else
+            TARGET_TRIPLE="x86_64-apple-darwin"
+        fi
+    elif [ "$OS" = "Linux" ]; then
+        if [ "$ARCH" = "x86_64" ]; then
+            TARGET_TRIPLE="x86_64-unknown-linux-gnu"
+        fi
+    fi
+
+    if [ -n "$TARGET_TRIPLE" ] && command -v curl &>/dev/null; then
+        TARBALL="agent-sign-${TARGET_TRIPLE}.tar.gz"
+        URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
+        info "Attempting to download pre-compiled release: ${TARBALL}..."
+
+        TMP_DIR=$(mktemp -d)
+        if curl -fsSL "$URL" -o "$TMP_DIR/$TARBALL" 2>/dev/null; then
+            tar -xzf "$TMP_DIR/$TARBALL" -C "$TMP_DIR"
+            EXTRACTED_DIR="$TMP_DIR/agent-sign-${TARGET_TRIPLE}"
+            if [ -d "$EXTRACTED_DIR/bin" ]; then
+                cp "$EXTRACTED_DIR/bin/"* "$INSTALL_DIR/"
+                ok "Downloaded and installed pre-compiled binaries for ${TARGET_TRIPLE}"
+                INSTALLED_FROM_RELEASE=true
+            fi
+            rm -rf "$TMP_DIR"
+        else
+            rm -rf "$TMP_DIR"
+            info "Release download not available or failed — checking for local Cargo build..."
+        fi
+    fi
+fi
+
+# Fallback to local Cargo build if needed
+if [ "$INSTALLED_FROM_RELEASE" = false ]; then
+    if ! command -v cargo &>/dev/null; then
+        err "Rust/Cargo not found and pre-compiled binary could not be downloaded."
+        err "Please install Rust from https://rustup.rs or download a release from:"
+        err "https://github.com/${REPO}/releases"
+        exit 1
+    fi
+    info "Building from source with Cargo..."
+    cargo build --release --quiet 2>&1 | tail -5
+    cp target/release/agent-signd "$INSTALL_DIR/agent-signd"
+    cp target/release/agent-sign  "$INSTALL_DIR/agent-sign"
+    cp target/release/agent-git   "$INSTALL_DIR/agent-git"
+    cp target/release/agent-git   "$INSTALL_DIR/git"
+    ok "Build and installation from source complete"
+fi
 
 chmod +x "$INSTALL_DIR/agent-signd"
 chmod +x "$INSTALL_DIR/agent-sign"
 chmod +x "$INSTALL_DIR/agent-git"
 chmod +x "$INSTALL_DIR/git"
 
-ok "Binaries installed to $INSTALL_DIR"
+ok "Binaries ready in $INSTALL_DIR"
 
 # ─── Step 3: Generate agent keypair ─────────────────────────────────────────
 step "Agent signing keypair"

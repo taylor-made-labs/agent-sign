@@ -55,7 +55,14 @@ When pairing with autonomous AI coding agents (**Claude Code**, **Cursor**, **Go
 
 ## Quickstart (Up & Running in 60 Seconds)
 
-### 1. Clone & Install
+### 1. Install (One-Liner or Clone)
+
+**One-line install (Recommended):**
+```bash
+curl -fsSL https://raw.githubusercontent.com/taylor-made-labs/agent-sign/main/scripts/install.sh | bash
+```
+
+*Or install from source:*
 ```bash
 git clone https://github.com/taylor-made-labs/agent-sign.git
 cd agent-sign
