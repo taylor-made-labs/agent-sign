@@ -229,6 +229,12 @@ fallback_program = "/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
 ## CLI Cheatsheet & Day-to-Day Commands
 
 ```bash
+# Run full system diagnostics and health audit
+~/.agent-sign/bin/agent-sign doctor
+
+# Run an ephemeral 2-minute sandbox demo
+./scripts/demo-sandbox.sh
+
 # Check daemon health & active leases
 ~/.agent-sign/bin/agent-signd status
 
@@ -285,6 +291,7 @@ This cleanly removes daemon services (launchd/systemd), reverts your shell profi
 * **Specifications & Architecture**:
   * [SPEC.md](SPEC.md): Formal System Specification, non-negotiable invariants, and state machines.
   * [VALUE_PROP.md](VALUE_PROP.md): Concrete commitments across 5 workflows (1Password, YubiKey, GPG, Enterprise, DevContainers).
+  * [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): Step-by-step solutions for 1Password, YubiKey, Linux desktop, and containers.
   * [docs/BEST_PRACTICES.md](docs/BEST_PRACTICES.md): Architectural patterns, security guidelines, and performance standards.
   * [docs/ADVERSARIAL_REVIEW.md](docs/ADVERSARIAL_REVIEW.md): Independent adversarial audit and architectural scorecard.
   * [CONTRIBUTING.md](CONTRIBUTING.md): Contribution guidelines and TDD workflows.

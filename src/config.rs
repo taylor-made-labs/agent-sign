@@ -127,6 +127,12 @@ pub struct SecurityConfig {
     pub max_commits_per_minute: u32,
     #[serde(default)]
     pub auto_approve: bool,
+    #[serde(default = "default_forbidden_paths")]
+    pub forbidden_paths: Vec<String>,
+    #[serde(default = "default_max_diff_lines")]
+    pub max_diff_lines: usize,
+    #[serde(default)]
+    pub enforce_conventional_commits: bool,
 }
 
 fn default_lease_duration_str() -> String {
@@ -141,6 +147,21 @@ fn default_max_commits_per_minute() -> u32 {
     10
 }
 
+fn default_forbidden_paths() -> Vec<String> {
+    vec![
+        ".github/workflows/*".to_string(),
+        ".circleci/*".to_string(),
+        "*.pem".to_string(),
+        "*.key".to_string(),
+        "id_rsa*".to_string(),
+        "id_ed25519*".to_string(),
+    ]
+}
+
+fn default_max_diff_lines() -> usize {
+    2000
+}
+
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
@@ -150,6 +171,9 @@ impl Default for SecurityConfig {
             allow_branch_switching: true,
             max_commits_per_minute: default_max_commits_per_minute(),
             auto_approve: false,
+            forbidden_paths: default_forbidden_paths(),
+            max_diff_lines: default_max_diff_lines(),
+            enforce_conventional_commits: false,
         }
     }
 }

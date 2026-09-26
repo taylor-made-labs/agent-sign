@@ -190,6 +190,15 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
         .map(PathBuf::from)
         .unwrap_or_else(|_| default_socket_path());
 
+    let repo_path = Path::new(&repo);
+    let config = Config::load(Some(repo_path));
+
+    // 0. Enterprise Guardrails: Validate staged paths, diff size, and commit message
+    if let Err(err_msg) = validate_guardrails(real_git, repo_path, &config, original_args) {
+        eprintln!("[agent-git] Security Policy Violation: {}", err_msg);
+        return ExitCode::from(1);
+    }
+
     // 1. Ensure lease is active (request lease if needed)
     let lease_req = Request::RequestLease {
         repo: repo.clone(),
@@ -246,8 +255,6 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
 
     // 3. Prepare Git command arguments with configuration overrides
     let agent_sign_bin = find_agent_sign_bin();
-    let repo_path = Path::new(&repo);
-    let config = Config::load(Some(repo_path));
     let attr_engine = AttributionEngine::new(config.attribution, config.agent, config.human);
     let attr_envs = attr_engine.compute_env_vars("commit");
 
@@ -306,4 +313,126 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
     }
 
     exec_system_git(real_git, &git_args, &env_pairs)
+}
+
+fn validate_guardrails(
+    real_git: &Path,
+    repo_path: &Path,
+    config: &Config,
+    commit_args: &[String],
+) -> Result<(), String> {
+    // 1. Path-based blast radius check: inspect staged files
+    let staged_files_out = Command::new(real_git)
+        .current_dir(repo_path)
+        .args(["diff", "--cached", "--name-only"])
+        .output();
+
+    if let Ok(out) = staged_files_out {
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        for line in stdout.lines() {
+            let path_str = line.trim();
+            if path_str.is_empty() {
+                continue;
+            }
+
+            for pattern in &config.security.forbidden_paths {
+                if matches_glob(path_str, pattern) {
+                    return Err(format!(
+                        "Agent commit touches forbidden path '{}' matching security policy rule '{}'. Bypassing requires human terminal commit or policy adjustment.",
+                        path_str, pattern
+                    ));
+                }
+            }
+        }
+    }
+
+    // 2. Diff size circuit breaker: check total lines changed in staged commit
+    if config.security.max_diff_lines > 0
+        && std::env::var_os("AGENT_SIGN_ALLOW_LARGE_DIFF").is_none()
+    {
+        let diff_numstat_out = Command::new(real_git)
+            .current_dir(repo_path)
+            .args(["diff", "--cached", "--numstat"])
+            .output();
+
+        if let Ok(out) = diff_numstat_out {
+            let stdout = String::from_utf8_lossy(&out.stdout);
+            let mut total_lines = 0usize;
+            for line in stdout.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let added: usize = parts[0].parse().unwrap_or(0);
+                    let deleted: usize = parts[1].parse().unwrap_or(0);
+                    total_lines += added + deleted;
+                }
+            }
+
+            if total_lines > config.security.max_diff_lines {
+                return Err(format!(
+                    "Agent commit diff exceeds safety circuit breaker (changed {} lines, max allowed is {}). Set AGENT_SIGN_ALLOW_LARGE_DIFF=1 or adjust max_diff_lines to override.",
+                    total_lines, config.security.max_diff_lines
+                ));
+            }
+        }
+    }
+
+    // 3. Conventional commits linter
+    if config.security.enforce_conventional_commits {
+        let msg = extract_commit_message(commit_args);
+        if let Some(m) = msg
+            && !is_conventional_commit(&m)
+        {
+            return Err(format!(
+                "Commit message '{}' violates conventional commits policy. Expected format: 'feat|fix|docs|style|refactor|perf|test|build|ci|chore: ...'",
+                m
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn matches_glob(path: &str, pattern: &str) -> bool {
+    let path = path.trim_start_matches("./");
+    let pattern = pattern.trim_start_matches("./");
+
+    if pattern == "*" {
+        return true;
+    }
+    if let Some(prefix) = pattern.strip_suffix("/*") {
+        return path == prefix || path.starts_with(&format!("{}/", prefix));
+    }
+    if let Some(suffix) = pattern.strip_prefix("*.") {
+        return path.ends_with(&format!(".{}", suffix));
+    }
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        return path.starts_with(prefix);
+    }
+    path == pattern
+}
+
+fn extract_commit_message(args: &[String]) -> Option<String> {
+    for i in 0..args.len() {
+        if args[i] == "-m" && i + 1 < args.len() {
+            return Some(args[i + 1].clone());
+        }
+        if args[i].starts_with("--message=") {
+            return Some(args[i].trim_start_matches("--message=").to_string());
+        }
+    }
+    None
+}
+
+fn is_conventional_commit(msg: &str) -> bool {
+    let types = [
+        "feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore",
+    ];
+    let first_line = msg.lines().next().unwrap_or("").trim();
+    for t in types {
+        if first_line.starts_with(&format!("{}:", t)) || first_line.starts_with(&format!("{}(", t))
+        {
+            return true;
+        }
+    }
+    false
 }
