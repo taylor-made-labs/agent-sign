@@ -10,7 +10,8 @@ use base64::Engine;
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
-    let config = Config::default();
+    let config = Config::load(None);
+    let fallback_prog = config.ssh.fallback_program.clone();
     let multiplexer = Multiplexer::new(config);
 
     let token_var = env::var("AGENT_EVENT_TOKEN").ok();
@@ -18,20 +19,30 @@ fn main() -> ExitCode {
 
     match action {
         SigningAction::DelegateToSystemSshKeygen => {
-            // Forward everything directly to system ssh-keygen (1Password Touch ID)
-            delegate_to_system_ssh_keygen(&args[1..])
+            // Forward directly to configured fallback program (e.g. 1Password op-ssh-sign or ssh-keygen)
+            delegate_to_system_ssh_keygen(&args[1..], &fallback_prog)
         }
-        SigningAction::SignWithAgentKey(token) => sign_with_agent_daemon(&args[1..], &token),
+        SigningAction::SignWithAgentKey(token) => {
+            // Validate token format fails closed
+            if let Err(e) = multiplexer.validate_event_token(Some(&token)) {
+                eprintln!("[agent-sign] Event token validation failed: {}", e);
+                return ExitCode::from(1);
+            }
+            sign_with_agent_daemon(&args[1..], &token)
+        }
     }
 }
 
-fn delegate_to_system_ssh_keygen(args: &[String]) -> ExitCode {
-    let status = Command::new("/usr/bin/ssh-keygen").args(args).status();
+fn delegate_to_system_ssh_keygen(args: &[String], fallback_program: &str) -> ExitCode {
+    let status = Command::new(fallback_program).args(args).status();
 
     match status {
         Ok(s) => ExitCode::from(s.code().unwrap_or(1) as u8),
         Err(e) => {
-            eprintln!("[agent-sign] Failed to execute /usr/bin/ssh-keygen: {}", e);
+            eprintln!(
+                "[agent-sign] Failed to execute fallback signing program '{}': {}",
+                fallback_program, e
+            );
             ExitCode::from(1)
         }
     }

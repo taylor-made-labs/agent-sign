@@ -1,0 +1,14 @@
+[Unit]
+Description=Agent-Sign Session Lease Daemon & Credential Multiplexer
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.agent-sign/bin/agent-signd
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

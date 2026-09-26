@@ -131,10 +131,10 @@ The following invariants MUST be verified by automated tests and MUST NEVER be v
     allowed_models: List[String]
   ```
 - **Operations**:
-  - `request_lease(repo, duration, intent)`: If valid lease exists for repo, returns existing lease ID. If not, invokes macOS biometric authorization (via native `LocalAuthentication` framework / Secure Enclave prompt) once.
-  - `issue_token()`: Returns a single-use cryptographically random token tied to current lease.
-  - `verify_and_sign(token, buffer)`: Verifies token, decrements remaining allowance, signs buffer, logs audit event.
-  - `revoke_lease(id)`: Immediately invalidates the active lease.
+  - `request_lease(repo, duration, intent)`: If valid lease exists for repo and branch, returns existing lease ID. If not, invokes user authorization once via desktop dialog (macOS/Linux), interactive terminal confirmation, or auto-approval.
+  - `issue_token()`: Returns a single-use cryptographically random token tied to current lease (with 60-second TTL).
+  - `verify_and_sign(token, buffer)`: Verifies token, decrements remaining allowance, signs buffer using Ed25519 sub-key.
+  - `revoke_lease(repo)`: Immediately invalidates the active lease for the repository.
 
 ### 4.4. Component D: Attribution Engine
 Configured via `~/.agent-sign/config.toml` and optional `.agent-sign.toml`:

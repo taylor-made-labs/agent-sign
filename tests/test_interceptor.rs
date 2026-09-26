@@ -41,6 +41,7 @@ fn test_agent_git_detects_commit_command() {
 fn test_attribution_split_mode() {
     let attr_config = AttributionConfig {
         mode: AttributionMode::Split,
+        ..Default::default()
     };
     let agent_config = AgentConfig {
         name: "Antigravity Agent".to_string(),
@@ -77,6 +78,7 @@ fn test_attribution_split_mode() {
 fn test_attribution_trailers_mode() {
     let attr_config = AttributionConfig {
         mode: AttributionMode::Trailers,
+        ..Default::default()
     };
     let agent_config = AgentConfig {
         name: "Antigravity Agent".to_string(),

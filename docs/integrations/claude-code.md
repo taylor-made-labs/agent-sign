@@ -4,25 +4,19 @@
 
 ---
 
-## 1. Quick Setup
+## 1. Zero-Config Setup
 
-Once `agent-sign` is installed on your machine (`~/.agent-sign/bin/`):
+When you run `./scripts/install.sh`, `agent-sign` is automatically added to your shell profile (`~/.zshrc`, `~/.zprofile`, `~/.bashrc`).
 
-### Option A: Per-Session Wrapper (Recommended)
-Launch Claude Code with `~/.agent-sign/bin` prepended to its PATH:
-
-```bash
-PATH="$HOME/.agent-sign/bin:$PATH" claude
-```
-
-You can create a convenient shell alias in `~/.zshrc` or `~/.bashrc`:
+Because Claude Code is launched from your shell terminal, it inherits `PATH` automatically:
 
 ```bash
-alias claude-agent="PATH=\"$HOME/.agent-sign/bin:\$PATH\" claude"
+claude
 ```
 
-### Option B: Tool Environment Injection
-If using Claude Code configuration, you can configure your environment to inject `~/.agent-sign/bin` into child tool processes.
+**Zero wrappers, zero aliases, zero environment variables required.**
+
+Whenever Claude Code invokes `git commit`, `~/.agent-sign/bin/git` intercepts the call and coordinates with `agent-signd`.
 
 ---
 
@@ -32,11 +26,11 @@ If using Claude Code configuration, you can configure your environment to inject
    - Claude's tool runner calls `git`, which resolves to `~/.agent-sign/bin/git`.
    - `agent-git` inspects the command and contacts `agent-signd`.
 2. **First Commit of Session**:
-   - A single Touch ID / macOS prompt appears: *"AI Agent requesting commit signing lease for 2 hours."*
-   - You tap Touch ID once.
+   - A single confirmation prompt appears (macOS dialog, Linux desktop GUI, or interactive terminal prompt): *"AI Agent requesting commit signing lease for 2 hours."*
+   - You approve the session lease once.
 3. **Subsequent Commits**:
    - Claude makes 10, 20, or 50 incremental commits headlessly.
    - Zero interruptions, zero prompts.
-   - Every commit is signed with the dedicated Agent Sub-Key and displays the green "Verified" badge on GitHub.
+   - Every commit is signed with the dedicated Agent Sub-Key and displays the green "Verified" badge on GitHub/GitLab.
 4. **Your Terminal**:
-   - Running `git commit` in your normal terminal uses your normal 1Password key with standard Touch ID.
+   - Running `git commit` in your normal interactive terminal uses your personal signing key (1Password, YubiKey, GPG, or OpenSSH) as normal.
