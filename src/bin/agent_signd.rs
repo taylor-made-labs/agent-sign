@@ -454,9 +454,7 @@ fn request_human_approval(repo: &str, branch: &str, intent: &str) -> bool {
                 ])
                 .output()
             {
-                if output.status.success() {
-                    return true;
-                }
+                return output.status.success();
             }
         }
     }
