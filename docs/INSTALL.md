@@ -28,7 +28,7 @@ cargo build --release --locked
 
 Build first: the installer uses `target/release/` when it's there. If you
 skip the build, the installer still works: it tries to download a release
-(there isn't one yet, so that fails quietly) and then builds with Cargo
+(there isn't one yet; it says so and moves on) and then builds with Cargo
 itself.
 
 Where things go: everything is in `~/.agent-commits` (the programs, the
@@ -122,7 +122,9 @@ git verify-commit HEAD
 This stops and removes the service, removes the `PATH` blocks and editor
 settings, removes the agent key's line from `allowed_signers`, and deletes
 `~/.agent-commits` and `~/.agent-sign`, including the agent key and all leases.
-Remove the key from GitHub (Settings, SSH and GPG keys) yourself.
+It leaves git's global `gpg.ssh.allowedSignersFile` setting (unset it with
+`git config --global --unset gpg.ssh.allowedSignersFile` if nothing else uses
+it). Remove the key from GitHub (Settings, SSH and GPG keys) yourself.
 
 ## Not ready yet
 

@@ -1,16 +1,27 @@
 # agent-commits
 
-agent-commits gives AI coding agents their own key for signing git commits, so an
-agent's commits are signed, name the agent as their author, and don't stop
-for your fingerprint: you're asked once, for the scope you choose (one
-repository, a folder of them, or all of them), instead of on every commit. (On GitHub they still count as yours; see the limits below.)
+Improve your workflow with agent commits.
 
-You approve a **lease**: permission for agents to sign, with terms you see
-before you approve: what it covers (this repository only, every repository
-under the folder that holds it, or every repository on the computer; you
-pick), which branches, and when it ends (by default, when you revoke it). Those terms are fixed when you approve
-and never grow on their own. Your own signing key is never used for agents'
-commits, and commits you make yourself go through your normal signing.
+If you sign your git commits with a hardware key, 1Password, or a passkey,
+an AI agent making twenty small commits stops twenty times for your
+fingerprint. The usual workarounds are worse: turning signing off, or
+handing the agent your own key. agent-commits gives agents a separate
+signing key, held by a small background service, and asks you once instead:
+for one repository, every repository in a folder, or all of them, as you
+choose. After that, agent commits are signed without interrupting you, and
+your own key is never handed to an agent.
+
+What it is, plainly: it removes the interruption, and adds local guardrails
+for agents that cooperate (no agent commits on `main`, no changes to CI
+workflows or key files, size and rate limits). It is **not** a separate
+identity for agents on GitHub: the agent key is registered on your account,
+so agent commits show as Verified for you, with the agent's name as author.
+See [what it protects against, and what it doesn't](#what-it-protects-against-and-what-it-doesnt).
+
+The approval is a **lease**, and you see its terms before you approve: what
+it covers, which branches, and when it ends (by default, when you revoke
+it). They're fixed when you approve and never grow on their own. Commits you
+make yourself in a terminal go through your normal signing.
 
 agent-commits was called agent-sign before (see [Upgrading from agent-sign](#upgrading-from-agent-sign)).
 
@@ -18,23 +29,17 @@ agent-commits was called agent-sign before (see [Upgrading from agent-sign](#upg
 agent commit. Linux builds and passes its tests, but has had little daily
 use. There are no downloadable releases yet: you build it from source.
 
-## Why
-
-If you sign your commits with a hardware key, 1Password, or a passkey, an
-agent making twenty small commits stops twenty times for your fingerprint.
-The usual workarounds are worse: turning signing off, or handing the agent
-your own key. agent-commits gives the agent a separate signing key, held by a small
-background service, and asks you once.
-
 ## How it works
 
 1. The installer puts a `git` wrapper (`agent-commits-git`) first on your shell's
    `PATH`. Agents started from that shell run `git` as usual. (An agent
    started some other way, such as an app launched from the Dock, may not
    get that `PATH`: check with `command -v git` from the agent.)
-2. When an agent runs `git commit`, the wrapper checks the local rules (no
-   changes to CI workflows or key files, a diff-size limit), then asks the
-   service (`agent-commitsd`) for a lease on this repository.
+2. When an agent runs `git commit`, the wrapper checks the local rules: no
+   changes to CI workflows (`.github/workflows/`, `.circleci/`) or key files
+   (`*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`), and at most 2,000 changed
+   lines in one commit. Then it asks the service (`agent-commitsd`) for a
+   lease covering this repository.
 3. If there's no lease, you get one dialog showing the repository, the
    branch, which branches the lease would cover, when it ends, and the reason
    the agent gave. You approve or deny.
@@ -45,9 +50,10 @@ background service, and asks you once.
 5. Leases are saved, so a crash, a restart, or your laptop sleeping doesn't
    ask again. `agent-commits leases` lists them; `agent-commits revoke` ends them.
 
-The wrapper tells you from an agent by one test: if both its input and
-output are a terminal, it's you, and it steps aside and runs your normal git
-with your normal signing. Anything else is treated as an agent.
+The wrapper tells you from an agent this way: if both its input and output
+are a terminal, and no agent has marked the command as its own (Claude Code,
+Gemini CLI and Codex do), it's you, and it steps aside and runs your normal
+git with your normal signing. Anything else is treated as an agent.
 
 ## What it protects against, and what it doesn't
 
@@ -83,12 +89,15 @@ It does not, yet:
   but that's a label: any program can set those variables
 - make the dialog a biometric check: it's a confirmation dialog, and its
   default button is Approve
-- keep agent work apart from yours on GitHub: the installer registers the
-  agent key on your GitHub account and in `allowed_signers` under your email,
+- keep agent work apart from yours on GitHub: the agent key goes on your
+  GitHub account (the installer offers to add it, and does only if you say
+  yes) and in `allowed_signers` under your email,
   and in the default attribution mode you're the committer, so agent commits
   show as Verified for you
-- recognise an agent running in a terminal pane (it looks like you), or an
-  editor's commit button whose git is the wrapper (it looks like an agent)
+- recognise an agent running in a real terminal (a terminal pane) unless
+  it marks its commands, as Claude Code, Gemini CLI and Codex do (an
+  unmarked one looks like you), or an editor's commit button whose git is
+  the wrapper (it looks like an agent)
 
 These are the next steps; see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md).
 
@@ -157,7 +166,7 @@ When a commit is refused, the agent sees why; the messages are listed in
 
 | Setting in `~/.agent-commits/config.toml`, under `[security]` | Default | What it does |
 |---|---|---|
-| `lease_mode` | `"identity"` | `identity` (named for an agent identity's lifetime): until you revoke it, or `max_lease_ceiling`. `timed`: `default_lease_duration` after approval. |
+| `lease_mode` | `"identity"` | `identity`: until you revoke it (or `max_lease_ceiling`, if set). `timed`: `default_lease_duration` after approval. |
 | `max_lease_ceiling` | `"none"` | Longest life of an `identity` lease, such as `"7d"`. It also shortens leases already granted. A value agent-commits can't read stops the service rather than being ignored. |
 | `default_lease_duration` | `"2h"` | Life of a `timed` lease. |
 | `allow_branch_switching` | `true` | With `lease_scope = "branch"` (the default), `true` makes a lease cover every unprotected branch of the repository, following the agent between them; `false` limits it to the branch it was approved on. `lease_scope = "repo"` always covers every unprotected branch. |
