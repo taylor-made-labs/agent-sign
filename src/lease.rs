@@ -1,9 +1,11 @@
 //! Leases: the person's approval, given once, for the agent key to sign
-//! commits in one repository without asking again.
+//! commits without asking again, in the repositories the person chose.
 //!
 //! agent-commits' lease model: a lease's terms are fixed when the person approves it,
-//! and they never grow on their own. The terms are its scope (one repository;
-//! within it, either one branch or every unprotected branch) and its end (a
+//! and they never grow on their own. The terms are its coverage (one
+//! repository, every repository under a folder, or every repository: see
+//! [`Coverage`]), which branches it covers (in one repository, either one
+//! branch or every unprotected branch), and its end (a
 //! time, or "until revoked" for the default lifetime mode). Using a lease
 //! never moves its end. A later config change can narrow a lease already
 //! granted (a shorter ceiling, branch following turned off), never widen it:
@@ -23,6 +25,75 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
+
+/// What one approval covers. The person picks it in the approval dialog:
+/// asking once per repository is right for some people, and a needless
+/// interruption for someone who starts a new repository every day.
+///
+/// A folder covers every repository whose path is inside it, compared by
+/// whole path components, so `/w/dev` covers `/w/dev/app` but never
+/// `/w/dev2`. Wider scopes always cover every unprotected branch of the
+/// repositories they reach; a lease for one branch only makes sense in one
+/// repository.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "kind", content = "path", rename_all = "lowercase")]
+pub enum Coverage {
+    /// The repository the agent asked from, and nothing else. Leases saved
+    /// before scopes existed load as this.
+    #[default]
+    Repository,
+    /// Every repository under this folder (a canonical absolute path).
+    Folder(String),
+    /// Every repository on this computer.
+    Everywhere,
+}
+
+/// The name `agent-commits leases` shows for a lease covering everywhere, and
+/// that `agent-commits revoke` takes to end it.
+pub const EVERYWHERE: &str = "everywhere";
+
+impl Coverage {
+    /// The key a lease with this coverage is filed under. Repository leases
+    /// keep the plain repository path, as before, so lease files written by
+    /// earlier versions still match; the other kinds get keys no repository
+    /// path can collide with.
+    fn key(&self, repo: &str) -> String {
+        match self {
+            Coverage::Repository => repo.to_string(),
+            Coverage::Folder(folder) => format!("folder:{folder}"),
+            Coverage::Everywhere => EVERYWHERE.to_string(),
+        }
+    }
+
+    /// Whether this coverage reaches `repo`, given the repository (or folder)
+    /// the lease is filed for.
+    fn reaches(&self, lease_repo: &str, repo: &str) -> bool {
+        match self {
+            Coverage::Repository => lease_repo == repo,
+            Coverage::Folder(folder) => std::path::Path::new(repo).starts_with(folder),
+            Coverage::Everywhere => true,
+        }
+    }
+
+    /// How specific the coverage is: the most specific lease that covers a
+    /// commit is the one used (and counted).
+    fn specificity(&self) -> usize {
+        match self {
+            Coverage::Repository => usize::MAX,
+            Coverage::Folder(folder) => folder.len(),
+            Coverage::Everywhere => 0,
+        }
+    }
+
+    /// The coverage in plain words, for `agent-commits leases`.
+    pub fn describe(&self) -> String {
+        match self {
+            Coverage::Repository => "this repository".to_string(),
+            Coverage::Folder(folder) => format!("every repository under {folder}"),
+            Coverage::Everywhere => "every repository on this computer".to_string(),
+        }
+    }
+}
 
 pub fn current_epoch_secs() -> u64 {
     SystemTime::now()
@@ -52,6 +123,12 @@ pub struct Lease {
     /// config decides, which is how they behaved when they were granted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub follows_branches: Option<bool>,
+    /// What the approval covers, as the person chose it. For a folder or
+    /// everywhere, `repo` holds the folder or [`EVERYWHERE`] instead of the
+    /// repository asked from, since that's what the lease is for and what
+    /// `agent-commits revoke` takes.
+    #[serde(default)]
+    pub coverage: Coverage,
 }
 
 impl Lease {
@@ -111,14 +188,48 @@ pub struct TermsText {
 }
 
 impl LeasePolicy {
+    /// Whether leases may follow the agent across branches under this config.
+    /// Wider scopes need it: they cover many repositories, so they can't be
+    /// tied to one branch.
+    pub fn follows_branches(&self) -> bool {
+        self.scope == LeaseScope::Repo || self.allow_branch_switching
+    }
+
+    /// The scopes to offer when an agent asks from `repo`, each with the
+    /// label the dialog shows. The folder offered is the one holding the
+    /// repository, named in full so the person sees exactly what it reaches.
+    /// When the config keeps leases to one branch, only this repository is
+    /// offered.
+    pub fn scope_choices(&self, repo: &str) -> Vec<(Coverage, String)> {
+        let mut choices = vec![(Coverage::Repository, "This repository only".to_string())];
+        if !self.follows_branches() {
+            return choices;
+        }
+        if let Some(parent) = std::path::Path::new(repo)
+            .parent()
+            .filter(|p| p.is_absolute() && p.parent().is_some())
+        {
+            let folder = parent.to_string_lossy().to_string();
+            choices.push((
+                Coverage::Folder(folder.clone()),
+                format!("Every repository under {folder}"),
+            ));
+        }
+        choices.push((
+            Coverage::Everywhere,
+            "Every repository on this computer".to_string(),
+        ));
+        choices
+    }
+
     /// The terms a lease granted now for `branch` would get.
     pub fn describe_terms(&self, branch: &str) -> TermsText {
         let covers = if self.scope == LeaseScope::Repo || self.allow_branch_switching {
             if self.allow_main_branch || self.block_branches.is_empty() {
-                "every branch of this repository".to_string()
+                "every branch".to_string()
             } else {
                 format!(
-                    "every branch of this repository except protected ones ({})",
+                    "every branch except protected ones ({})",
                     self.block_branches.join(", ")
                 )
             }
@@ -333,10 +444,31 @@ impl LeaseEngine {
             || (lease.scope == LeaseScope::Repo && self.covers_every_branch(lease))
     }
 
-    pub fn get_active_lease(&self, repo: &str) -> Option<&Lease> {
+    /// The key of the most specific lease in force that reaches `repo` and,
+    /// if `branch` is given, covers that branch now.
+    fn find_lease_key(&self, repo: &str, branch: Option<&str>) -> Option<String> {
         self.leases
-            .get(repo)
-            .filter(|lease| self.is_lease_active(lease))
+            .iter()
+            .filter(|(_, lease)| lease.coverage.reaches(&lease.repo, repo))
+            .filter(|(_, lease)| self.is_lease_active(lease))
+            .filter(|(_, lease)| branch.is_none_or(|b| self.lease_covers(lease, b)))
+            .max_by_key(|(_, lease)| lease.coverage.specificity())
+            .map(|(key, _)| key.clone())
+    }
+
+    /// The lease that applies to a commit on `branch` in `repo`: the most
+    /// specific one in force that covers both. A repository lease for one
+    /// branch doesn't hide a wider lease that covers the branch the agent is
+    /// on now.
+    pub fn find_lease(&self, repo: &str, branch: &str) -> Option<&Lease> {
+        self.find_lease_key(repo, Some(branch))
+            .and_then(|key| self.leases.get(&key))
+    }
+
+    /// The most specific lease in force that reaches `repo`, on any branch.
+    pub fn get_active_lease(&self, repo: &str) -> Option<&Lease> {
+        self.find_lease_key(repo, None)
+            .and_then(|key| self.leases.get(&key))
     }
 
     pub fn has_active_lease(&self, repo: &str) -> bool {
@@ -357,11 +489,25 @@ impl LeaseEngine {
         false
     }
 
+    /// Grants a lease for this repository only.
     pub fn try_grant_lease(
         &mut self,
         repo: &str,
         branch: &str,
         intent: &str,
+    ) -> Result<Lease, String> {
+        self.try_grant_lease_covering(repo, branch, intent, Coverage::Repository)
+    }
+
+    /// Grants a lease with the coverage the person chose. A folder or
+    /// everywhere is refused when the config keeps leases to one branch,
+    /// since those can't be tied to one branch.
+    pub fn try_grant_lease_covering(
+        &mut self,
+        repo: &str,
+        branch: &str,
+        intent: &str,
+        coverage: Coverage,
     ) -> Result<Lease, String> {
         // Enforce branch protection [INV-7] unless allow_main_branch is true
         if self.is_branch_blocked(branch) {
@@ -370,6 +516,19 @@ impl LeaseEngine {
                 branch
             ));
         }
+        let wide = coverage != Coverage::Repository;
+        if wide && !self.policy.follows_branches() {
+            return Err(format!(
+                "Cannot grant a lease covering {}: the config keeps leases to one branch",
+                coverage.describe()
+            ));
+        }
+        let key = coverage.key(repo);
+        let lease_repo = match &coverage {
+            Coverage::Repository => repo.to_string(),
+            Coverage::Folder(folder) => folder.clone(),
+            Coverage::Everywhere => EVERYWHERE.to_string(),
+        };
 
         let now = current_epoch_secs();
         let expires_at_secs = match self.policy.mode {
@@ -382,21 +541,26 @@ impl LeaseEngine {
 
         let lease = Lease {
             id: Uuid::new_v4().to_string(),
-            repo: repo.to_string(),
+            repo: lease_repo,
             branch: branch.to_string(),
             intent: intent.to_string(),
             mode: self.policy.mode,
-            scope: self.policy.scope,
+            // Wider scopes reach many repositories, so they cover every
+            // unprotected branch in each (checked above that config allows it).
+            scope: if wide {
+                LeaseScope::Repo
+            } else {
+                self.policy.scope
+            },
             granted_at_secs: now,
             last_used_at_secs: now,
             expires_at_secs,
             commit_count: 0,
-            follows_branches: Some(
-                self.policy.scope == LeaseScope::Repo || self.policy.allow_branch_switching,
-            ),
+            follows_branches: Some(self.policy.follows_branches()),
+            coverage,
         };
 
-        self.leases.insert(repo.to_string(), lease.clone());
+        self.leases.insert(key, lease.clone());
         self.save_to_disk();
         Ok(lease)
     }
@@ -438,8 +602,19 @@ impl LeaseEngine {
         Ok(updated)
     }
 
-    pub fn revoke_lease(&mut self, repo: &str) -> bool {
-        let removed = self.leases.remove(repo).is_some();
+    /// Ends the lease filed under `target`: a repository's path, a folder's
+    /// path (for a folder lease), or [`EVERYWHERE`]. Returns whether one
+    /// was found.
+    pub fn revoke_lease(&mut self, target: &str) -> bool {
+        let target = if target.len() > 1 {
+            target.trim_end_matches('/')
+        } else {
+            target
+        };
+        let key = [target.to_string(), format!("folder:{target}")]
+            .into_iter()
+            .find(|k| self.leases.contains_key(k));
+        let removed = key.is_some_and(|k| self.leases.remove(&k).is_some());
         if removed {
             self.save_to_disk();
         }
@@ -482,6 +657,7 @@ impl LeaseEngine {
                     granted_at_epoch: lease.granted_at_secs,
                     last_used_epoch: lease.last_used_at_secs,
                     commit_count: lease.commit_count,
+                    covers: lease.coverage.describe(),
                     expires_in_secs: self
                         .effective_end(lease)
                         .map(|end| end.saturating_sub(current_epoch_secs())),
@@ -503,19 +679,17 @@ impl LeaseEngine {
             ));
         }
 
-        // 1. Verify the lease is in force and covers this branch
-        let Some(lease) = self.leases.get(repo) else {
-            return Err(format!("No lease found for repository '{}'", repo));
+        // 1. Find the lease in force that covers this repository and branch
+        let Some(key) = self.find_lease_key(repo, Some(branch)) else {
+            return Err(match (self.get_active_lease(repo), self.leases.get(repo)) {
+                (Some(lease), _) => format!(
+                    "Lease was granted for branch '{}', not '{}'",
+                    lease.branch, branch
+                ),
+                (None, Some(_)) => format!("Lease for repository '{}' has expired", repo),
+                (None, None) => format!("No lease found for repository '{}'", repo),
+            });
         };
-        if !self.is_lease_active(lease) {
-            return Err(format!("Lease for repository '{}' has expired", repo));
-        }
-        if !self.lease_covers(lease, branch) {
-            return Err(format!(
-                "Lease was granted for branch '{}', not '{}'",
-                lease.branch, branch
-            ));
-        }
 
         // 2. Rate limiter check (sliding 60s window)
         let now = Instant::now();
@@ -532,7 +706,7 @@ impl LeaseEngine {
         timestamps.push(now);
 
         // 3. Update lease statistics (never its end)
-        let lease = self.leases.get_mut(repo).expect("checked above");
+        let lease = self.leases.get_mut(&key).expect("checked above");
         lease.commit_count += 1;
         lease.last_used_at_secs = current_epoch_secs();
         self.save_to_disk();

@@ -88,6 +88,7 @@ fn lease(mode: LeaseMode, granted_ago: u64, recorded_end_after: Option<u64>) -> 
         expires_at_secs: recorded_end_after.map(|d| granted + d),
         commit_count: 0,
         follows_branches: Some(true),
+        coverage: Default::default(),
     }
 }
 
@@ -394,7 +395,7 @@ fn the_approval_prompt_states_the_fixed_terms() {
     let t = lifetime.describe_terms("feat/a");
     assert_eq!(
         t.covers,
-        "every branch of this repository except protected ones (main, master)"
+        "every branch except protected ones (main, master)"
     );
     assert_eq!(t.ends, "when you revoke it (agent-commits revoke)");
 

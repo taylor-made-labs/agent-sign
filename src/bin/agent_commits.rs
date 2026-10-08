@@ -61,7 +61,7 @@ fn print_help() {
         "  agent-commits status                        (Check service health and list active leases)"
     );
     println!(
-        "  agent-commits revoke <repo>                 (Revoke active lease for a specific repository)"
+        "  agent-commits revoke <repo|folder|everywhere> (End the lease covering it, as `leases` shows it)"
     );
     println!("  agent-commits revoke --all                  (Revoke all active agent leases)");
     println!(
@@ -102,10 +102,18 @@ fn run_leases() -> ExitCode {
                     Some(rem) => format!("in {}", format_relative_time(rem)),
                     None => "when revoked".to_string(),
                 };
-                let branch_display = if lease.branch.is_empty() || lease.branch == "*" {
+                // A lease wider than one repository covers every unprotected
+                // branch; the branch it holds is only where it was approved.
+                let wide = lease.covers.starts_with("every repository");
+                let branch_display = if wide || lease.branch.is_empty() || lease.branch == "*" {
                     "(all branches)".to_string()
                 } else {
                     lease.branch
+                };
+                let covers_display = if wide {
+                    format!("{}  ({})", lease.repo, lease.covers)
+                } else {
+                    lease.repo
                 };
 
                 println!(
@@ -115,7 +123,7 @@ fn run_leases() -> ExitCode {
                     format!("{} ago", granted_desc),
                     expires_desc,
                     lease.commit_count,
-                    lease.repo
+                    covers_display
                 );
             }
             println!();
@@ -176,7 +184,7 @@ fn run_revoke(args: &[String]) -> ExitCode {
     let socket_path = client_socket_path();
 
     let mut all = false;
-    let mut repo = String::new();
+    let mut targets: Vec<String> = Vec::new();
     let mut branch = None;
 
     let mut idx = 0;
@@ -191,31 +199,45 @@ fn run_revoke(args: &[String]) -> ExitCode {
                     idx += 1;
                 }
             }
-            r if !r.starts_with('-') && repo.is_empty() => {
-                repo = resolve_repo_arg(r);
+            r if !r.starts_with('-') && targets.is_empty() => {
+                targets = revoke_targets(r);
             }
             _ => {}
         }
         idx += 1;
     }
 
-    if !all && repo.is_empty() {
-        eprintln!("Usage: agent-commits revoke <repo> [--branch <branch>]");
+    if !all && targets.is_empty() {
+        eprintln!("Usage: agent-commits revoke <repository, folder, or everywhere>");
         eprintln!("       agent-commits revoke --all");
         return ExitCode::from(1);
     }
 
-    let req = Request::RevokeLease {
-        repo: repo.clone(),
-        branch,
-        all,
-    };
-    match send_request(&socket_path, &req) {
+    // Try each thing the argument could name, in order, stopping at the
+    // first lease found; the service's "no lease" answer for the last one is
+    // what the person sees if none matched.
+    let mut repo = String::new();
+    let mut result = None;
+    for target in if all { vec![String::new()] } else { targets } {
+        repo = target;
+        let req = Request::RevokeLease {
+            repo: repo.clone(),
+            branch: branch.clone(),
+            all,
+        };
+        let answer = send_request(&socket_path, &req);
+        let matched = !matches!(answer, Ok(Response::Error { .. }));
+        result = Some(answer);
+        if matched {
+            break;
+        }
+    }
+    match result.expect("at least one request was sent") {
         Ok(Response::Success) => {
             if all {
                 println!("\x1b[32m✓\x1b[0m All active agent leases revoked.");
             } else {
-                println!("\x1b[32m✓\x1b[0m Lease revoked for repository '{}'.", repo);
+                println!("\x1b[32m✓\x1b[0m Lease revoked for '{}'.", repo);
             }
             ExitCode::SUCCESS
         }
@@ -239,6 +261,21 @@ fn run_revoke(args: &[String]) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+/// What the argument to `agent-commits revoke` may name, most likely first:
+/// the repository it's in (see [`resolve_repo_arg`]), then the path itself,
+/// canonical, for a folder lease on a folder that sits inside a repository.
+/// `everywhere`, or anything that isn't a path, is passed on unchanged.
+fn revoke_targets(arg: &str) -> Vec<String> {
+    let mut targets = vec![resolve_repo_arg(arg)];
+    if let Ok(path) = fs::canonicalize(arg) {
+        let path = path.to_string_lossy().to_string();
+        if !targets.contains(&path) {
+            targets.push(path);
+        }
+    }
+    targets
 }
 
 /// Turns what the person typed after `agent-commits revoke` into the key the service

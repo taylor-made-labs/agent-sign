@@ -16,6 +16,10 @@ pub struct LeaseInfo {
     pub last_used_epoch: u64,
     pub commit_count: u64,
     pub expires_in_secs: Option<u64>,
+    /// What the lease covers, in plain words ("this repository", "every
+    /// repository under /w/dev"). Empty from services older than scopes.
+    #[serde(default)]
+    pub covers: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

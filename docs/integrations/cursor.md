@@ -26,7 +26,7 @@ terminals? If so, it's you; otherwise, an agent.
 - **You, typing `git commit` in the integrated terminal:** a terminal, so
   your normal git and signer. Nothing changes for you.
 - **Cursor's agent running `git commit`:** if Cursor runs the command without
-  a terminal, agent-commits treats it as the agent's: one lease dialog per repository,
+  a terminal, agent-commits treats it as the agent's: one lease dialog per scope you approve,
   then signed with the agent key. If Cursor runs it in a terminal, agent-commits
   can't tell it from you, and it goes to your own signer. Check which by
   letting the agent commit once and running

@@ -2,12 +2,13 @@
 
 agent-commits gives AI coding agents their own key for signing git commits, so an
 agent's commits are signed, name the agent as their author, and don't stop
-for your fingerprint: you're asked once per repository instead of on every
-commit. (On GitHub they still count as yours; see the limits below.)
+for your fingerprint: you're asked once, for the scope you choose (one
+repository, a folder of them, or all of them), instead of on every commit. (On GitHub they still count as yours; see the limits below.)
 
-You approve a **lease**: permission for agents to sign in one repository,
-with terms you see before you approve (which branches it covers, and when it
-ends: by default, when you revoke it). Those terms are fixed when you approve
+You approve a **lease**: permission for agents to sign, with terms you see
+before you approve: what it covers (this repository only, every repository
+under the folder that holds it, or every repository on the computer; you
+pick), which branches, and when it ends (by default, when you revoke it). Those terms are fixed when you approve
 and never grow on their own. Your own signing key is never used for agents'
 commits, and commits you make yourself go through your normal signing.
 
@@ -59,8 +60,8 @@ It does:
 - keep your own signing key away from agents (they never talk to it)
 - refuse agent commits on protected branches (`main` and `master` by
   default), checked on every commit
-- ask you before the first signed commit in each repository, showing the
-  lease's terms
+- ask you before the first signed commit that no lease covers, showing the
+  lease's terms and letting you choose how far it reaches
 - stop runaway commit loops and oversized diffs, and block edits to CI
   workflows and key files
 - fail closed: for a commit through the wrapper, if the service is down,
@@ -111,22 +112,33 @@ agent-commits doctor
 
 Start your agent from a new terminal, so the wrapper is on its `PATH`, and
 let it commit on a branch other than `main` or `master` (agents never commit
-on those). You'll see one dialog, titled "agent-commits Security Lease":
+on those). You'll see one dialog, titled "agent-commits":
 
 ```
 An AI agent asks to sign git commits as the agent without asking you again.
 
 Repository: /Users/you/code/project
 Branch now: feat/parser
-Covers: every branch of this repository except protected ones (main, master)
+Branches: every branch except protected ones (main, master)
 Ends: when you revoke it (agent-commits revoke)
 Reason given by the agent: Autonomous coding agent commit
 
-These terms are fixed when you approve. They never grow.
+Choose what this approval covers. These terms are fixed when you approve.
+They never grow.
+
+  > This repository only
+    Every repository under /Users/you/code
+    Every repository on this computer
+
+                                         [Deny]  [Approve]
 ```
 
-Approve, and that repository's agent commits are signed from then on
-without asking. Check one with `git log -1 --show-signature`.
+"This repository only" is selected, so Approve alone keeps it to one
+repository. Choose a wider scope if you start new repositories often and
+don't want to be asked for each. Agent commits in what you chose are signed
+from then on without asking. Check one with `git log -1 --show-signature`.
+(With `allow_branch_switching = false`, only "This repository only" is
+offered: a wider lease can't be held to one branch.)
 
 In a brand-new repository, make the first commit yourself (agents can't
 commit on `main`), then have the agent work on a branch.
@@ -158,7 +170,9 @@ attribution modes, is in [SPEC.md](SPEC.md).
 
 ```sh
 agent-commits leases            # the leases in force, and when each ends
-agent-commits revoke <repo>     # end one repository's lease (its path, or . inside it)
+agent-commits revoke <repo>     # end a repository's lease (its path, or . inside it)
+agent-commits revoke <folder>   # end a lease covering every repository under a folder
+agent-commits revoke everywhere # end a lease covering every repository
 agent-commits revoke --all      # end every lease
 agent-commits status            # is the service running
 agent-commits doctor            # check the whole setup, with fixes

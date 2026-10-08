@@ -135,8 +135,7 @@ PY
 counts, which agents may already have raised since the start.)
 
 **7. End-to-end check:** a signed agent commit in a scratch repository. A
-new repository has no lease, so expect **one approval dialog** ("agent-commits
-Security Lease"). `AGENT_COMMITS_FORCE=1` makes the wrapper treat the commit as an
+new repository has no lease, so expect **one approval dialog** ("agent-commits"). `AGENT_COMMITS_FORCE=1` makes the wrapper treat the commit as an
 agent's even when run from a terminal; `< /dev/null` keeps it
 non-interactive.
 

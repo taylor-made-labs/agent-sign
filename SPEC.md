@@ -18,8 +18,9 @@ commits" rules), or giving the agent the person's own key (the agent can then
 sign anything as the person, anywhere).
 
 agent-commits gives agents a separate signing key, held by a small service, and asks
-the person once per repository for a **lease**: permission for agents to
-sign there, on terms the person sees before approving.
+the person once for a **lease**: permission for agents to sign, on terms the
+person sees before approving, in the scope the person chooses (one
+repository, every repository under a folder, or every repository).
 
 ## 2. Invariants
 
@@ -173,9 +174,17 @@ Lease:
   expires_at_secs: u64 or none  # fixed at approval; none = until revoked
   commit_count: u64             # usage record only
   follows_branches: bool        # fixed at approval; absent on older leases
+  coverage: repository | folder <path> | everywhere   # chosen at approval; absent = repository
 ```
 
-- One lease per repository. It's in force until its effective end: the end
+- A lease covers what the person chose in the dialog: the repository asked
+  from, every repository under the folder that holds it (compared by whole
+  path components, so `/w/dev` never covers `/w/dev2`), or every
+  repository. A folder or everywhere lease covers every unprotected branch,
+  and is only offered when the config lets leases follow branches. A commit
+  uses the most specific lease that covers its repository and branch.
+  Unattended approval (`auto_approve`) grants this repository only.
+- Each lease is in force until its effective end: the end
   recorded at approval, brought forward if the current config's cap for its
   mode is shorter (`max_lease_ceiling` for `identity`,
   `default_lease_duration` for `timed`), never pushed back.
@@ -200,7 +209,7 @@ Newline-delimited JSON, unchanged from agent-sign.
 | `IssueToken {repo, branch}` | Checks branch rules, that the lease is in force and covers the branch, and the rate limit; counts the commit; returns a token. |
 | `SignCommit {token, buffer_b64}` | Burns the token and returns the signature. |
 | `ListLeases` | The leases, with commit counts and when each ends. |
-| `RevokeLease {repo, branch, all}` | Ends one repository's lease (an error if none matches) or all of them, and saves. `branch` is ignored. |
+| `RevokeLease {repo, branch, all}` | Ends the lease filed under `repo`: a repository's path, a folder's path, or `everywhere` (an error if none matches); or all of them; and saves. `branch` is ignored. |
 | `GetStatus {repo}`, `Ping` | Status and health. |
 
 ### 4.6 Configuration

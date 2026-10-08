@@ -15,7 +15,8 @@ off, or handing the agent your own key.
 ## What agent-commits does
 
 It gives agents their own signing key, held by a small service on your
-machine, and asks you once per repository whether agents may sign there.
+machine, and asks you once whether agents may sign: in one repository, in
+every repository under a folder, or everywhere, as you choose.
 That permission is a **lease**, and you see its terms (which branches, when it
 ends) before you approve. The terms are fixed when you approve and never grow.
 
@@ -23,7 +24,7 @@ ends) before you approve. The terms are fixed when you approve and never grow.
 
 | # | Promise | Today | How it's known |
 |---|---|---|---|
-| 1 | You're asked once per repository, not once per commit. | **Kept.** Leases are saved, so restarts and sleep don't ask again. | Tests in `test_lease_engine.rs` and `test_persistent_identity_leases.rs`; daily use on the author's Mac. |
+| 1 | You're asked once for the scope you choose, not once per commit. | **Kept.** Leases are saved, so restarts and sleep don't ask again. | Tests in `test_approval_scope.rs` (one approval, then 20 commits with no more dialogs), `test_lease_engine.rs` and `test_persistent_identity_leases.rs`; daily use on the author's Mac. |
 | 2 | A lease's terms never grow on their own. | **Kept.** Config changes can only narrow a lease already granted. | `test_lease_terms.rs`, including tests that fail under deliberate mutations. |
 | 3 | Your own key stays out of agents' commits. | **Kept for commits through the wrapper.** Agents sign with a separate key; your terminal commits go to your own signer untouched. An agent can still call the real git or your signer directly. | `test_human_isolation.rs`, `test_signature_equivalence.rs`; the install test. |
 | 4 | Agent commits are signed in git's standard format and verify on GitHub. | **Kept.** They show as Verified because the agent key is registered on *your* account and you're the committer, so they're attributed to you. | `test_crypto_verification.rs`, `test_e2e_git_commit.rs`. |

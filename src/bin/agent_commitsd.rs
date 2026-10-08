@@ -21,7 +21,7 @@ use clap::{Parser, Subcommand};
 
 use agent_commits::config::Config;
 use agent_commits::crypto::AgentKeyPair;
-use agent_commits::lease::{LeaseEngine, LeasePolicy};
+use agent_commits::lease::{Coverage, LeaseEngine, LeasePolicy};
 use agent_commits::protocol::{Request, Response, default_socket_path, send_response};
 
 #[derive(Parser)]
@@ -350,34 +350,25 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             duration_secs: _,
         } => {
             // Check active lease state without holding lock across UI dialog
-            let (
-                blocked,
-                has_lease,
-                same_branch,
-                follows,
-                lease_id,
-                lease_exp,
-                auto_approve_val,
-                terms,
-            ) = {
+            let (blocked, covering, can_follow, auto_approve_val, terms, choices) = {
                 let st = state.lock().unwrap();
-                let auto = st.auto_approve;
-                let mode = st.lease_engine.policy.describe_terms(&branch);
-                let blocked = st.lease_engine.is_branch_blocked(&branch);
-                if let Some(lease) = st.lease_engine.get_active_lease(&repo) {
-                    (
-                        blocked,
-                        true,
-                        st.lease_engine.lease_covers(lease, &branch),
-                        st.lease_engine.covers_every_branch(lease),
-                        Some(lease.id.clone()),
-                        st.lease_engine.effective_end(lease),
-                        auto,
-                        mode,
-                    )
-                } else {
-                    (blocked, false, false, false, None, None, auto, mode)
-                }
+                let engine = &st.lease_engine;
+                let covering = engine
+                    .find_lease(&repo, &branch)
+                    .map(|lease| (lease.id.clone(), engine.effective_end(lease)));
+                // A lease for this repository alone, approved to follow the
+                // agent across branches, moves to the branch it's on now.
+                let can_follow = engine.get_active_lease(&repo).is_some_and(|lease| {
+                    lease.coverage == Coverage::Repository && engine.covers_every_branch(lease)
+                });
+                (
+                    engine.is_branch_blocked(&branch),
+                    covering,
+                    can_follow,
+                    st.auto_approve,
+                    engine.policy.describe_terms(&branch),
+                    engine.policy.scope_choices(&repo),
+                )
             };
 
             if blocked {
@@ -389,69 +380,49 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                         branch
                     ),
                 }
-            } else if has_lease {
-                if same_branch {
-                    Response::LeaseGranted {
-                        lease_id: lease_id.unwrap_or_else(|| "active".to_string()),
-                        expires_at_secs: lease_exp.unwrap_or(u64::MAX),
-                    }
+            } else if let Some((lease_id, lease_exp)) = covering {
+                Response::LeaseGranted {
+                    lease_id,
+                    expires_at_secs: lease_exp.unwrap_or(u64::MAX),
+                }
+            } else if can_follow {
+                let mut st = state.lock().unwrap();
+                match st.lease_engine.switch_branch(&repo, &branch) {
+                    Ok(updated) => Response::LeaseGranted {
+                        expires_at_secs: st
+                            .lease_engine
+                            .effective_end(&updated)
+                            .unwrap_or(u64::MAX),
+                        lease_id: updated.id,
+                    },
+                    Err(e) => Response::Error { message: e },
+                }
+            } else {
+                // Nothing covers this commit: ask the person, outside the lock.
+                // Unattended approval only ever grants this repository.
+                let approval = if auto_approve_val {
+                    Approval::Approved(Coverage::Repository)
                 } else {
-                    // The agent is on another branch. Follow it only if the
-                    // lease was approved (and is still allowed) to cover every
-                    // unprotected branch; otherwise ask again.
-                    let mut st = state.lock().unwrap();
-                    if follows {
-                        match st.lease_engine.switch_branch(&repo, &branch) {
-                            Ok(updated) => Response::LeaseGranted {
-                                expires_at_secs: st
-                                    .lease_engine
-                                    .effective_end(&updated)
-                                    .unwrap_or(u64::MAX),
-                                lease_id: updated.id,
+                    request_human_approval(&repo, &branch, &intent, &terms, &choices)
+                };
+
+                match approval {
+                    Approval::Approved(coverage) => {
+                        let mut st = state.lock().unwrap();
+                        match st
+                            .lease_engine
+                            .try_grant_lease_covering(&repo, &branch, &intent, coverage)
+                        {
+                            Ok(lease) => Response::LeaseGranted {
+                                lease_id: lease.id,
+                                expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
                             },
                             Err(e) => Response::Error { message: e },
                         }
-                    } else {
-                        drop(st); // Release lock before prompting
-                        let approval = if auto_approve_val {
-                            Approval::Approved
-                        } else {
-                            request_human_approval(&repo, &branch, &intent, &terms)
-                        };
-
-                        if let Some(message) = approval.refusal() {
-                            Response::Error { message }
-                        } else {
-                            let mut st = state.lock().unwrap();
-                            match st.lease_engine.try_grant_lease(&repo, &branch, &intent) {
-                                Ok(lease) => Response::LeaseGranted {
-                                    lease_id: lease.id,
-                                    expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
-                                },
-                                Err(e) => Response::Error { message: e },
-                            }
-                        }
                     }
-                }
-            } else {
-                // No active lease: prompt human for approval outside the lock
-                let approval = if auto_approve_val {
-                    Approval::Approved
-                } else {
-                    request_human_approval(&repo, &branch, &intent, &terms)
-                };
-
-                if let Some(message) = approval.refusal() {
-                    Response::Error { message }
-                } else {
-                    let mut st = state.lock().unwrap();
-                    match st.lease_engine.try_grant_lease(&repo, &branch, &intent) {
-                        Ok(lease) => Response::LeaseGranted {
-                            lease_id: lease.id,
-                            expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
-                        },
-                        Err(e) => Response::Error { message: e },
-                    }
+                    refused => Response::Error {
+                        message: refused.refusal().unwrap_or_default(),
+                    },
                 }
             }
         }
@@ -525,7 +496,7 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 // access had ended when nothing matched.
                 Response::Error {
                     message: format!(
-                        "no lease for '{}': give the repository's full path, as `agent-commits leases` shows it",
+                        "no lease for '{}': give the repository's or folder's full path, or `everywhere`, as `agent-commits leases` shows it",
                         repo
                     ),
                 }
@@ -537,9 +508,10 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
 }
 
 /// The person's answer to a lease request, or that there was no way to ask.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Approval {
-    Approved,
+    /// Approved, covering what the person chose.
+    Approved(Coverage),
     Denied,
     /// No dialog could be shown and the service has no terminal: nobody was
     /// asked, so the lease is refused (failing closed).
@@ -550,12 +522,25 @@ impl Approval {
     /// The error to send back for a refusal, or `None` if approved. The two
     /// refusals are worded differently so that a headless machine doesn't
     /// report that the person said no.
-    fn refusal(self) -> Option<String> {
+    fn refusal(&self) -> Option<String> {
         match self {
-            Approval::Approved => None,
+            Approval::Approved(_) => None,
             Approval::Denied => Some("the person denied the signing lease".to_string()),
             Approval::NoWayToAsk => Some(NO_WAY_TO_ASK.to_string()),
         }
+    }
+
+    /// Reads a dialog's answer: the label of one of the choices offered is
+    /// approval of that coverage; anything else is a denial, so an answer
+    /// that can't be matched never approves more than was shown.
+    fn from_answer(answer: &str, choices: &[(Coverage, String)]) -> Approval {
+        let answer = answer.trim();
+        choices
+            .iter()
+            .find(|(_, label)| label == answer)
+            .map_or(Approval::Denied, |(coverage, _)| {
+                Approval::Approved(coverage.clone())
+            })
     }
 }
 
@@ -563,35 +548,48 @@ impl Approval {
 /// person reading its output) learns why and what to do.
 const NO_WAY_TO_ASK: &str = "agent-commits couldn't ask you to approve a lease: there is no desktop session for a dialog, and the service has no terminal. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
 
-/// Asks the person to approve a lease, showing its fixed terms. The
-/// repository, branch, and reason come from the agent's request and are
-/// labelled as such.
+/// A string as an AppleScript string literal.
+#[cfg(target_os = "macos")]
+fn applescript_string(s: &str) -> String {
+    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
+/// Asks the person to approve a lease, showing its fixed terms and letting
+/// them choose what it covers (`choices`, the first being the default).
+/// The repository, branch, and reason come from the agent's request and are
+/// labelled as such. It's one dialog with the narrowest choice preselected,
+/// so approving takes one click, as before scopes existed.
 fn request_human_approval(
     repo: &str,
     branch: &str,
     intent: &str,
     terms: &agent_commits::lease::TermsText,
+    choices: &[(Coverage, String)],
 ) -> Approval {
     let prompt_text = format!(
-        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nCovers: {}\nEnds: {}\nReason given by the agent: {}\n\nThese terms are fixed when you approve. They never grow.",
+        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nBranches: {}\nEnds: {}\nReason given by the agent: {}\n\nChoose what this approval covers. These terms are fixed when you approve. They never grow.",
         repo, branch, terms.covers, terms.ends, intent
     );
+    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
 
-    // 1. If on macOS, attempt desktop dialog via osascript
+    // 1. If on macOS, a list dialog: Approve with a choice selected, or Deny
+    // (which answers "false").
     #[cfg(target_os = "macos")]
     {
+        let items: Vec<String> = labels.iter().map(|l| applescript_string(l)).collect();
         let script = format!(
-            "display dialog \"{}\" with title \"agent-commits Security Lease\" buttons {{\"Deny\", \"Approve\"}} default button \"Approve\" with icon caution",
-            prompt_text.replace('"', "\\\"")
+            "choose from list {{{}}} with title \"agent-commits\" with prompt {} default items {{{}}} OK button name \"Approve\" cancel button name \"Deny\"",
+            items.join(", "),
+            applescript_string(&prompt_text),
+            items[0]
         );
 
         if let Ok(output) = Command::new("osascript").arg("-e").arg(&script).output() {
             let res = String::from_utf8_lossy(&output.stdout);
-            if res.contains("button returned:Approve") {
-                return Approval::Approved;
-            }
-            if res.contains("button returned:Deny") {
-                return Approval::Denied;
+            // Any answer is the person's; an empty one with a failure means
+            // no dialog could be shown, so try the next way to ask.
+            if !res.trim().is_empty() || output.status.success() {
+                return Approval::from_answer(&res, choices);
             }
         }
     }
@@ -600,36 +598,61 @@ fn request_human_approval(
     #[cfg(target_os = "linux")]
     {
         if std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some() {
-            if let Ok(output) = Command::new("zenity")
-                .args([
-                    "--question",
-                    "--title=agent-commits Security Lease",
-                    &format!("--text={}", prompt_text),
-                ])
-                .output()
-            {
-                // zenity exits 0 for Yes and 1 for No or a closed window; any
-                // other failure (no display, say) falls through to the
-                // terminal, as before.
+            let mut zenity_args = vec![
+                "--list".to_string(),
+                "--radiolist".to_string(),
+                "--title=agent-commits".to_string(),
+                format!("--text={}", prompt_text),
+                "--column= ".to_string(),
+                "--column=Covers".to_string(),
+                "--ok-label=Approve".to_string(),
+                "--cancel-label=Deny".to_string(),
+                "--width=640".to_string(),
+                "--height=420".to_string(),
+            ];
+            for (i, label) in labels.iter().enumerate() {
+                zenity_args.push(if i == 0 { "TRUE" } else { "FALSE" }.to_string());
+                zenity_args.push(label.to_string());
+            }
+            if let Ok(output) = Command::new("zenity").args(&zenity_args).output() {
+                // zenity exits 0 with the chosen label, and 1 for Deny or a
+                // closed window; any other failure (no display, say) falls
+                // through to the terminal, as before.
                 match output.status.code() {
-                    Some(0) => return Approval::Approved,
+                    Some(0) => {
+                        return Approval::from_answer(
+                            &String::from_utf8_lossy(&output.stdout),
+                            choices,
+                        );
+                    }
                     Some(1) => return Approval::Denied,
                     _ => {}
                 }
-            } else if let Ok(output) = Command::new("kdialog")
-                .args([
-                    "--title",
-                    "agent-commits Security Lease",
-                    "--yesno",
-                    &prompt_text,
-                ])
-                .output()
-            {
-                return if output.status.success() {
-                    Approval::Approved
-                } else {
-                    Approval::Denied
-                };
+            } else {
+                let mut kdialog_args = vec![
+                    "--title".to_string(),
+                    "agent-commits".to_string(),
+                    "--radiolist".to_string(),
+                    prompt_text.clone(),
+                ];
+                for (i, label) in labels.iter().enumerate() {
+                    kdialog_args.push((i + 1).to_string());
+                    kdialog_args.push(label.to_string());
+                    kdialog_args.push(if i == 0 { "on" } else { "off" }.to_string());
+                }
+                if let Ok(output) = Command::new("kdialog").args(&kdialog_args).output() {
+                    // kdialog prints the chosen tag (the choice's number).
+                    let tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                    let chosen = tag
+                        .parse::<usize>()
+                        .ok()
+                        .and_then(|n| n.checked_sub(1))
+                        .and_then(|i| choices.get(i));
+                    return match (output.status.success(), chosen) {
+                        (true, Some((coverage, _))) => Approval::Approved(coverage.clone()),
+                        _ => Approval::Denied,
+                    };
+                }
             }
         }
     }
@@ -637,25 +660,34 @@ fn request_human_approval(
     // 3. Fallback to interactive terminal prompt if stdin is a TTY
     if std::io::stdin().is_terminal() {
         eprintln!("\n========================================================");
-        eprintln!(" 🔏 agent-commits Security Lease Request");
+        eprintln!(" 🔏 agent-commits approval request");
         eprintln!("========================================================");
         eprintln!("Repository: {}", repo);
         eprintln!("Branch now: {}", branch);
-        eprintln!("Covers:     {}", terms.covers);
+        eprintln!("Branches:   {}", terms.covers);
         eprintln!("Ends:       {}", terms.ends);
         eprintln!("Reason given by the agent: {}", intent);
         eprintln!("========================================================");
         eprintln!("These terms are fixed when you approve. They never grow.");
-        eprint!("Approve this lease? [y/N]: ");
+        for (i, label) in labels.iter().enumerate() {
+            eprintln!("  {}) {}", i + 1, label);
+        }
+        eprint!(
+            "Approve, covering which? [1-{}, y = 1, N = deny]: ",
+            labels.len()
+        );
         let _ = std::io::stderr().flush();
 
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() {
             let trimmed = input.trim().to_lowercase();
-            return if trimmed == "y" || trimmed == "yes" {
-                Approval::Approved
-            } else {
-                Approval::Denied
+            let index = match trimmed.as_str() {
+                "y" | "yes" => Some(0),
+                n => n.parse::<usize>().ok().and_then(|n| n.checked_sub(1)),
+            };
+            return match index.and_then(|i| choices.get(i)) {
+                Some((coverage, _)) => Approval::Approved(coverage.clone()),
+                None => Approval::Denied,
             };
         }
     }
