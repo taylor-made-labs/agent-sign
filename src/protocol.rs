@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LeaseInfo {
@@ -99,11 +100,59 @@ pub fn client_socket_path() -> PathBuf {
         .unwrap_or_else(default_socket_path)
 }
 
+/// How long a client waits for the service to start answering, by default:
+/// about twenty times the ~85 ms it takes to start on an M-series Mac, so a
+/// restart (an upgrade, launchd or systemd bringing it back) doesn't fail a
+/// commit an agent makes at that moment. `AGENT_COMMITS_CONNECT_WAIT_MS`
+/// changes it; 0 turns the wait off.
+pub const DEFAULT_CONNECT_WAIT: Duration = Duration::from_secs(2);
+
+/// The wait from `AGENT_COMMITS_CONNECT_WAIT_MS` (or the old
+/// `AGENT_SIGN_CONNECT_WAIT_MS`), or [`DEFAULT_CONNECT_WAIT`].
+pub fn connect_wait() -> Duration {
+    crate::paths::env_var("CONNECT_WAIT_MS")
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .map_or(DEFAULT_CONNECT_WAIT, Duration::from_millis)
+}
+
+/// Sends one request and reads the answer, waiting up to [`connect_wait`]
+/// for a service that's starting or restarting.
 pub fn send_request(
     socket_path: &Path,
     req: &Request,
 ) -> Result<Response, Box<dyn std::error::Error>> {
-    let mut stream = UnixStream::connect(socket_path)?;
+    send_request_waiting(socket_path, req, connect_wait())
+}
+
+/// Connects, retrying while the socket is missing or has nothing listening
+/// yet (the moments a restart leaves), for up to `wait`. Any other error, or
+/// one that outlasts the wait, is returned as is: a service that doesn't come
+/// back still fails the commit.
+fn connect_waiting(socket_path: &Path, wait: Duration) -> std::io::Result<UnixStream> {
+    let start = Instant::now();
+    loop {
+        match UnixStream::connect(socket_path) {
+            Ok(stream) => return Ok(stream),
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::NotFound | std::io::ErrorKind::ConnectionRefused
+                ) && start.elapsed() < wait =>
+            {
+                std::thread::sleep(Duration::from_millis(20).min(wait));
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
+
+/// [`send_request`] with an explicit wait for the service to answer.
+pub fn send_request_waiting(
+    socket_path: &Path,
+    req: &Request,
+    wait: Duration,
+) -> Result<Response, Box<dyn std::error::Error>> {
+    let mut stream = connect_waiting(socket_path, wait)?;
     let mut serialized = serde_json::to_string(req)?;
     serialized.push('\n');
     stream.write_all(serialized.as_bytes())?;
