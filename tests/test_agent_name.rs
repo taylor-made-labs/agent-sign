@@ -198,3 +198,35 @@ fn an_agent_started_with_a_name_gets_that_name() {
         "Cursor"
     );
 }
+
+// --- Who is committing: the person, or an agent ---------------------------
+
+use agent_commits::attribution::{agent_mark_present_with, is_persons_own_commit};
+
+#[test]
+fn a_terminal_commit_with_no_mark_is_the_persons() {
+    assert!(is_persons_own_commit(true, true, false, false));
+}
+
+#[test]
+fn an_agent_mark_makes_a_terminal_commit_an_agents() {
+    assert!(!is_persons_own_commit(true, true, false, true));
+}
+
+#[test]
+fn no_terminal_or_forced_is_an_agents() {
+    assert!(!is_persons_own_commit(false, true, false, false));
+    assert!(!is_persons_own_commit(true, false, false, false));
+    assert!(!is_persons_own_commit(true, true, true, false));
+}
+
+#[test]
+fn only_known_marks_count_not_an_explicit_name() {
+    assert!(agent_mark_present_with(env_of(&[("CLAUDECODE", "1")])));
+    assert!(agent_mark_present_with(env_of(&[("CODEX_THREAD_ID", "x")])));
+    assert!(!agent_mark_present_with(env_of(&[(
+        "AGENT_COMMITS_AGENT_NAME",
+        "Cursor"
+    )])));
+    assert!(!agent_mark_present_with(env_of(&[("CLAUDECODE", "0")])));
+}

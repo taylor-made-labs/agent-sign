@@ -51,6 +51,31 @@ pub fn detect_agent_with(get: impl Fn(&str) -> Option<String>) -> Option<String>
         .map(|(_, name)| name.to_string())
 }
 
+/// Whether one of the [`KNOWN_AGENTS`] marks is set (and isn't empty or
+/// `0`). Unlike [`detect_agent_with`], `AGENT_COMMITS_AGENT_NAME` doesn't
+/// count: it names an agent's commits, and may be set in a terminal the
+/// person also types in (an editor's terminal settings, say).
+pub fn agent_mark_present_with(get: impl Fn(&str) -> Option<String>) -> bool {
+    KNOWN_AGENTS
+        .iter()
+        .any(|(var, _)| get(var).is_some_and(|v| !v.is_empty() && v != "0"))
+}
+
+/// Whether a commit is the person's own, to be passed to their normal git
+/// and signing untouched: standard input and output are both terminals,
+/// nothing forces agent handling (`AGENT_COMMITS_FORCE`, `_SESSION`), and no
+/// agent has marked the command as its own. The mark matters for agents
+/// that run commands in a real terminal (a terminal pane, say), which the
+/// terminal test alone would take for the person.
+pub fn is_persons_own_commit(
+    stdin_is_terminal: bool,
+    stdout_is_terminal: bool,
+    forced: bool,
+    agent_marked: bool,
+) -> bool {
+    stdin_is_terminal && stdout_is_terminal && !forced && !agent_marked
+}
+
 /// [`detect_agent_with`] for this process's environment.
 pub fn detect_agent() -> Option<String> {
     detect_agent_with(|k| std::env::var(k).ok())

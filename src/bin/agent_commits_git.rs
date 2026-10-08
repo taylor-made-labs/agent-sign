@@ -29,14 +29,16 @@ fn main() -> ExitCode {
         return exec_system_git(&real_git, &args[1..], &[]);
     }
 
-    // Human isolation [INV-1]: If executed in an interactive terminal session
-    // (both stdin and stdout are TTYs) without explicit AGENT_COMMITS_FORCE / AGENT_COMMITS_SESSION
-    // (or the old AGENT_SIGN_FORCE / AGENT_SIGN_SESSION), bypass agent signing so
-    // human commits in Cursor/terminal use their own keys.
-    let is_interactive_human = std::io::stdin().is_terminal()
-        && std::io::stdout().is_terminal()
-        && paths::env_var_os("FORCE").is_none()
-        && paths::env_var_os("SESSION").is_none();
+    // Human isolation [INV-1]: a commit typed in an interactive terminal
+    // (stdin and stdout both terminals) goes to the person's own git and
+    // signing, unless AGENT_COMMITS_FORCE / _SESSION is set or an agent has
+    // marked the command as its own (see attribution::KNOWN_AGENTS).
+    let is_interactive_human = agent_commits::attribution::is_persons_own_commit(
+        std::io::stdin().is_terminal(),
+        std::io::stdout().is_terminal(),
+        paths::env_var_os("FORCE").is_some() || paths::env_var_os("SESSION").is_some(),
+        agent_commits::attribution::agent_mark_present_with(|k| env::var(k).ok()),
+    );
 
     if is_interactive_human {
         return exec_system_git(&real_git, &args[1..], &[]);

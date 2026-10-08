@@ -534,3 +534,78 @@ fn a_restart_between_commits_keeps_the_lease() {
     assert!(s.agent_commit(&repo, "b.txt").status.success());
     assert_eq!(s.times_asked(), 1);
 }
+
+// --- Who is committing, in a real terminal ---------------------------------
+
+impl Setup {
+    /// Runs the wrapper's `commit` inside a real terminal (via `script`), as
+    /// a person typing it, or an agent running in a terminal pane, would.
+    fn commit_in_a_terminal(&self, repo: &Path, file: &str, marks: &[(&str, &str)]) -> Output {
+        fs::write(repo.join(file), format!("{file}\n")).unwrap();
+        git_ok(repo, &["add", file]);
+        let wrapper = env!("CARGO_BIN_EXE_agent-commits-git");
+        let mut cmd = Command::new("script");
+        if cfg!(target_os = "macos") {
+            cmd.args(["-q", "/dev/null", wrapper, "commit", "-q", "-m", file]);
+        } else {
+            cmd.args([
+                "-qec",
+                &format!("{wrapper} commit -q -m {file}"),
+                "/dev/null",
+            ]);
+        }
+        cmd.current_dir(repo)
+            .env("HOME", &self.home)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("AGENT_COMMITS_SOCKET", &self.socket)
+            .env(
+                "AGENT_COMMITS_BIN",
+                env!("CARGO_BIN_EXE_agent-commits-ssh-sign"),
+            )
+            .stdin(Stdio::null());
+        for (var, _) in KNOWN_AGENTS {
+            cmd.env_remove(var);
+        }
+        for (k, v) in marks {
+            cmd.env(k, v);
+        }
+        cmd.output().unwrap()
+    }
+}
+
+fn head_signature_status(repo: &Path) -> String {
+    String::from_utf8_lossy(&git(repo, &["log", "-1", "--format=%G?"]).stdout)
+        .trim()
+        .to_string()
+}
+
+#[test]
+fn a_terminal_commit_with_no_agent_mark_is_left_to_the_person() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    let out = s.commit_in_a_terminal(&repo, "mine.txt", &[]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert_eq!(commits(&repo), 2);
+    // The person's own git, with this test's empty config: not signed, and
+    // certainly not with the agent key.
+    assert_eq!(head_signature_status(&repo), "N");
+}
+
+#[test]
+fn an_agent_in_a_terminal_pane_is_still_treated_as_an_agent() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    let out = s.commit_in_a_terminal(&repo, "agents.txt", &[("CLAUDECODE", "1")]);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert_eq!(commits(&repo), 2);
+    assert!(s.head_verifies(&repo), "signed with the agent key");
+}

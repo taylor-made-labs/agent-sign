@@ -28,12 +28,13 @@ Each invariant says whether it holds today, and how that's checked.
 
 - **INV-1, the person's commits are left alone.** A `git commit` the person
   types in an interactive terminal (standard input and output both
-  terminals) goes to the real git unchanged, with the person's own signing.
-  *Holds for terminals.* It does **not** hold for an editor's commit button
-  whose `git` is the wrapper (there's no terminal, so the wrapper treats it as
-  an agent's), and an agent driving a terminal pane looks like the person.
-  Checked by hand in the install test (`docs/RELEASE_CHECKLIST.md`, R5); the
-  terminal check itself has no automated test yet.
+  terminals) goes to the real git unchanged, with the person's own signing,
+  unless an agent has marked the command as its own (`CLAUDECODE`,
+  `GEMINI_CLI`, `CODEX_THREAD_ID`). *Holds for terminals.* It does **not**
+  hold for an editor's commit button whose `git` is the wrapper (there's no
+  terminal, so the wrapper treats it as an agent's), and an agent driving a
+  terminal pane without marking its commands looks like the person. Checked
+  in a real terminal (`script`) by `tests/test_edge_cases.rs`.
 - **INV-2, interception doesn't depend on the agent.** An agent that runs
   `git commit` through the wrapper is handled without remembering flags or
   commands. *Holds for `commit` only*; `merge`, `rebase`, `cherry-pick`,
@@ -108,9 +109,9 @@ Each invariant says whether it holds today, and how that's checked.
 - The real git: `AGENT_COMMITS_REAL_GIT` if set, else the first `git` on `PATH` that
   isn't in a agent-commits directory and isn't the wrapper, else `/opt/homebrew/bin`,
   `/usr/local/bin`, `/usr/bin`, `/bin`.
-- A commit with standard input and output both terminals, and neither
-  `AGENT_COMMITS_FORCE` nor `AGENT_COMMITS_SESSION` set, is the person's: it runs the real git
-  unchanged.
+- A commit with standard input and output both terminals, neither
+  `AGENT_COMMITS_FORCE` nor `AGENT_COMMITS_SESSION` set, and no agent mark
+  (see INV-1) is the person's: it runs the real git unchanged.
 - Otherwise it's an agent's. The repository is the canonical path of
   `git rev-parse --show-toplevel`; the branch is `git branch --show-current`,
   or `HEAD` when detached. It then:
@@ -330,6 +331,5 @@ installed agent-commits.
 | `test_migration.rs` | Moving `~/.agent-sign` to `~/.agent-commits`. |
 | `test_refusals_and_revoke.rs` | "Couldn't ask" versus "denied"; revoking a repository with no lease is an error; `agent-commits revoke .`; the doctor's advice. |
 
-Not covered by an automated test yet: the wrapper's terminal check (INV-1),
-the real dialogs, and the installer and uninstaller (covered by the install
-test in the checklist).
+Not covered by an automated test yet: the real dialogs. The installer and
+uninstaller are covered on Linux by `scripts/release/install-test.sh`.
