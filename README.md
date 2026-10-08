@@ -76,8 +76,11 @@ It does not, yet:
   GitHub shows as Verified for you
 - intercept `merge`, `rebase`, `cherry-pick`, `revert` or `pull`: those go to
   your normal signing
-- tell agents apart: there is one agent key per machine, and a lease belongs
-  to the machine, not to a particular agent
+- tell agents apart for security: there is one agent key per machine, and a
+  lease belongs to the machine, not to a particular agent. Commits do name
+  the agent when it can be told (Claude Code, Gemini CLI and Codex mark the
+  commands they run; others can be started with `AGENT_COMMITS_AGENT_NAME`),
+  but that's a label: any program can set those variables
 - make the dialog a biometric check: it's a confirmation dialog, and its
   default button is Approve
 - keep agent work apart from yours on GitHub: the installer registers the

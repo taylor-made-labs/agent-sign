@@ -248,7 +248,7 @@ enforce_conventional_commits = false
 mode = "split"                    # "split" | "trailers" | "alias"
 
 [agent]
-name = "Agent"                    # the installer writes "Agent"; the built-in default is "Antigravity Agent"
+name = "Agent"                    # the default; replaced by the detected agent (below)
 email = "agent@local.internal"
 
 [human]                           # defaults to git's user.name and user.email
@@ -259,6 +259,14 @@ email = "agent@local.internal"
 fallback_program = "/usr/bin/ssh-keygen"   # the person's own signer, detected by the installer
 # agent_key_path = "~/.agent-commits/keys/agent_ed25519"
 ```
+
+The author name of an agent commit is the agent that made it, when that can
+be told and `[agent] name` is still the default ("Agent", or agent-sign's
+"Antigravity Agent"): `AGENT_COMMITS_AGENT_NAME` if the agent was started
+with it, otherwise the first mark set among `CLAUDECODE` (Claude Code),
+`GEMINI_CLI` (Gemini CLI) and `CODEX_THREAD_ID` (Codex). A name the person
+configured is kept. This is attribution, not identity: any program can set
+those variables.
 
 (The two `[security]` blocks are one table in a real file; they're split here
 to show who reads which keys.)

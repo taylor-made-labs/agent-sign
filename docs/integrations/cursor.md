@@ -18,6 +18,10 @@ If Cursor is installed, `./scripts/install.sh` adds agent-commits' directory to 
 
 `./scripts/uninstall.sh` removes it. Restart Cursor after installing.
 
+Cursor doesn't mark the commands its agent runs, so its commits are
+authored by "Agent". To have them say "Cursor", add
+`"AGENT_COMMITS_AGENT_NAME": "Cursor"` next to `PATH` in those two blocks.
+
 ## Who agent-commits thinks is committing
 
 The wrapper decides by one test: are standard input and output both

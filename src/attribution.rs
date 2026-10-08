@@ -11,6 +11,61 @@ pub enum AttributionMode {
     Alias,
 }
 
+/// Agents that mark the commands they run with an environment variable,
+/// and the name agent-commits gives their commits. Only marks seen in
+/// practice or documented by the agent are listed, checked in this order:
+///
+/// - Claude Code sets `CLAUDECODE=1` in the shell it runs commands in
+///   (seen, 7 Oct 2026).
+/// - Gemini CLI sets `GEMINI_CLI=1` for its shell tool (its own docs,
+///   `docs/tools/shell.md`).
+/// - Codex sets `CODEX_THREAD_ID` (named in its binary, 0.156; not yet seen
+///   in a running session).
+///
+/// An agent with no mark (Cursor, Aider) can be started with
+/// `AGENT_COMMITS_AGENT_NAME` set instead.
+pub const KNOWN_AGENTS: &[(&str, &str)] = &[
+    ("CLAUDECODE", "Claude Code"),
+    ("GEMINI_CLI", "Gemini CLI"),
+    ("CODEX_THREAD_ID", "Codex"),
+];
+
+/// The default agent names agent-commits and agent-sign have used. A
+/// configured name other than these is the person's own choice, so a
+/// detected agent never replaces it.
+const DEFAULT_AGENT_NAMES: &[&str] = &["Agent", "Antigravity Agent"];
+
+/// Which agent is running the command, from the environment `get` reads:
+/// `AGENT_COMMITS_AGENT_NAME` if set, otherwise the first agent in
+/// [`KNOWN_AGENTS`] whose mark is set (and isn't empty or `0`).
+pub fn detect_agent_with(get: impl Fn(&str) -> Option<String>) -> Option<String> {
+    if let Some(name) = crate::paths::env_var_with("AGENT_NAME", &get)
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+    {
+        return Some(name);
+    }
+    KNOWN_AGENTS
+        .iter()
+        .find(|(var, _)| get(var).is_some_and(|v| !v.is_empty() && v != "0"))
+        .map(|(_, name)| name.to_string())
+}
+
+/// [`detect_agent_with`] for this process's environment.
+pub fn detect_agent() -> Option<String> {
+    detect_agent_with(|k| std::env::var(k).ok())
+}
+
+/// The author name for an agent commit: the agent detected, when the
+/// configured name is still a default; otherwise the configured name.
+/// `AGENT_COMMITS_AGENT_NAME` is an explicit choice and always wins.
+pub fn effective_agent_name(configured: &str, explicit: bool, detected: Option<String>) -> String {
+    match detected {
+        Some(name) if explicit || DEFAULT_AGENT_NAMES.contains(&configured) => name,
+        _ => configured.to_string(),
+    }
+}
+
 pub struct AttributionEngine {
     pub mode: AttributionMode,
     pub agent: AgentConfig,

@@ -59,7 +59,7 @@ pub struct AgentConfig {
 }
 
 fn default_agent_name() -> String {
-    "Antigravity Agent".to_string()
+    "Agent".to_string()
 }
 
 fn default_agent_email() -> String {

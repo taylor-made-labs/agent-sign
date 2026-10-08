@@ -198,6 +198,9 @@ fn switching_an_agent_sign_install_keeps_signing_with_no_prompt() {
         fs::write(repo.join(file), format!("{file}\n")).unwrap();
         plain_git(&home, &repo, &["add", file]);
         Command::new(bin.join("git"))
+            .env_remove("CLAUDECODE")
+            .env_remove("GEMINI_CLI")
+            .env_remove("CODEX_THREAD_ID")
             .args(["commit", "-q", "-m", &format!("feat: add {file}")])
             .current_dir(&repo)
             .env("HOME", &home)

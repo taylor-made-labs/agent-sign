@@ -288,7 +288,15 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
 
     // 3. Prepare Git command arguments with configuration overrides
     let ssh_sign_bin = find_ssh_sign_bin();
-    let attr_engine = AttributionEngine::new(config.attribution, config.agent, config.human);
+    // Name the agent in its commits when it can be told (see KNOWN_AGENTS).
+    let mut agent = config.agent;
+    let explicit = agent_commits::paths::env_var("AGENT_NAME").is_some();
+    agent.name = agent_commits::attribution::effective_agent_name(
+        &agent.name,
+        explicit,
+        agent_commits::attribution::detect_agent(),
+    );
+    let attr_engine = AttributionEngine::new(config.attribution, agent, config.human);
     let attr_envs = attr_engine.compute_env_vars("commit");
 
     let mut git_args: Vec<String> = Vec::new();

@@ -156,6 +156,10 @@ fn scenario_agent_git_commit_and_verification(bins: &Bins) {
     let agent_sign_bin = &bins.sign;
 
     let commit_output = Command::new(agent_git_bin)
+        // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
+        .env_remove("CLAUDECODE")
+        .env_remove("GEMINI_CLI")
+        .env_remove("CODEX_THREAD_ID")
         .args(["commit", "-m", "feat: first agent commit"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -185,7 +189,7 @@ fn scenario_agent_git_commit_and_verification(bins: &Bins) {
     println!("Commit Log: {}", log_str);
 
     // Attribution verified: split mode sets Author to Agent, Committer to dynamically detected Git user
-    assert!(log_str.contains("Antigravity Agent <agent@local.internal>"));
+    assert!(log_str.contains("Agent <agent@local.internal>"));
     assert!(log_str.contains("Human Developer <dev@example.com>"));
 
     // 6. Verify signature using system ssh-keygen
@@ -278,6 +282,10 @@ fn scenario_multi_commit_headless_session_flow(bins: &Bins) {
         );
 
         let commit_out = Command::new(agent_git_bin)
+            // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
+            .env_remove("CLAUDECODE")
+            .env_remove("GEMINI_CLI")
+            .env_remove("CODEX_THREAD_ID")
             .args(["commit", "-m", &format!("feat: agent commit number {}", i)])
             .current_dir(&test_repo)
             .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -388,6 +396,10 @@ fn scenario_allow_main_branch_when_configured(bins: &Bins) {
     let agent_sign_bin = &bins.sign;
 
     let commit_out = Command::new(agent_git_bin)
+        // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
+        .env_remove("CLAUDECODE")
+        .env_remove("GEMINI_CLI")
+        .env_remove("CODEX_THREAD_ID")
         .args(["commit", "-m", "feat: commit directly to main"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &socket_path)
@@ -466,6 +478,10 @@ fn scenario_branch_switching_in_active_session(bins: &Bins) {
     );
 
     let commit1 = Command::new(agent_git_bin)
+        // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
+        .env_remove("CLAUDECODE")
+        .env_remove("GEMINI_CLI")
+        .env_remove("CODEX_THREAD_ID")
         .args(["commit", "-m", "feat: step 1 commit"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -501,6 +517,10 @@ fn scenario_branch_switching_in_active_session(bins: &Bins) {
     );
 
     let commit2 = Command::new(agent_git_bin)
+        // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
+        .env_remove("CLAUDECODE")
+        .env_remove("GEMINI_CLI")
+        .env_remove("CODEX_THREAD_ID")
         .args(["commit", "-m", "feat: step 2 commit on new branch"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -577,6 +597,10 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
     let agent_sign_bin = &bins.sign;
 
     let commit_out = Command::new(agent_git_bin)
+        // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
+        .env_remove("CLAUDECODE")
+        .env_remove("GEMINI_CLI")
+        .env_remove("CODEX_THREAD_ID")
         .args(["commit", "-m", "feat: implement enterprise compliance"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -601,7 +625,7 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
     let full_message = String::from_utf8_lossy(&log_msg.stdout);
     println!("Commit message with trailers:\n{}", full_message);
 
-    assert!(full_message.contains("Co-Authored-By: Antigravity Agent <agent@local.internal>"));
+    assert!(full_message.contains("Co-Authored-By: Agent <agent@local.internal>"));
     assert!(full_message.contains("X-Agent-Signer: agent-commits/v0.1"));
     assert!(full_message.contains("X-Agent-Lease:"));
 }

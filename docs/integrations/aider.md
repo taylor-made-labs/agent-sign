@@ -8,8 +8,11 @@ After `./scripts/install.sh`, start Aider from a new terminal so it inherits
 the `PATH` with agent-commits' wrapper first:
 
 ```sh
-aider
+AGENT_COMMITS_AGENT_NAME=Aider aider
 ```
+
+(`AGENT_COMMITS_AGENT_NAME` makes Aider's commits say "Aider" as their
+author; without it they say "Agent".)
 
 ## What happens
 
