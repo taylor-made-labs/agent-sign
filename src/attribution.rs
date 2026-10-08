@@ -61,7 +61,7 @@ impl AttributionEngine {
                     "Co-Authored-By: {} <{}>\n",
                     self.agent.name, self.agent.email
                 ));
-                msg.push_str("X-Agent-Signer: agent-sign/v0.1\n");
+                msg.push_str("X-Agent-Signer: agent-commits/v0.1\n");
                 msg.push_str(&format!("X-Agent-Lease: {}\n", lease_id));
                 msg
             }

@@ -1,4 +1,12 @@
+//! agent-commits' settings: built-in defaults, then the person's config file in the
+//! state directory, then the repository's file, then environment variables.
+//!
+//! The file format is agent-sign's, unchanged, so an existing
+//! `~/.agent-sign/config.toml` keeps its meaning after it moves to
+//! `~/.agent-commits/config.toml`.
+
 use crate::attribution::AttributionMode;
+use crate::paths;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -113,10 +121,33 @@ impl Default for HumanConfig {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LeaseMode {
+    #[default]
+    Identity,
+    Timed,
+    Process,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum LeaseScope {
+    #[default]
+    Branch,
+    Repo,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
+    #[serde(default)]
+    pub lease_mode: LeaseMode,
+    #[serde(default)]
+    pub lease_scope: LeaseScope,
     #[serde(default = "default_lease_duration_str")]
     pub default_lease_duration: String,
+    #[serde(default = "default_max_lease_ceiling")]
+    pub max_lease_ceiling: String,
     #[serde(default = "default_block_branches")]
     pub block_branches: Vec<String>,
     #[serde(default)]
@@ -137,6 +168,10 @@ pub struct SecurityConfig {
 
 fn default_lease_duration_str() -> String {
     "2h".to_string()
+}
+
+fn default_max_lease_ceiling() -> String {
+    "none".to_string()
 }
 
 fn default_block_branches() -> Vec<String> {
@@ -165,7 +200,10 @@ fn default_max_diff_lines() -> usize {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
+            lease_mode: LeaseMode::default(),
+            lease_scope: LeaseScope::default(),
             default_lease_duration: default_lease_duration_str(),
+            max_lease_ceiling: default_max_lease_ceiling(),
             block_branches: default_block_branches(),
             allow_main_branch: false,
             allow_branch_switching: true,
@@ -181,6 +219,24 @@ impl Default for SecurityConfig {
 impl SecurityConfig {
     pub fn lease_duration(&self) -> Duration {
         parse_duration_string(&self.default_lease_duration).unwrap_or(Duration::from_secs(7200))
+    }
+
+    /// The longest a lifetime (`identity`) lease may last, or `None` for no
+    /// ceiling ("none" or empty). A value that isn't a duration is an error,
+    /// not "no ceiling": the person meant to bound leases, so the service
+    /// refuses to start rather than silently leave them unbounded.
+    pub fn max_ceiling_duration(&self) -> Result<Option<Duration>, String> {
+        let s = self.max_lease_ceiling.trim();
+        if s.is_empty() || s.eq_ignore_ascii_case("none") {
+            Ok(None)
+        } else {
+            parse_duration_string(s).map(Some).ok_or_else(|| {
+                format!(
+                    "max_lease_ceiling = \"{}\" is not a duration; use a number with s, m, h or d (for example \"7d\"), or \"none\"",
+                    s
+                )
+            })
+        }
     }
 }
 
@@ -219,7 +275,12 @@ fn default_ssh_keygen() -> String {
 }
 
 fn default_key_path() -> PathBuf {
-    dirs_fallback_home().join(".agent-sign/keys/agent_ed25519")
+    key_path_in(&paths::home_dir())
+}
+
+/// The default agent key path for a home: `<state dir>/keys/agent_ed25519`.
+fn key_path_in(home: &Path) -> PathBuf {
+    paths::state_dir_in(home).join("keys/agent_ed25519")
 }
 
 impl Default for SshConfig {
@@ -229,12 +290,6 @@ impl Default for SshConfig {
             agent_key_path: default_key_path(),
         }
     }
-}
-
-fn dirs_fallback_home() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
 }
 
 fn merge_toml(base: &mut toml::Value, overlay: toml::Value) {
@@ -260,46 +315,83 @@ impl Config {
         Ok(config)
     }
 
-    /// Hierarchical config loading:
+    /// Hierarchical config loading for the current `HOME`:
     /// 1. Default built-in configs
-    /// 2. Deep-merged with ~/.agent-sign/config.toml (if present)
-    /// 3. Deep-merged with <repo_root>/.agent-sign.toml (if present)
-    /// 4. Overlaid with environment variables
+    /// 2. Deep-merged with `<state dir>/config.toml` (if present), where the
+    ///    state dir is `~/.agent-commits`, or `~/.agent-sign` before migration
+    /// 3. Deep-merged with `<repo_root>/.agent-sign.toml`, then
+    ///    `<repo_root>/.agent-commits.toml` (each if present)
+    /// 4. Overlaid with environment variables (`AGENT_COMMITS_*`, or the old `AGENT_SIGN_*`)
     pub fn load(repo_path: Option<&Path>) -> Self {
-        let default_str = toml::to_string(&Config::default()).unwrap_or_default();
+        Self::load_in_home(&paths::home_dir(), repo_path)
+    }
+
+    /// [`Config::load`] for an explicit home directory, so the migration can be
+    /// tested against temporary homes without changing the process's `HOME`.
+    pub fn load_in_home(home: &Path, repo_path: Option<&Path>) -> Self {
+        let mut defaults = Config::default();
+        defaults.ssh.agent_key_path = key_path_in(home);
+        let default_str = toml::to_string(&defaults).unwrap_or_default();
         let mut base_val: toml::Value = toml::from_str(&default_str)
             .unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new()));
 
         // 1. Overlay global user config
-        let global_config = dirs_fallback_home().join(".agent-sign/config.toml");
+        let global_config = paths::state_dir_in(home).join("config.toml");
         if let Ok(content) = std::fs::read_to_string(&global_config)
             && let Ok(overlay) = toml::from_str::<toml::Value>(&content)
         {
             merge_toml(&mut base_val, overlay);
         }
 
-        // 2. Overlay repo-level config (.agent-sign.toml)
+        // 2. Overlay repo-level config (.agent-sign.toml, then .agent-commits.toml)
         if let Some(repo) = repo_path {
-            let repo_config = repo.join(".agent-sign.toml");
-            if let Ok(content) = std::fs::read_to_string(&repo_config)
-                && let Ok(overlay) = toml::from_str::<toml::Value>(&content)
-            {
-                merge_toml(&mut base_val, overlay);
+            for name in paths::REPO_CONFIG_FILES {
+                let repo_config = repo.join(name);
+                if let Ok(content) = std::fs::read_to_string(&repo_config)
+                    && let Ok(overlay) = toml::from_str::<toml::Value>(&content)
+                {
+                    merge_toml(&mut base_val, overlay);
+                }
             }
         }
 
         let mut config: Config = base_val.try_into().unwrap_or_default();
 
+        // A key path written by agent-sign as ~/.agent-sign/... keeps pointing
+        // at the same file after the migration.
+        config.ssh.agent_key_path = paths::rebase_legacy_path(&config.ssh.agent_key_path, home);
+
         // 3. Environment overrides
-        if let Ok(val) = std::env::var("AGENT_SIGN_ALLOW_MAIN") {
+        if let Some(val) = paths::env_var("ALLOW_MAIN") {
             config.security.allow_main_branch = val == "1" || val.eq_ignore_ascii_case("true");
         }
 
-        if let Ok(val) = std::env::var("AGENT_SIGN_AUTO_APPROVE") {
+        if let Some(val) = paths::env_var("AUTO_APPROVE") {
             config.security.auto_approve = val == "1" || val.eq_ignore_ascii_case("true");
         }
 
-        if let Ok(val) = std::env::var("AGENT_SIGN_MODE") {
+        if let Some(val) = paths::env_var("LEASE_MODE") {
+            match val.to_lowercase().as_str() {
+                "identity" => config.security.lease_mode = LeaseMode::Identity,
+                "timed" => config.security.lease_mode = LeaseMode::Timed,
+                "process" => config.security.lease_mode = LeaseMode::Process,
+                _ => {}
+            }
+        }
+
+        if let Some(val) = paths::env_var("LEASE_SCOPE") {
+            match val.to_lowercase().as_str() {
+                "branch" => config.security.lease_scope = LeaseScope::Branch,
+                "repo" => config.security.lease_scope = LeaseScope::Repo,
+                _ => {}
+            }
+        }
+
+        if let Some(val) = paths::env_var("MAX_LEASE_CEILING") {
+            config.security.max_lease_ceiling = val;
+        }
+
+        if let Some(val) = paths::env_var("MODE") {
             match val.to_lowercase().as_str() {
                 "split" => config.attribution.mode = AttributionMode::Split,
                 "trailers" => config.attribution.mode = AttributionMode::Trailers,
@@ -308,7 +400,7 @@ impl Config {
             }
         }
 
-        if let Ok(val) = std::env::var("AGENT_SIGN_FALLBACK_PROGRAM")
+        if let Some(val) = paths::env_var("FALLBACK_PROGRAM")
             && !val.trim().is_empty()
         {
             config.ssh.fallback_program = val;

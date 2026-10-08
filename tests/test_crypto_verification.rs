@@ -1,4 +1,4 @@
-use agent_sign::crypto::AgentKeyPair;
+use agent_commits::crypto::AgentKeyPair;
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;

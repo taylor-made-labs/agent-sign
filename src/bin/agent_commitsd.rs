@@ -1,3 +1,11 @@
+//! `agent-commitsd`: the agent-commits service (formerly `agent-signd`).
+//!
+//! One per user. It holds the agent signing key and the leases, answers the
+//! wrapper, the signing program, and the CLI over a Unix socket in the state
+//! directory, and asks the person to approve new leases. `agent-signd` can be a
+//! link to this program; the LaunchAgent and systemd unit installed by
+//! agent-sign start it by that name.
+
 use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader, IsTerminal, Write};
@@ -11,16 +19,16 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use clap::{Parser, Subcommand};
 
-use agent_sign::config::Config;
-use agent_sign::crypto::AgentKeyPair;
-use agent_sign::lease::{LeaseEngine, LeasePolicy};
-use agent_sign::protocol::{Request, Response, default_socket_path, send_response};
+use agent_commits::config::Config;
+use agent_commits::crypto::AgentKeyPair;
+use agent_commits::lease::{LeaseEngine, LeasePolicy};
+use agent_commits::protocol::{Request, Response, default_socket_path, send_response};
 
 #[derive(Parser)]
 #[command(
-    name = "agent-signd",
+    name = "agent-commitsd",
     version = "0.1.0",
-    about = "Agent-Sign Daemon & Credential Manager"
+    about = "agent-commits service: holds the agent signing key and leases (formerly agent-signd)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -50,6 +58,9 @@ enum Commands {
     Status,
     /// Run daemon in foreground
     Run,
+    /// Move ~/.agent-sign to ~/.agent-commits (leaving a link) and report what was done.
+    /// `run` and `setup` do this automatically on start.
+    Migrate,
 }
 
 struct DaemonState {
@@ -64,26 +75,62 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Setup) => run_setup(),
+        Some(Commands::Setup) => {
+            migrate_on_start()?;
+            run_setup()
+        }
         Some(Commands::Status) => run_status(cli.socket.as_deref()),
-        Some(Commands::Run) | None => run_daemon(
-            cli.socket.as_deref(),
-            cli.config.as_deref(),
-            cli.allow_main,
-            cli.auto_approve,
-        ),
+        Some(Commands::Migrate) => {
+            migrate_on_start()?;
+            Ok(())
+        }
+        Some(Commands::Run) | None => {
+            migrate_on_start()?;
+            run_daemon(
+                cli.socket.as_deref(),
+                cli.config.as_deref(),
+                cli.allow_main,
+                cli.auto_approve,
+            )
+        }
     }
 }
 
-fn get_agent_sign_dir() -> PathBuf {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    home.join(".agent-sign")
+/// Moves an agent-sign home to `~/.agent-commits` before anything reads or creates
+/// state, so an upgrade needs no action from the person.
+///
+/// A conflict (both directories hold state) stops the service: carrying on
+/// could mean signing with a different key than the one GitHub and
+/// `allowed_signers` know. Any other failure is reported and the service
+/// carries on with whichever directory `agent_commits::paths::state_dir` finds, which
+/// is the old one when the move was undone.
+fn migrate_on_start() -> Result<(), Box<dyn std::error::Error>> {
+    use agent_commits::migrate::{MigrationError, MigrationOutcome, migrate_state_dir};
+
+    match migrate_state_dir(&agent_commits::paths::home_dir()) {
+        Ok(MigrationOutcome::NothingToMigrate) | Ok(MigrationOutcome::AlreadyMigrated) => {}
+        Ok(outcome) => eprintln!("[agent-commitsd] {}", outcome),
+        Err(e @ (MigrationError::Conflict { .. } | MigrationError::NotADirectory { .. })) => {
+            eprintln!("[agent-commitsd] Refusing to start: {}", e);
+            return Err(Box::new(e));
+        }
+        Err(e) => eprintln!(
+            "[agent-commitsd] Migration to ~/.agent-commits did not complete: {} (using {})",
+            e,
+            get_state_dir().display()
+        ),
+    }
+    Ok(())
+}
+
+/// The state directory: `~/.agent-commits`, or `~/.agent-sign` if it has not been
+/// migrated (see `agent_commits::paths::state_dir_in`).
+fn get_state_dir() -> PathBuf {
+    agent_commits::paths::state_dir()
 }
 
 fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
-    let base_dir = get_agent_sign_dir();
+    let base_dir = get_state_dir();
     let keys_dir = base_dir.join("keys");
     fs::create_dir_all(&keys_dir)?;
 
@@ -109,7 +156,7 @@ fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     println!("\n========================================================");
-    println!(" Agent-Sign Setup Complete");
+    println!(" agent-commits Setup Complete");
     println!("========================================================");
     println!("Private Key: {}", priv_key_path.display());
     println!("Public Key:  {}", pub_key_path.display());
@@ -134,12 +181,32 @@ fn run_status(custom_socket: Option<&Path>) -> Result<(), Box<dyn std::error::Er
         return Ok(());
     }
 
-    match agent_sign::protocol::send_request(&socket_path, &Request::Ping)? {
+    match agent_commits::protocol::send_request(&socket_path, &Request::Ping)? {
         Response::Pong => println!(
             "Daemon is active and healthy (socket: {})",
             socket_path.display()
         ),
         other => println!("Unexpected daemon response: {:?}", other),
+    }
+
+    if let Ok(Response::LeaseList { leases }) =
+        agent_commits::protocol::send_request(&socket_path, &Request::ListLeases)
+    {
+        if leases.is_empty() {
+            println!("Active Leases: None");
+        } else {
+            println!("\nActive Leases ({}):", leases.len());
+            for lease in leases {
+                let exp_str = match lease.expires_in_secs {
+                    Some(s) => format!("expires in {}s", s),
+                    None => "when revoked".to_string(),
+                };
+                println!(
+                    "  - [{}] {} ({}) - {} commits [{}]",
+                    lease.mode, lease.repo, lease.branch, lease.commit_count, exp_str
+                );
+            }
+        }
     }
 
     Ok(())
@@ -151,7 +218,22 @@ fn run_daemon(
     allow_main: bool,
     auto_approve: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let base_dir = get_agent_sign_dir();
+    // Read and check the config before touching the key or the socket, so a
+    // bad value stops the service without disturbing a running one.
+    let mut config = if let Some(cfg_path) = custom_config {
+        Config::load_from_file(cfg_path)?
+    } else {
+        Config::load(None)
+    };
+    let max_ceiling = config.security.max_ceiling_duration()?;
+    if config.security.lease_mode == agent_commits::config::LeaseMode::Process {
+        eprintln!(
+            "[agent-commitsd] lease_mode = \"process\" is not tied to a process yet: leases end after default_lease_duration ({}), as in \"timed\" mode.",
+            config.security.default_lease_duration
+        );
+    }
+
+    let base_dir = get_state_dir();
     let keys_dir = base_dir.join("keys");
     fs::create_dir_all(&keys_dir)?;
 
@@ -183,20 +265,18 @@ fn run_daemon(
         fs::set_permissions(parent, fs::Permissions::from_mode(0o700))?;
     }
 
-    let mut config = if let Some(cfg_path) = custom_config {
-        Config::load_from_file(cfg_path)?
-    } else {
-        Config::load(None)
-    };
-
     if allow_main {
         config.security.allow_main_branch = true;
     }
 
     let effective_auto_approve = auto_approve || config.security.auto_approve;
 
+    let storage_path = socket_path.parent().map(|p| p.join("leases.json"));
     let policy = LeasePolicy {
+        mode: config.security.lease_mode,
+        scope: config.security.lease_scope,
         default_ttl: config.security.lease_duration(),
+        max_ceiling,
         block_branches: config.security.block_branches.clone(),
         allow_main_branch: config.security.allow_main_branch,
         allow_branch_switching: config.security.allow_branch_switching,
@@ -204,7 +284,7 @@ fn run_daemon(
     };
 
     let state = Arc::new(Mutex::new(DaemonState {
-        lease_engine: LeaseEngine::new(policy),
+        lease_engine: LeaseEngine::new_with_storage(policy, storage_path),
         keypair,
         _config: config,
         valid_tokens: HashMap::new(),
@@ -214,7 +294,7 @@ fn run_daemon(
     let listener = UnixListener::bind(&socket_path)?;
     fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))?;
 
-    println!("agent-signd running on {}", socket_path.display());
+    println!("agent-commitsd running on {}", socket_path.display());
 
     for stream in listener.incoming() {
         match stream {
@@ -267,55 +347,86 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             repo,
             branch,
             intent,
-            duration_secs,
+            duration_secs: _,
         } => {
             // Check active lease state without holding lock across UI dialog
-            let (has_lease, same_branch, lease_id, auto_approve_val) = {
+            let (
+                blocked,
+                has_lease,
+                same_branch,
+                follows,
+                lease_id,
+                lease_exp,
+                auto_approve_val,
+                terms,
+            ) = {
                 let st = state.lock().unwrap();
                 let auto = st.auto_approve;
+                let mode = st.lease_engine.policy.describe_terms(&branch);
+                let blocked = st.lease_engine.is_branch_blocked(&branch);
                 if let Some(lease) = st.lease_engine.get_active_lease(&repo) {
-                    (true, lease.branch == branch, Some(lease.id.clone()), auto)
+                    (
+                        blocked,
+                        true,
+                        st.lease_engine.lease_covers(lease, &branch),
+                        st.lease_engine.covers_every_branch(lease),
+                        Some(lease.id.clone()),
+                        st.lease_engine.effective_end(lease),
+                        auto,
+                        mode,
+                    )
                 } else {
-                    (false, false, None, auto)
+                    (blocked, false, false, false, None, None, auto, mode)
                 }
             };
 
-            if has_lease {
+            if blocked {
+                // No lease ever covers a protected branch, so don't ask the
+                // person for one only to refuse it afterwards.
+                Response::Error {
+                    message: format!(
+                        "Branch '{}' is protected: agents can't commit there unless the person allows it, so no lease was asked for",
+                        branch
+                    ),
+                }
+            } else if has_lease {
                 if same_branch {
                     Response::LeaseGranted {
                         lease_id: lease_id.unwrap_or_else(|| "active".to_string()),
-                        expires_at_secs: duration_secs.unwrap_or(7200),
+                        expires_at_secs: lease_exp.unwrap_or(u64::MAX),
                     }
                 } else {
-                    // Branch has switched! Check if policy allows branch switching
+                    // The agent is on another branch. Follow it only if the
+                    // lease was approved (and is still allowed) to cover every
+                    // unprotected branch; otherwise ask again.
                     let mut st = state.lock().unwrap();
-                    if st.lease_engine.policy.allow_branch_switching {
+                    if follows {
                         match st.lease_engine.switch_branch(&repo, &branch) {
                             Ok(updated) => Response::LeaseGranted {
+                                expires_at_secs: st
+                                    .lease_engine
+                                    .effective_end(&updated)
+                                    .unwrap_or(u64::MAX),
                                 lease_id: updated.id,
-                                expires_at_secs: duration_secs.unwrap_or(7200),
                             },
                             Err(e) => Response::Error { message: e },
                         }
                     } else {
                         drop(st); // Release lock before prompting
-                        let approved = if auto_approve_val {
-                            true
+                        let approval = if auto_approve_val {
+                            Approval::Approved
                         } else {
-                            request_human_approval(&repo, &branch, &intent)
+                            request_human_approval(&repo, &branch, &intent, &terms)
                         };
 
-                        if !approved {
-                            Response::Error {
-                                message: "Human rejected the signing lease request for new branch"
-                                    .to_string(),
-                            }
+                        if let Some(message) = approval.refusal() {
+                            Response::Error { message }
                         } else {
                             let mut st = state.lock().unwrap();
                             match st.lease_engine.try_grant_lease(&repo, &branch, &intent) {
                                 Ok(lease) => Response::LeaseGranted {
                                     lease_id: lease.id,
-                                    expires_at_secs: duration_secs.unwrap_or(7200),
+                                    expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
                                 },
                                 Err(e) => Response::Error { message: e },
                             }
@@ -324,22 +435,20 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 }
             } else {
                 // No active lease: prompt human for approval outside the lock
-                let approved = if auto_approve_val {
-                    true
+                let approval = if auto_approve_val {
+                    Approval::Approved
                 } else {
-                    request_human_approval(&repo, &branch, &intent)
+                    request_human_approval(&repo, &branch, &intent, &terms)
                 };
 
-                if !approved {
-                    Response::Error {
-                        message: "Human rejected the signing lease request".to_string(),
-                    }
+                if let Some(message) = approval.refusal() {
+                    Response::Error { message }
                 } else {
                     let mut st = state.lock().unwrap();
                     match st.lease_engine.try_grant_lease(&repo, &branch, &intent) {
                         Ok(lease) => Response::LeaseGranted {
                             lease_id: lease.id,
-                            expires_at_secs: duration_secs.unwrap_or(7200),
+                            expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
                         },
                         Err(e) => Response::Error { message: e },
                     }
@@ -395,37 +504,94 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 expires_in_secs,
             }
         }
-        Request::RevokeLease { repo } => {
+        Request::ListLeases => {
+            let st = state.lock().unwrap();
+            let leases = st.lease_engine.list_leases();
+            Response::LeaseList { leases }
+        }
+        Request::RevokeLease {
+            repo,
+            branch: _,
+            all,
+        } => {
             let mut st = state.lock().unwrap();
-            st.lease_engine.revoke_lease(&repo);
-            Response::Success
+            if all {
+                st.lease_engine.revoke_all();
+                Response::Success
+            } else if st.lease_engine.revoke_lease(&repo) {
+                Response::Success
+            } else {
+                // Saying "revoked" here would leave the person believing
+                // access had ended when nothing matched.
+                Response::Error {
+                    message: format!(
+                        "no lease for '{}': give the repository's full path, as `agent-commits leases` shows it",
+                        repo
+                    ),
+                }
+            }
         }
     };
 
     let _ = send_response(stream, &response);
 }
 
-fn request_human_approval(repo: &str, branch: &str, intent: &str) -> bool {
+/// The person's answer to a lease request, or that there was no way to ask.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Approval {
+    Approved,
+    Denied,
+    /// No dialog could be shown and the service has no terminal: nobody was
+    /// asked, so the lease is refused (failing closed).
+    NoWayToAsk,
+}
+
+impl Approval {
+    /// The error to send back for a refusal, or `None` if approved. The two
+    /// refusals are worded differently so that a headless machine doesn't
+    /// report that the person said no.
+    fn refusal(self) -> Option<String> {
+        match self {
+            Approval::Approved => None,
+            Approval::Denied => Some("the person denied the signing lease".to_string()),
+            Approval::NoWayToAsk => Some(NO_WAY_TO_ASK.to_string()),
+        }
+    }
+}
+
+/// Sent back when the service couldn't ask the person, so the agent (and the
+/// person reading its output) learns why and what to do.
+const NO_WAY_TO_ASK: &str = "agent-commits couldn't ask you to approve a lease: there is no desktop session for a dialog, and the service has no terminal. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
+
+/// Asks the person to approve a lease, showing its fixed terms. The
+/// repository, branch, and reason come from the agent's request and are
+/// labelled as such.
+fn request_human_approval(
+    repo: &str,
+    branch: &str,
+    intent: &str,
+    terms: &agent_commits::lease::TermsText,
+) -> Approval {
     let prompt_text = format!(
-        "AI Agent is requesting a Git Commit Signing Lease.\n\nRepository: {}\nBranch: {}\nIntent: {}\n\nApprove autonomous signing for this session?",
-        repo, branch, intent
+        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nCovers: {}\nEnds: {}\nReason given by the agent: {}\n\nThese terms are fixed when you approve. They never grow.",
+        repo, branch, terms.covers, terms.ends, intent
     );
 
     // 1. If on macOS, attempt desktop dialog via osascript
     #[cfg(target_os = "macos")]
     {
         let script = format!(
-            "display dialog \"{}\" with title \"Agent-Sign Security Lease\" buttons {{\"Deny\", \"Approve\"}} default button \"Approve\" with icon caution",
+            "display dialog \"{}\" with title \"agent-commits Security Lease\" buttons {{\"Deny\", \"Approve\"}} default button \"Approve\" with icon caution",
             prompt_text.replace('"', "\\\"")
         );
 
         if let Ok(output) = Command::new("osascript").arg("-e").arg(&script).output() {
             let res = String::from_utf8_lossy(&output.stdout);
             if res.contains("button returned:Approve") {
-                return true;
+                return Approval::Approved;
             }
             if res.contains("button returned:Deny") {
-                return false;
+                return Approval::Denied;
             }
         }
     }
@@ -437,24 +603,33 @@ fn request_human_approval(repo: &str, branch: &str, intent: &str) -> bool {
             if let Ok(output) = Command::new("zenity")
                 .args([
                     "--question",
-                    "--title=Agent-Sign Security Lease",
+                    "--title=agent-commits Security Lease",
                     &format!("--text={}", prompt_text),
                 ])
                 .output()
             {
-                if output.status.success() {
-                    return true;
+                // zenity exits 0 for Yes and 1 for No or a closed window; any
+                // other failure (no display, say) falls through to the
+                // terminal, as before.
+                match output.status.code() {
+                    Some(0) => return Approval::Approved,
+                    Some(1) => return Approval::Denied,
+                    _ => {}
                 }
             } else if let Ok(output) = Command::new("kdialog")
                 .args([
                     "--title",
-                    "Agent-Sign Security Lease",
+                    "agent-commits Security Lease",
                     "--yesno",
                     &prompt_text,
                 ])
                 .output()
             {
-                return output.status.success();
+                return if output.status.success() {
+                    Approval::Approved
+                } else {
+                    Approval::Denied
+                };
             }
         }
     }
@@ -462,25 +637,32 @@ fn request_human_approval(repo: &str, branch: &str, intent: &str) -> bool {
     // 3. Fallback to interactive terminal prompt if stdin is a TTY
     if std::io::stdin().is_terminal() {
         eprintln!("\n========================================================");
-        eprintln!(" 🔏 Agent-Sign Security Lease Request");
+        eprintln!(" 🔏 agent-commits Security Lease Request");
         eprintln!("========================================================");
         eprintln!("Repository: {}", repo);
-        eprintln!("Branch:     {}", branch);
-        eprintln!("Intent:     {}", intent);
+        eprintln!("Branch now: {}", branch);
+        eprintln!("Covers:     {}", terms.covers);
+        eprintln!("Ends:       {}", terms.ends);
+        eprintln!("Reason given by the agent: {}", intent);
         eprintln!("========================================================");
-        eprint!("Approve autonomous signing lease for this session? [y/N]: ");
+        eprintln!("These terms are fixed when you approve. They never grow.");
+        eprint!("Approve this lease? [y/N]: ");
         let _ = std::io::stderr().flush();
 
         let mut input = String::new();
         if std::io::stdin().read_line(&mut input).is_ok() {
             let trimmed = input.trim().to_lowercase();
-            return trimmed == "y" || trimmed == "yes";
+            return if trimmed == "y" || trimmed == "yes" {
+                Approval::Approved
+            } else {
+                Approval::Denied
+            };
         }
     }
 
-    eprintln!("[agent-signd] No interactive approval backend available; signing lease denied.");
+    eprintln!("[agent-commitsd] No interactive approval backend available; signing lease denied.");
     eprintln!(
-        "[agent-signd] Hint: In headless environments, containers, or CI, run with --auto-approve or AGENT_SIGN_AUTO_APPROVE=1"
+        "[agent-commitsd] Hint: In headless environments, containers, or CI, run with --auto-approve or AGENT_COMMITS_AUTO_APPROVE=1 (AGENT_SIGN_AUTO_APPROVE=1 also works)"
     );
-    false
+    Approval::NoWayToAsk
 }

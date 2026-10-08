@@ -1,23 +1,34 @@
 [package]
-name = "agent-sign"
+name = "agent-commits"
 version = "0.1.0"
 edition = "2024"
+description = "Signed git commits for AI agents, with one approval you can see and revoke"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/taylor-made-labs/agent-commits"
 
 [lib]
-name = "agent_sign"
+name = "agent_commits"
 path = "src/lib.rs"
 
+# The command line; also accepts git's signing arguments, as agent-sign did.
 [[bin]]
-name = "agent-sign"
-path = "src/bin/agent_sign.rs"
+name = "agent-commits"
+path = "src/bin/agent_commits.rs"
 
+# The service (formerly agent-signd).
 [[bin]]
-name = "agent-git"
-path = "src/bin/agent_git.rs"
+name = "agent-commitsd"
+path = "src/bin/agent_commitsd.rs"
 
+# The signing program git calls as gpg.ssh.program.
 [[bin]]
-name = "agent-signd"
-path = "src/bin/agent_signd.rs"
+name = "agent-commits-ssh-sign"
+path = "src/bin/agent_commits_ssh_sign.rs"
+
+# The git wrapper, installed as `git` (formerly agent-git).
+[[bin]]
+name = "agent-commits-git"
+path = "src/bin/agent_commits_git.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive", "env"] }

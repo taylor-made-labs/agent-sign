@@ -1,7 +1,22 @@
+//! The newline-delimited JSON protocol between agent-commits' programs and its service,
+//! unchanged from agent-sign so old and new programs can talk to each other.
+
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaseInfo {
+    pub lease_id: String,
+    pub repo: String,
+    pub branch: String,
+    pub mode: String,
+    pub granted_at_epoch: u64,
+    pub last_used_epoch: u64,
+    pub commit_count: u64,
+    pub expires_in_secs: Option<u64>,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
@@ -24,8 +39,13 @@ pub enum Request {
     GetStatus {
         repo: String,
     },
+    ListLeases,
     RevokeLease {
         repo: String,
+        #[serde(default)]
+        branch: Option<String>,
+        #[serde(default)]
+        all: bool,
     },
 }
 
@@ -49,17 +69,30 @@ pub enum Response {
         branch: Option<String>,
         expires_in_secs: Option<u64>,
     },
+    LeaseList {
+        leases: Vec<LeaseInfo>,
+    },
     Success,
     Error {
         message: String,
     },
 }
 
+/// The service's socket when none is given: `daemon.sock` in the state
+/// directory (`~/.agent-commits`, or `~/.agent-sign` before migration). After migration
+/// `~/.agent-sign` is a link to `~/.agent-commits`, so older clients using the old path
+/// reach the same socket.
 pub fn default_socket_path() -> PathBuf {
-    let home = std::env::var_os("HOME")
+    crate::paths::state_dir().join("daemon.sock")
+}
+
+/// The socket a client (CLI, git wrapper, signing program) connects to:
+/// `AGENT_COMMITS_SOCKET`, else `AGENT_SIGN_SOCKET`, else [`default_socket_path`].
+/// The service itself ignores these variables and uses `--socket` or the default.
+pub fn client_socket_path() -> PathBuf {
+    crate::paths::env_var("SOCKET")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."));
-    home.join(".agent-sign/daemon.sock")
+        .unwrap_or_else(default_socket_path)
 }
 
 pub fn send_request(

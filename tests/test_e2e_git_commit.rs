@@ -1,7 +1,63 @@
+//! End-to-end: a real service, the git wrapper, the signing program, and git,
+//! each in a temporary home with its own socket.
+//!
+//! Every scenario runs twice: once with agent-commits' program names, `AGENT_COMMITS_*`
+//! variables, and `.agent-commits.toml`, and once through links with agent-sign's old
+//! names (`agent-signd`, `agent-git`, `agent-sign`), its `AGENT_SIGN_*`
+//! variables, and `.agent-sign.toml`, to show the rename changed nothing an
+//! existing setup relies on.
+
 use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
-use tempfile::tempdir;
+use tempfile::{TempDir, tempdir};
+
+/// The programs and names one run of a scenario uses.
+struct Bins {
+    daemon: PathBuf,
+    git: PathBuf,
+    sign: PathBuf,
+    env_prefix: &'static str,
+    repo_config: &'static str,
+    /// Keeps the directory of old-name links alive for the run.
+    _links: Option<TempDir>,
+}
+
+impl Bins {
+    fn new_names() -> Self {
+        Bins {
+            daemon: PathBuf::from(env!("CARGO_BIN_EXE_agent-commitsd")),
+            git: PathBuf::from(env!("CARGO_BIN_EXE_agent-commits-git")),
+            sign: PathBuf::from(env!("CARGO_BIN_EXE_agent-commits-ssh-sign")),
+            env_prefix: "AGENT_COMMITS_",
+            repo_config: ".agent-commits.toml",
+            _links: None,
+        }
+    }
+
+    /// The old names as symlinks, the way an upgraded install provides them.
+    fn old_names() -> Self {
+        let links = tempdir().expect("Failed to create link dir");
+        let link = |name: &str, target: &str| {
+            let path = links.path().join(name);
+            std::os::unix::fs::symlink(target, &path).unwrap();
+            path
+        };
+        Bins {
+            daemon: link("agent-signd", env!("CARGO_BIN_EXE_agent-commitsd")),
+            git: link("agent-git", env!("CARGO_BIN_EXE_agent-commits-git")),
+            sign: link("agent-sign", env!("CARGO_BIN_EXE_agent-commits")),
+            env_prefix: "AGENT_SIGN_",
+            repo_config: ".agent-sign.toml",
+            _links: Some(links),
+        }
+    }
+
+    fn env(&self, suffix: &str) -> String {
+        format!("{}{}", self.env_prefix, suffix)
+    }
+}
 
 struct TestDaemon {
     child: Child,
@@ -16,12 +72,12 @@ impl Drop for TestDaemon {
     }
 }
 
-fn start_test_daemon(dir: &std::path::Path) -> TestDaemon {
+fn start_test_daemon(dir: &Path, bins: &Bins) -> TestDaemon {
     let socket_path = dir.join("test_daemon.sock");
     let keys_dir = dir.join("keys");
     fs::create_dir_all(&keys_dir).unwrap();
 
-    let daemon_bin = env!("CARGO_BIN_EXE_agent-signd");
+    let daemon_bin = &bins.daemon;
 
     // Spawn daemon with test socket and auto-approve
     let child = Command::new(daemon_bin)
@@ -32,7 +88,7 @@ fn start_test_daemon(dir: &std::path::Path) -> TestDaemon {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn test agent-signd");
+        .expect("Failed to spawn test agent-commitsd");
 
     // Poll until socket exists
     let start = std::time::Instant::now();
@@ -46,14 +102,13 @@ fn start_test_daemon(dir: &std::path::Path) -> TestDaemon {
     TestDaemon { child, socket_path }
 }
 
-#[test]
-fn test_e2e_agent_git_commit_and_verification() {
+fn scenario_agent_git_commit_and_verification(bins: &Bins) {
     let dir = tempdir().expect("Failed to create tempdir");
     let test_repo = dir.path().join("repo");
     fs::create_dir_all(&test_repo).unwrap();
 
     // 1. Start daemon on test socket
-    let daemon = start_test_daemon(dir.path());
+    let daemon = start_test_daemon(dir.path(), bins);
 
     // 2. Initialize real Git repo
     assert!(
@@ -97,14 +152,14 @@ fn test_e2e_agent_git_commit_and_verification() {
     );
 
     // 4. Execute commit using agent-git
-    let agent_git_bin = env!("CARGO_BIN_EXE_agent-git");
-    let agent_sign_bin = env!("CARGO_BIN_EXE_agent-sign");
+    let agent_git_bin = &bins.git;
+    let agent_sign_bin = &bins.sign;
 
     let commit_output = Command::new(agent_git_bin)
         .args(["commit", "-m", "feat: first agent commit"])
         .current_dir(&test_repo)
-        .env("AGENT_SIGN_SOCKET", &daemon.socket_path)
-        .env("AGENT_SIGN_BIN", agent_sign_bin)
+        .env(bins.env("SOCKET"), &daemon.socket_path)
+        .env(bins.env("BIN"), agent_sign_bin)
         .env("HOME", dir.path())
         .output()
         .expect("Failed to run agent-git commit");
@@ -134,7 +189,7 @@ fn test_e2e_agent_git_commit_and_verification() {
     assert!(log_str.contains("Human Developer <dev@example.com>"));
 
     // 6. Verify signature using system ssh-keygen
-    let pub_key_path = dir.path().join(".agent-sign/keys/agent_ed25519.pub");
+    let pub_key_path = dir.path().join(".agent-commits/keys/agent_ed25519.pub");
     assert!(
         pub_key_path.exists(),
         "Public key must exist after daemon setup"
@@ -171,13 +226,12 @@ fn test_e2e_agent_git_commit_and_verification() {
     );
 }
 
-#[test]
-fn test_e2e_multi_commit_headless_session_flow() {
+fn scenario_multi_commit_headless_session_flow(bins: &Bins) {
     let dir = tempdir().expect("Failed to create tempdir");
     let test_repo = dir.path().join("repo");
     fs::create_dir_all(&test_repo).unwrap();
 
-    let daemon = start_test_daemon(dir.path());
+    let daemon = start_test_daemon(dir.path(), bins);
 
     assert!(
         Command::new("git")
@@ -206,8 +260,8 @@ fn test_e2e_multi_commit_headless_session_flow() {
             .success()
     );
 
-    let agent_git_bin = env!("CARGO_BIN_EXE_agent-git");
-    let agent_sign_bin = env!("CARGO_BIN_EXE_agent-sign");
+    let agent_git_bin = &bins.git;
+    let agent_sign_bin = &bins.sign;
 
     // Execute 3 consecutive commits in the same session/branch
     for i in 1..=3 {
@@ -226,8 +280,8 @@ fn test_e2e_multi_commit_headless_session_flow() {
         let commit_out = Command::new(agent_git_bin)
             .args(["commit", "-m", &format!("feat: agent commit number {}", i)])
             .current_dir(&test_repo)
-            .env("AGENT_SIGN_SOCKET", &daemon.socket_path)
-            .env("AGENT_SIGN_BIN", agent_sign_bin)
+            .env(bins.env("SOCKET"), &daemon.socket_path)
+            .env(bins.env("BIN"), agent_sign_bin)
             .env("HOME", dir.path())
             .output()
             .expect("Failed to execute agent commit");
@@ -241,7 +295,7 @@ fn test_e2e_multi_commit_headless_session_flow() {
     }
 
     // Verify all 3 commits exist and are cryptographically verified
-    let pub_key_path = dir.path().join(".agent-sign/keys/agent_ed25519.pub");
+    let pub_key_path = dir.path().join(".agent-commits/keys/agent_ed25519.pub");
     let pub_key = fs::read_to_string(&pub_key_path).unwrap();
 
     let allowed_signers = dir.path().join("allowed_signers");
@@ -277,8 +331,7 @@ fn test_e2e_multi_commit_headless_session_flow() {
     );
 }
 
-#[test]
-fn test_e2e_allow_main_branch_when_configured() {
+fn scenario_allow_main_branch_when_configured(bins: &Bins) {
     let dir = tempdir().expect("Failed to create tempdir");
     let test_repo = dir.path().join("repo");
     fs::create_dir_all(&test_repo).unwrap();
@@ -287,7 +340,7 @@ fn test_e2e_allow_main_branch_when_configured() {
     let keys_dir = dir.path().join("keys");
     fs::create_dir_all(&keys_dir).unwrap();
 
-    let daemon_bin = env!("CARGO_BIN_EXE_agent-signd");
+    let daemon_bin = &bins.daemon;
 
     // Spawn daemon with --allow-main and --auto-approve
     let mut child = Command::new(daemon_bin)
@@ -299,7 +352,7 @@ fn test_e2e_allow_main_branch_when_configured() {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn test agent-signd");
+        .expect("Failed to spawn test agent-commitsd");
 
     let start = std::time::Instant::now();
     while !socket_path.exists() {
@@ -331,14 +384,14 @@ fn test_e2e_allow_main_branch_when_configured() {
             .success()
     );
 
-    let agent_git_bin = env!("CARGO_BIN_EXE_agent-git");
-    let agent_sign_bin = env!("CARGO_BIN_EXE_agent-sign");
+    let agent_git_bin = &bins.git;
+    let agent_sign_bin = &bins.sign;
 
     let commit_out = Command::new(agent_git_bin)
         .args(["commit", "-m", "feat: commit directly to main"])
         .current_dir(&test_repo)
-        .env("AGENT_SIGN_SOCKET", &socket_path)
-        .env("AGENT_SIGN_BIN", agent_sign_bin)
+        .env(bins.env("SOCKET"), &socket_path)
+        .env(bins.env("BIN"), agent_sign_bin)
         .env("HOME", dir.path())
         .output()
         .expect("Failed to execute agent commit on main");
@@ -363,13 +416,12 @@ fn test_e2e_allow_main_branch_when_configured() {
     let _ = child.wait();
 }
 
-#[test]
-fn test_e2e_branch_switching_in_active_session() {
+fn scenario_branch_switching_in_active_session(bins: &Bins) {
     let dir = tempdir().expect("Failed to create tempdir");
     let test_repo = dir.path().join("repo");
     fs::create_dir_all(&test_repo).unwrap();
 
-    let daemon = start_test_daemon(dir.path());
+    let daemon = start_test_daemon(dir.path(), bins);
 
     // 1. Initialize git on feat/step-1
     assert!(
@@ -399,8 +451,8 @@ fn test_e2e_branch_switching_in_active_session() {
             .success()
     );
 
-    let agent_git_bin = env!("CARGO_BIN_EXE_agent-git");
-    let agent_sign_bin = env!("CARGO_BIN_EXE_agent-sign");
+    let agent_git_bin = &bins.git;
+    let agent_sign_bin = &bins.sign;
 
     // Commit 1 on feat/step-1
     fs::write(test_repo.join("step1.txt"), "Step 1 content\n").unwrap();
@@ -416,8 +468,8 @@ fn test_e2e_branch_switching_in_active_session() {
     let commit1 = Command::new(agent_git_bin)
         .args(["commit", "-m", "feat: step 1 commit"])
         .current_dir(&test_repo)
-        .env("AGENT_SIGN_SOCKET", &daemon.socket_path)
-        .env("AGENT_SIGN_BIN", agent_sign_bin)
+        .env(bins.env("SOCKET"), &daemon.socket_path)
+        .env(bins.env("BIN"), agent_sign_bin)
         .env("HOME", dir.path())
         .output()
         .expect("Failed to commit step 1");
@@ -451,8 +503,8 @@ fn test_e2e_branch_switching_in_active_session() {
     let commit2 = Command::new(agent_git_bin)
         .args(["commit", "-m", "feat: step 2 commit on new branch"])
         .current_dir(&test_repo)
-        .env("AGENT_SIGN_SOCKET", &daemon.socket_path)
-        .env("AGENT_SIGN_BIN", agent_sign_bin)
+        .env(bins.env("SOCKET"), &daemon.socket_path)
+        .env(bins.env("BIN"), agent_sign_bin)
         .env("HOME", dir.path())
         .output()
         .expect("Failed to commit step 2");
@@ -473,13 +525,12 @@ fn test_e2e_branch_switching_in_active_session() {
     assert!(String::from_utf8_lossy(&log_out.stdout).contains("feat: step 2 commit on new branch"));
 }
 
-#[test]
-fn test_e2e_trailers_mode_attribution() {
+fn scenario_trailers_mode_attribution(bins: &Bins) {
     let dir = tempdir().expect("Failed to create tempdir");
     let test_repo = dir.path().join("repo");
     fs::create_dir_all(&test_repo).unwrap();
 
-    let daemon = start_test_daemon(dir.path());
+    let daemon = start_test_daemon(dir.path(), bins);
 
     assert!(
         Command::new("git")
@@ -508,28 +559,28 @@ fn test_e2e_trailers_mode_attribution() {
             .success()
     );
 
-    // Write repo-level .agent-sign.toml setting mode = "trailers"
-    let repo_config = test_repo.join(".agent-sign.toml");
+    // Write repo-level config (.agent-commits.toml, or the old .agent-sign.toml) setting mode = "trailers"
+    let repo_config = test_repo.join(bins.repo_config);
     fs::write(&repo_config, "[attribution]\nmode = \"trailers\"\n").unwrap();
 
     fs::write(test_repo.join("work.txt"), "Important work\n").unwrap();
     assert!(
         Command::new("git")
-            .args(["add", "work.txt", ".agent-sign.toml"])
+            .args(["add", "work.txt", bins.repo_config])
             .current_dir(&test_repo)
             .status()
             .unwrap()
             .success()
     );
 
-    let agent_git_bin = env!("CARGO_BIN_EXE_agent-git");
-    let agent_sign_bin = env!("CARGO_BIN_EXE_agent-sign");
+    let agent_git_bin = &bins.git;
+    let agent_sign_bin = &bins.sign;
 
     let commit_out = Command::new(agent_git_bin)
         .args(["commit", "-m", "feat: implement enterprise compliance"])
         .current_dir(&test_repo)
-        .env("AGENT_SIGN_SOCKET", &daemon.socket_path)
-        .env("AGENT_SIGN_BIN", agent_sign_bin)
+        .env(bins.env("SOCKET"), &daemon.socket_path)
+        .env(bins.env("BIN"), agent_sign_bin)
         .env("HOME", dir.path())
         .output()
         .expect("Failed to execute commit in trailers mode");
@@ -551,6 +602,56 @@ fn test_e2e_trailers_mode_attribution() {
     println!("Commit message with trailers:\n{}", full_message);
 
     assert!(full_message.contains("Co-Authored-By: Antigravity Agent <agent@local.internal>"));
-    assert!(full_message.contains("X-Agent-Signer: agent-sign/v0.1"));
+    assert!(full_message.contains("X-Agent-Signer: agent-commits/v0.1"));
     assert!(full_message.contains("X-Agent-Lease:"));
+}
+
+#[test]
+fn test_e2e_agent_git_commit_and_verification() {
+    scenario_agent_git_commit_and_verification(&Bins::new_names());
+}
+
+#[test]
+fn test_e2e_agent_git_commit_and_verification_old_names() {
+    scenario_agent_git_commit_and_verification(&Bins::old_names());
+}
+
+#[test]
+fn test_e2e_multi_commit_headless_session_flow() {
+    scenario_multi_commit_headless_session_flow(&Bins::new_names());
+}
+
+#[test]
+fn test_e2e_multi_commit_headless_session_flow_old_names() {
+    scenario_multi_commit_headless_session_flow(&Bins::old_names());
+}
+
+#[test]
+fn test_e2e_allow_main_branch_when_configured() {
+    scenario_allow_main_branch_when_configured(&Bins::new_names());
+}
+
+#[test]
+fn test_e2e_allow_main_branch_when_configured_old_names() {
+    scenario_allow_main_branch_when_configured(&Bins::old_names());
+}
+
+#[test]
+fn test_e2e_branch_switching_in_active_session() {
+    scenario_branch_switching_in_active_session(&Bins::new_names());
+}
+
+#[test]
+fn test_e2e_branch_switching_in_active_session_old_names() {
+    scenario_branch_switching_in_active_session(&Bins::old_names());
+}
+
+#[test]
+fn test_e2e_trailers_mode_attribution() {
+    scenario_trailers_mode_attribution(&Bins::new_names());
+}
+
+#[test]
+fn test_e2e_trailers_mode_attribution_old_names() {
+    scenario_trailers_mode_attribution(&Bins::old_names());
 }

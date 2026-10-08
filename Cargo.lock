@@ -3,7 +3,7 @@
 version = 4
 
 [[package]]
-name = "agent-sign"
+name = "agent-commits"
 version = "0.1.0"
 dependencies = [
  "base64",

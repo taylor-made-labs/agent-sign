@@ -1,5 +1,5 @@
-use agent_sign::config::Config;
-use agent_sign::multiplexer::{Multiplexer, SigningAction};
+use agent_commits::config::Config;
+use agent_commits::multiplexer::{Multiplexer, SigningAction};
 
 #[test]
 fn test_human_terminal_commit_invokes_standard_ssh_agent() {

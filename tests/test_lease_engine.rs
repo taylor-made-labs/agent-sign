@@ -1,4 +1,4 @@
-use agent_sign::lease::{LeaseEngine, LeasePolicy};
+use agent_commits::lease::{LeaseEngine, LeasePolicy};
 use std::time::Duration;
 
 #[test]
@@ -9,6 +9,7 @@ fn test_lease_granted_after_single_auth() {
         allow_main_branch: false,
         allow_branch_switching: true,
         max_commits_per_minute: 10,
+        ..Default::default()
     };
     let mut engine = LeaseEngine::new(policy);
 
@@ -29,6 +30,7 @@ fn test_subsequent_commits_within_ttl_require_zero_prompts() {
         allow_main_branch: false,
         allow_branch_switching: true,
         max_commits_per_minute: 100,
+        ..Default::default()
     };
     let mut engine = LeaseEngine::new(policy);
     engine.grant_lease("my-repo", "feat/fast", "Rapid commits");
@@ -48,6 +50,7 @@ fn test_branch_protection_blocks_main_by_default() {
         allow_main_branch: false,
         allow_branch_switching: true,
         max_commits_per_minute: 10,
+        ..Default::default()
     };
     let mut engine = LeaseEngine::new(policy);
 
@@ -65,6 +68,7 @@ fn test_branch_protection_allows_main_when_configured() {
         allow_main_branch: true, // Configured to permit main commits!
         allow_branch_switching: true,
         max_commits_per_minute: 10,
+        ..Default::default()
     };
     let mut engine = LeaseEngine::new(policy);
 
@@ -85,6 +89,7 @@ fn test_rate_limiter_throttles_rapid_commits() {
         allow_main_branch: false,
         allow_branch_switching: true,
         max_commits_per_minute: 3, // strictly 3 per minute
+        ..Default::default()
     };
     let mut engine = LeaseEngine::new(policy);
     engine.grant_lease("my-repo", "feat/loop", "Testing loop protection");
@@ -113,6 +118,7 @@ fn test_branch_switching_during_active_lease() {
         allow_main_branch: false,
         allow_branch_switching: true,
         max_commits_per_minute: 10,
+        ..Default::default()
     };
     let mut engine = LeaseEngine::new(policy);
     engine.grant_lease("my-repo", "feat/step-1", "Initial task");
