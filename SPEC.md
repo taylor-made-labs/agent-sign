@@ -101,8 +101,8 @@ Each invariant says whether it holds today, and how that's checked.
 
 ### 4.1 The wrapper, `agent-commits-git` (installed as `git`)
 
-- Installed in `~/.agent-sign/bin` (a link to `~/.agent-commits/bin` once `agent-commitsd` has
-  started), which the installer puts first on `PATH` in shell profiles.
+- Installed in `~/.agent-commits/bin`, which the installer puts first on `PATH`
+  in shell profiles.
 - Every command except `commit` (the first non-option argument, so
   `git -C dir commit` counts) runs the real git unchanged.
 - The real git: `AGENT_COMMITS_REAL_GIT` if set, else the first `git` on `PATH` that
@@ -136,8 +136,8 @@ the agent key. `agent-commits` accepts the same arguments, as `agent-sign` did.
 
 ### 4.3 The service, `agent-commitsd`
 
-- One per user, run by launchd (`com.agentsign.agent-signd`) or a systemd
-  user service (`agent-signd.service`), both under the old name. It listens on
+- One per user, run by launchd (`com.agentcommits.agent-commitsd`) or a systemd
+  user service (`agent-commitsd.service`). It listens on
   `~/.agent-commits/daemon.sock` (0600, in a 0700 directory), one thread per
   connection; the lock isn't held while a dialog is open.
 - Holds the agent key: an ed25519 seed in `~/.agent-commits/keys/agent_ed25519`, 0600,

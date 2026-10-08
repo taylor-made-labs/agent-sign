@@ -6,7 +6,7 @@ Antigravity runs commands through its `run_command` tool.
 
 `./scripts/install.sh`:
 
-1. puts `~/.agent-sign/bin` first on `PATH` in your shell profiles, which
+1. puts `~/.agent-commits/bin` first on `PATH` in your shell profiles, which
    `run_command` uses when Antigravity is started from a shell, and
 2. if `~/.gemini/config` exists, writes a rule to
    `~/.gemini/config/rules/agent-sign.md` telling the agent that commits are

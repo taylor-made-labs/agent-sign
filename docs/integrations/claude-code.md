@@ -13,7 +13,7 @@ claude
 ```
 
 Check from inside a session that `git` is the wrapper: ask it to run
-`command -v git`, which should print a path ending in `.agent-sign/bin/git`.
+`command -v git`, which should print a path ending in `.agent-commits/bin/git`.
 
 ## What happens
 

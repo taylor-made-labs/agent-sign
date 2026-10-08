@@ -23,8 +23,8 @@ agent-commits' service, `agent-commitsd`, is installed under its old name:
 
 | | Restart it | Its log |
 |---|---|---|
-| macOS | `launchctl kickstart -k gui/$(id -u)/com.agentsign.agent-signd` | `/tmp/agent-signd.stderr.log` |
-| Linux | `systemctl --user restart agent-signd` | `journalctl --user -u agent-signd` (some systems keep no user journal; then run `agent-commitsd` by hand in a terminal to see its messages) |
+| macOS | `launchctl kickstart -k gui/$(id -u)/com.agentcommits.agent-commitsd` | `/tmp/agent-commitsd.stderr.log` |
+| Linux | `systemctl --user restart agent-commitsd` | `journalctl --user -u agent-commitsd` (some systems keep no user journal; then run `agent-commitsd` by hand in a terminal to see its messages) |
 
 `agent-commitsd` reads `~/.agent-commits/config.toml` only when it starts: **restart it after
 changing the config.** `agent-commits status` says whether it's running.
@@ -52,7 +52,7 @@ The wrapper prints why, starting `[agent-commits-git]`.
 The agent isn't running agent-commits' wrapper as `git`. In the agent's shell:
 
 ```sh
-command -v git     # should end in .agent-sign/bin/git
+command -v git     # should end in .agent-commits/bin/git
 ```
 
 If it doesn't, start the agent from a new terminal (the installer changed
@@ -93,7 +93,7 @@ auto_approve = true
 
 and restart the service. (Setting it in a repository's `.agent-commits.toml` has no
 effect: the service reads only your own config.) Or set `AGENT_COMMITS_AUTO_APPROVE=1`
-in the service's own environment (`systemctl --user edit agent-signd`, then
+in the service's own environment (`systemctl --user edit agent-commitsd`, then
 `Environment=AGENT_COMMITS_AUTO_APPROVE=1`), or run `agent-commitsd --auto-approve` yourself.
 Use it only where every process that can reach the service is trusted:
 every agent on the machine then gets leases without you seeing them.

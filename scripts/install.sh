@@ -10,17 +10,49 @@ set -euo pipefail
 # agent-commits-git (the wrapper, installed as `git`). The old names agent-signd,
 # agent-sign, and agent-git are installed as links to them.
 #
-# This installer still uses the agent-sign layout (~/.agent-sign/bin on PATH,
-# the com.agentsign.agent-signd LaunchAgent). agent-commitsd moves ~/.agent-sign to
-# ~/.agent-commits on its first start and leaves ~/.agent-sign as a link, so those
-# paths keep working. See docs/MIGRATION.md.
+# Everything lives in ~/.agent-commits: the programs (bin/), the agent key
+# (keys/), config.toml, leases.json and the service's socket. The service runs
+# as the LaunchAgent com.agentcommits.agent-commitsd (macOS) or the systemd
+# user unit agent-commitsd (Linux).
+#
+# An agent-sign install (~/.agent-sign, the com.agentsign.agent-signd service)
+# is moved onto this layout first, keeping its key and leases, and its old
+# service is replaced. See docs/MIGRATION.md.
+#
+# Usage:
+#   ./scripts/install.sh                         from a source checkout or a release archive
+#   install.sh --from-homebrew <prefix>          after `brew install agent-commits`
 # =============================================================================
 
-INSTALL_DIR="$HOME/.agent-sign/bin"
-KEYS_DIR="$HOME/.agent-sign/keys"
-CONFIG_DIR="$HOME/.agent-sign"
+STATE_DIR="$HOME/.agent-commits"
+LEGACY_DIR="$HOME/.agent-sign"
+INSTALL_DIR="$STATE_DIR/bin"
+KEYS_DIR="$STATE_DIR/keys"
+CONFIG_DIR="$STATE_DIR"
 CONFIG_FILE="$CONFIG_DIR/config.toml"
 PUB_KEY_FILE="$KEYS_DIR/agent_ed25519.pub"
+SERVICE_LABEL="com.agentcommits.agent-commitsd"
+OLD_SERVICE_LABEL="com.agentsign.agent-signd"
+
+# The directory holding this script (and the service files beside it), and
+# the checkout or archive it came in, so it works from any directory.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SOURCE_ROOT="$(dirname "$SCRIPT_DIR")"
+
+HOMEBREW_PREFIX_ARG=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --from-homebrew)
+            HOMEBREW_PREFIX_ARG="${2:-}"
+            [ -n "$HOMEBREW_PREFIX_ARG" ] || { echo "--from-homebrew needs the formula's prefix" >&2; exit 2; }
+            shift 2
+            ;;
+        *)
+            echo "Unknown option: $1" >&2
+            exit 2
+            ;;
+    esac
+done
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -44,11 +76,42 @@ echo ""
 # ─── Step 0: Prerequisites & Binary Resolution ──────────────────────────────
 step "Resolving binaries"
 
-# A machine that already has ~/.agent-commits (migrated, or set up by agent-commitsd alone) gets
-# the ~/.agent-sign link the migration would have left, rather than a second
-# state directory that agent-commitsd would refuse to choose between.
-if [ -d "$HOME/.agent-commits" ] && [ ! -e "$HOME/.agent-sign" ] && [ ! -L "$HOME/.agent-sign" ]; then
-    ln -s "$HOME/.agent-commits" "$HOME/.agent-sign"
+# Stops a service by its service manager name, if it's running.
+stop_service() {
+    local label="$1" unit="$2"
+    if [ "$(uname -s)" = "Darwin" ]; then
+        launchctl bootout "gui/$(id -u)/$label" 2>/dev/null && ok "Stopped $label" || true
+    elif command -v systemctl &>/dev/null; then
+        systemctl --user stop "$unit" 2>/dev/null && ok "Stopped $unit" || true
+    fi
+}
+
+# Bring an agent-sign install onto this layout before anything else, keeping
+# its key and leases (the service does the same on its first start; doing it
+# here also lets the old service be replaced cleanly):
+# - ~/.agent-sign is a directory and ~/.agent-commits doesn't exist: stop the
+#   old service, move the directory, and leave a link at the old path, so
+#   anything still naming ~/.agent-sign keeps working.
+# - ~/.agent-sign is a link to a directory somewhere else: link
+#   ~/.agent-commits to the same place, leaving the directory where you put it.
+# - Both hold state: stop, so you choose; picking one could replace the agent
+#   key that GitHub and allowed_signers know with a new one.
+if [ -L "$LEGACY_DIR" ] && [ ! -e "$STATE_DIR" ] && [ ! -L "$STATE_DIR" ]; then
+    LEGACY_TARGET="$(cd "$LEGACY_DIR" 2>/dev/null && pwd -P || true)"
+    if [ -n "$LEGACY_TARGET" ] && [ -d "$LEGACY_TARGET" ]; then
+        ln -s "$LEGACY_TARGET" "$STATE_DIR"
+        ok "Linked $STATE_DIR to your existing agent-sign state at $LEGACY_TARGET"
+    fi
+elif [ -d "$LEGACY_DIR" ] && [ ! -L "$LEGACY_DIR" ]; then
+    if [ -e "$STATE_DIR" ] || [ -L "$STATE_DIR" ]; then
+        err "Both $LEGACY_DIR and $STATE_DIR exist. Keep the one whose key is"
+        err "registered on GitHub, move the other away, and run this again."
+        exit 1
+    fi
+    stop_service "$OLD_SERVICE_LABEL" agent-signd
+    mv "$LEGACY_DIR" "$STATE_DIR"
+    ln -s "$STATE_DIR" "$LEGACY_DIR"
+    ok "Moved your agent-sign state to $STATE_DIR (key and leases kept); $LEGACY_DIR is now a link"
 fi
 
 mkdir -p "$INSTALL_DIR"
@@ -79,10 +142,34 @@ install_binaries() {
     ln -s agent-commits-git "$INSTALL_DIR/.agent-git.new"   && mv -f "$INSTALL_DIR/.agent-git.new"   "$INSTALL_DIR/agent-git"
 }
 
-# Check if we are running in the source repo with target/release already built
-if [ -f "target/release/agent-commitsd" ] && [ -f "target/release/agent-commits" ] && [ -f "target/release/agent-commits-ssh-sign" ] && [ -f "target/release/agent-commits-git" ]; then
+# Installs from a Homebrew prefix: links to the formula's programs through its
+# stable `opt` prefix, so `brew upgrade` updates what's installed here.
+install_from_homebrew() {
+    local prefix="$1"
+    local name
+    for name in agent-commitsd agent-commits agent-commits-ssh-sign; do
+        ln -sfn "$prefix/bin/$name" "$INSTALL_DIR/$name"
+    done
+    ln -sfn "$prefix/libexec/agent-commits-git" "$INSTALL_DIR/agent-commits-git"
+    ln -sfn "$prefix/libexec/agent-commits-git" "$INSTALL_DIR/git"
+    ln -sfn agent-commitsd    "$INSTALL_DIR/agent-signd"
+    ln -sfn agent-commits     "$INSTALL_DIR/agent-sign"
+    ln -sfn agent-commits-git "$INSTALL_DIR/agent-git"
+}
+
+if [ -n "$HOMEBREW_PREFIX_ARG" ]; then
+    info "Using the programs Homebrew installed in $HOMEBREW_PREFIX_ARG"
+    install_from_homebrew "$HOMEBREW_PREFIX_ARG"
+    INSTALLED_FROM_RELEASE=true
+# Programs next to this script: a release archive (bin/) or a built checkout
+# (target/release/).
+elif [ -x "$SOURCE_ROOT/bin/agent-commitsd" ] && [ -x "$SOURCE_ROOT/bin/agent-commits-git" ]; then
+    info "Using the programs in this release archive"
+    install_binaries "$SOURCE_ROOT/bin"
+    INSTALLED_FROM_RELEASE=true
+elif [ -f "$SOURCE_ROOT/target/release/agent-commitsd" ] && [ -f "$SOURCE_ROOT/target/release/agent-commits" ] && [ -f "$SOURCE_ROOT/target/release/agent-commits-ssh-sign" ] && [ -f "$SOURCE_ROOT/target/release/agent-commits-git" ]; then
     info "Using existing local release binaries from target/release/"
-    install_binaries target/release
+    install_binaries "$SOURCE_ROOT/target/release"
     INSTALLED_FROM_RELEASE=true
 fi
 
@@ -137,8 +224,8 @@ if [ "$INSTALLED_FROM_RELEASE" = false ]; then
         exit 1
     fi
     info "Building from source with Cargo..."
-    cargo build --release --quiet 2>&1 | tail -5
-    install_binaries target/release
+    (cd "$SOURCE_ROOT" && cargo build --release --locked --quiet 2>&1 | tail -5)
+    install_binaries "$SOURCE_ROOT/target/release"
     ok "Build and installation from source complete"
 fi
 
@@ -153,7 +240,6 @@ ok "Binaries ready in $INSTALL_DIR"
 # ─── Step 3: Generate agent keypair ─────────────────────────────────────────
 step "Agent signing keypair"
 
-# agent-commitsd also moves ~/.agent-sign to ~/.agent-commits here (leaving a link) on first run.
 "$INSTALL_DIR/agent-commitsd" setup 2>&1 | grep -v "^=\|^$" || true
 
 if [ -f "$PUB_KEY_FILE" ]; then
@@ -323,11 +409,8 @@ step "Managing daemon"
 # service started by hand. Match the process name exactly, and only your own
 # processes: matching command lines (as `pkill -f` does) would also stop any
 # shell or SSH session whose command happens to contain the name.
-if [ "$(uname -s)" = "Darwin" ]; then
-    launchctl bootout "gui/$(id -u)/com.agentsign.agent-signd" 2>/dev/null && ok "Stopped the running service (launchd)" || true
-elif command -v systemctl &>/dev/null; then
-    systemctl --user stop agent-signd 2>/dev/null && ok "Stopped the running service (systemd)" || true
-fi
+stop_service "$OLD_SERVICE_LABEL" agent-signd
+stop_service "$SERVICE_LABEL" agent-commitsd
 for name in agent-signd agent-commitsd; do
     if pgrep -u "$(id -u)" -x "$name" &>/dev/null; then
         info "Stopping a running $name started by hand..."
@@ -346,46 +429,53 @@ fi
 # ─── Step 8: Install and start daemon service ───────────────────────────────
 OS="$(uname -s)"
 
+start_by_hand() {
+    nohup "$INSTALL_DIR/agent-commitsd" >/dev/null 2>&1 &
+    disown
+    ok "Service started in the background (PID: $!)"
+}
+
 if [ "$OS" = "Darwin" ]; then
-    # macOS: install launchd service
-    PLIST_SRC="scripts/agent-signd.plist"
-    PLIST_DST="$HOME/Library/LaunchAgents/com.agentsign.agent-signd.plist"
-
+    # macOS: the LaunchAgent, replacing agent-sign's if it's there.
+    PLIST_SRC="$SCRIPT_DIR/agent-commitsd.plist"
+    PLIST_DST="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
+    OLD_PLIST="$HOME/Library/LaunchAgents/$OLD_SERVICE_LABEL.plist"
+    if [ -f "$OLD_PLIST" ]; then
+        rm -f "$OLD_PLIST"
+        ok "Removed agent-sign's LaunchAgent ($OLD_SERVICE_LABEL)"
+    fi
     if [ -f "$PLIST_SRC" ]; then
-        # Unload if already loaded
-        launchctl bootout "gui/$(id -u)/com.agentsign.agent-signd" 2>/dev/null || true
-
+        mkdir -p "$HOME/Library/LaunchAgents"
         cp "$PLIST_SRC" "$PLIST_DST"
         launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"
-        ok "Service installed and started: LaunchAgent com.agentsign.agent-signd (starts at login)"
+        ok "Service installed and started: LaunchAgent $SERVICE_LABEL (starts at login)"
     else
-        warn "LaunchAgent plist not found at $PLIST_SRC — starting daemon manually"
-        "$INSTALL_DIR/agent-signd" &
-        disown
-        ok "Daemon started in background (PID: $!)"
+        warn "LaunchAgent file not found at $PLIST_SRC"
+        start_by_hand
     fi
 elif [ "$OS" = "Linux" ]; then
-    # Linux: install systemd user service
-    SERVICE_SRC="scripts/agent-signd.service"
-    SERVICE_DST="$HOME/.config/systemd/user/agent-signd.service"
-
+    # Linux: the systemd user unit, replacing agent-sign's if it's there.
+    SERVICE_SRC="$SCRIPT_DIR/agent-commitsd.service"
+    SERVICE_DST="$HOME/.config/systemd/user/agent-commitsd.service"
+    OLD_UNIT="$HOME/.config/systemd/user/agent-signd.service"
     if [ -f "$SERVICE_SRC" ] && command -v systemctl &>/dev/null; then
+        if [ -f "$OLD_UNIT" ]; then
+            systemctl --user disable agent-signd 2>/dev/null || true
+            rm -f "$OLD_UNIT"
+            ok "Removed agent-sign's systemd unit (agent-signd)"
+        fi
         mkdir -p "$HOME/.config/systemd/user"
         cp "$SERVICE_SRC" "$SERVICE_DST"
         systemctl --user daemon-reload
-        systemctl --user enable --now agent-signd
-        ok "Service installed and started: systemd user service agent-signd"
+        systemctl --user enable --now agent-commitsd
+        ok "Service installed and started: systemd user service agent-commitsd"
         info "It runs while you're logged in. On a machine you log out of (a server),"
         info "keep it running with: loginctl enable-linger \"\$USER\""
     else
-        "$INSTALL_DIR/agent-signd" &
-        disown
-        ok "Daemon started in background (PID: $!)"
+        start_by_hand
     fi
 else
-    "$INSTALL_DIR/agent-signd" &
-    disown
-    ok "Daemon started in background (PID: $!)"
+    start_by_hand
 fi
 
 # Give daemon a moment to start
@@ -395,20 +485,27 @@ sleep 1
 step "Configuring environment & agent integrations"
 
 # 1. Shell profiles (global PATH injection)
+# Puts ~/.agent-commits/bin first on PATH in a marked block, replacing
+# agent-sign's block if the file has one.
 add_to_shell_profile() {
     local file="$1"
     if [ -f "$file" ]; then
         if grep -q "# >>> agent-sign >>>" "$file"; then
+            sed -i.agent-commits-bak '/# >>> agent-sign >>>/,/# <<< agent-sign <<</d' "$file"
+            rm -f "$file.agent-commits-bak"
+            ok "Removed agent-sign's PATH block from $file"
+        fi
+        if grep -q "# >>> agent-commits >>>" "$file"; then
             ok "Shell PATH already configured in $file"
         else
             cat >> "$file" << 'EOF'
 
-# >>> agent-sign >>>
-# Added automatically by agent-sign installer
-export PATH="$HOME/.agent-sign/bin:$PATH"
-# <<< agent-sign <<<
+# >>> agent-commits >>>
+# Added by the agent-commits installer; ./scripts/uninstall.sh removes it.
+export PATH="$HOME/.agent-commits/bin:$PATH"
+# <<< agent-commits <<<
 EOF
-            ok "Added agent-sign to PATH in $file"
+            ok "Added agent-commits to PATH in $file"
         fi
     fi
 }
@@ -438,8 +535,15 @@ for config_path in ide_configs:
         with open(config_path, "r", encoding="utf-8") as f:
             content = f.read()
 
+        if ".agent-commits/bin" in content:
+            print(f"  \033[0;32m✓\033[0m IDE config already includes agent-commits: {config_path}")
+            continue
         if ".agent-sign/bin" in content:
-            print(f"  \033[0;32m✓\033[0m IDE config already includes agent-sign: {config_path}")
+            content = content.replace(".agent-sign/bin", ".agent-commits/bin")
+            content = content.replace("Added automatically by agent-sign installer", "Added by the agent-commits installer")
+            with open(config_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"  \033[0;32m✓\033[0m Moved the terminal PATH in {config_path} to agent-commits")
             continue
 
         last_brace = content.rfind("}")
@@ -451,12 +555,12 @@ for config_path in ide_configs:
         comma = "" if clean_prefix.endswith(",") else ","
 
         snippet = f"""{comma}
-    // Added automatically by agent-sign installer
+    // Added by the agent-commits installer
     "terminal.integrated.env.osx": {{
-        "PATH": "${{env:HOME}}/.agent-sign/bin:${{env:PATH}}"
+        "PATH": "${{env:HOME}}/.agent-commits/bin:${{env:PATH}}"
     }},
     "terminal.integrated.env.linux": {{
-        "PATH": "${{env:HOME}}/.agent-sign/bin:${{env:PATH}}"
+        "PATH": "${{env:HOME}}/.agent-commits/bin:${{env:PATH}}"
     }}
 """
         new_content = prefix + snippet + content[last_brace:]
@@ -470,12 +574,13 @@ PYEOF
 # 3. Antigravity / Gemini configuration
 if [ -d "$HOME/.gemini/config" ]; then
     mkdir -p "$HOME/.gemini/config/rules"
-    cat > "$HOME/.gemini/config/rules/agent-sign.md" << 'EOF'
-# Agent-Sign Integration
-Git commits in this environment are automatically intercepted, authorized, and signed via `agent-sign` (`~/.agent-sign/bin/git`).
-Run `git commit` normally when committing changes. Never bypass signing or pass `--no-gpg-sign`.
+    rm -f "$HOME/.gemini/config/rules/agent-sign.md"
+    cat > "$HOME/.gemini/config/rules/agent-commits.md" << 'EOF'
+# agent-commits
+Git commits here go through agent-commits (`~/.agent-commits/bin/git`), which signs them with the agent's own key once the person has approved.
+Run `git commit` normally. Never pass `--no-gpg-sign` or call another git to get around it.
 EOF
-    ok "Configured Antigravity rule in ~/.gemini/config/rules/agent-sign.md"
+    ok "Configured Antigravity rule in ~/.gemini/config/rules/agent-commits.md"
 fi
 
 # ─── Step 10: Verify ────────────────────────────────────────────────────────
@@ -511,7 +616,7 @@ verify "Daemon socket exists"       "[ -S '$CONFIG_DIR/daemon.sock' ]"
 # agent-commitsd's next line then hits a closed pipe, and under pipefail the check
 # failed at random.
 verify "Daemon responds to ping"    "'$INSTALL_DIR/agent-commitsd' status 2>&1 | grep 'active' >/dev/null"
-verify "Shell PATH configured"      "grep -q '# >>> agent-sign >>>' ~/.zshrc 2>/dev/null || grep -q '# >>> agent-sign >>>' ~/.bashrc 2>/dev/null || grep -q '# >>> agent-sign >>>' ~/.zprofile 2>/dev/null"
+verify "Shell PATH configured"      "grep -q '# >>> agent-commits >>>' ~/.zshrc 2>/dev/null || grep -q '# >>> agent-commits >>>' ~/.bashrc 2>/dev/null || grep -q '# >>> agent-commits >>>' ~/.zprofile 2>/dev/null || grep -q '# >>> agent-commits >>>' ~/.bash_profile 2>/dev/null"
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
@@ -525,21 +630,26 @@ step "GitHub / GitLab Signing Key Setup"
 
 REGISTERED_VIA_GH=false
 
-if command -v gh &>/dev/null; then
-    if gh auth status &>/dev/null; then
-        info "Found authenticated GitHub CLI (gh). Attempting automated key registration..."
-        # Check if already registered
-        if gh ssh-key list 2>/dev/null | grep -F "$AGENT_KEY_DATA" >/dev/null; then
-            ok "Agent signing key is already registered on GitHub!"
-            REGISTERED_VIA_GH=true
-        else
-            if gh ssh-key add "$PUB_KEY_FILE" --type signing --title "agent-commits agent signing key ($(hostname -s))" 2>/dev/null; then
-                ok "Successfully added Agent Signing Key to your GitHub account via gh CLI!"
-                REGISTERED_VIA_GH=true
-            else
-                warn "gh ssh-key add requires additional scope or encountered an issue. Falling back to quick-link."
-            fi
-        fi
+# Adding a key to someone's GitHub account is theirs to agree to: ask, and
+# only when there's a person at the terminal to answer.
+ADD_WITH_GH=false
+if command -v gh &>/dev/null && gh auth status &>/dev/null && [ -t 0 ]; then
+    echo ""
+    echo "The GitHub CLI (gh) is signed in. agent-commits can add the agent's public"
+    echo "key to your GitHub account as a signing key (it can sign, not log in or push),"
+    echo "so agent commits show as Verified."
+    read -r -p "Add it now with gh? [y/N] " REPLY_GH || REPLY_GH=""
+    case "$REPLY_GH" in [yY]|[yY][eE][sS]) ADD_WITH_GH=true ;; esac
+fi
+if [ "$ADD_WITH_GH" = true ]; then
+    if gh ssh-key list 2>/dev/null | grep -F "$AGENT_KEY_DATA" >/dev/null; then
+        ok "The agent's signing key is already on your GitHub account"
+        REGISTERED_VIA_GH=true
+    elif gh ssh-key add "$PUB_KEY_FILE" --type signing --title "agent-commits agent signing key ($(hostname -s))" 2>/dev/null; then
+        ok "Added the agent's signing key to your GitHub account"
+        REGISTERED_VIA_GH=true
+    else
+        warn "gh couldn't add the key (it may need the admin:ssh_signing_key scope); the steps to add it by hand follow"
     fi
 fi
 

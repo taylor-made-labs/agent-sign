@@ -25,16 +25,27 @@ echo -e "${BOLD}╚════════════════════�
 echo ""
 
 # ─── Step 1: Stop daemon ────────────────────────────────────────────────────
-info "Stopping the agent-commits service (agent-commitsd, installed as agent-signd)..."
+info "Stopping the agent-commits service (and agent-sign's, if it's still installed)..."
 
+# agent-commits' service, and agent-sign's from an install made before the rename.
 OS="$(uname -s)"
 if [ "$OS" = "Darwin" ]; then
-    launchctl bootout "gui/$(id -u)/com.agentsign.agent-signd" 2>/dev/null && ok "LaunchAgent unloaded" || true
-    rm -f "$HOME/Library/LaunchAgents/com.agentsign.agent-signd.plist" && ok "LaunchAgent plist removed" || true
+    for label in com.agentcommits.agent-commitsd com.agentsign.agent-signd; do
+        launchctl bootout "gui/$(id -u)/$label" 2>/dev/null && ok "Stopped LaunchAgent $label" || true
+        if [ -f "$HOME/Library/LaunchAgents/$label.plist" ]; then
+            rm -f "$HOME/Library/LaunchAgents/$label.plist"
+            ok "Removed LaunchAgent $label"
+        fi
+    done
 elif [ "$OS" = "Linux" ] && command -v systemctl &>/dev/null; then
-    systemctl --user stop agent-signd 2>/dev/null && ok "Systemd service stopped" || true
-    systemctl --user disable agent-signd 2>/dev/null && ok "Systemd service disabled" || true
-    rm -f "$HOME/.config/systemd/user/agent-signd.service" && ok "Systemd service file removed" || true
+    for unit in agent-commitsd agent-signd; do
+        systemctl --user stop "$unit" 2>/dev/null && ok "Stopped systemd unit $unit" || true
+        systemctl --user disable "$unit" 2>/dev/null || true
+        if [ -f "$HOME/.config/systemd/user/$unit.service" ]; then
+            rm -f "$HOME/.config/systemd/user/$unit.service"
+            ok "Removed systemd unit $unit"
+        fi
+    done
     systemctl --user daemon-reload 2>/dev/null || true
 fi
 
@@ -80,13 +91,17 @@ fi
 # ─── Step 3: Remove shell profile PATH entries ─────────────────────────────
 info "Cleaning up shell profile PATH entries..."
 
+# Removes the installer's marked PATH block (and agent-sign's, from an
+# older install).
 cleanup_shell_profile() {
-    local file="$1"
-    if [ -f "$file" ] && grep -q "# >>> agent-sign >>>" "$file"; then
-        sed -i.bak '/# >>> agent-sign >>>/,/# <<< agent-sign <<</d' "$file"
-        rm -f "${file}.bak"
-        ok "Removed agent-sign from $file"
-    fi
+    local file="$1" name
+    for name in agent-commits agent-sign; do
+        if [ -f "$file" ] && grep -q "# >>> $name >>>" "$file"; then
+            sed -i.bak "/# >>> $name >>>/,/# <<< $name <<</d" "$file"
+            rm -f "${file}.bak"
+            ok "Removed $name's PATH block from $file"
+        fi
+    done
 }
 
 cleanup_shell_profile "$HOME/.zshrc"
@@ -109,7 +124,9 @@ ide_configs = [
     os.path.expanduser("~/.config/Windsurf/User/settings.json"),
 ]
 
-pattern = r',?\s*// Added automatically by agent-sign installer\s*"terminal\.integrated\.env\.osx":\s*\{\s*"PATH":\s*"[^\"]*agent-sign[^\"]*"\s*\},\s*"terminal\.integrated\.env\.linux":\s*\{\s*"PATH":\s*"[^\"]*agent-sign[^\"]*"\s*\}'
+# The snippet the installer adds, under either installer's comment, pointing
+# at either directory.
+pattern = r',?\s*// Added (?:automatically by agent-sign installer|by the agent-commits installer)\s*"terminal\.integrated\.env\.osx":\s*\{\s*"PATH":\s*"[^\"]*\.agent-(?:sign|commits)/bin[^\"]*"\s*\},\s*"terminal\.integrated\.env\.linux":\s*\{\s*"PATH":\s*"[^\"]*\.agent-(?:sign|commits)/bin[^\"]*"\s*\}'
 
 for config_path in ide_configs:
     if not os.path.exists(config_path):
@@ -117,40 +134,43 @@ for config_path in ide_configs:
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             content = f.read()
-        if ".agent-sign/bin" not in content:
+        if ".agent-sign/bin" not in content and ".agent-commits/bin" not in content:
             continue
         new_content = re.sub(pattern, "", content)
         if new_content != content:
             with open(config_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
-            print(f"  \033[0;32m✓\033[0m Reverted agent-sign config in {config_path}")
+            print(f"  \033[0;32m✓\033[0m Removed agent-commits' terminal PATH from {config_path}")
     except Exception as e:
         print(f"  \033[0;33m⚠\033[0m Could not revert {config_path}: {e}")
 PYEOF
 
 # ─── Step 5: Remove Antigravity rule ─────────────────────────────────────────
-if [ -f "$HOME/.gemini/config/rules/agent-sign.md" ]; then
-    rm -f "$HOME/.gemini/config/rules/agent-sign.md"
-    ok "Removed Antigravity rule"
-fi
+for rule in agent-commits agent-sign; do
+    if [ -f "$HOME/.gemini/config/rules/$rule.md" ]; then
+        rm -f "$HOME/.gemini/config/rules/$rule.md"
+        ok "Removed Antigravity rule $rule.md"
+    fi
+done
 
 # ─── Step 6: Remove installed directory ─────────────────────────────────────
-info "Removing ~/.agent-sign directory..."
+info "Removing ~/.agent-commits (and ~/.agent-sign)..."
 
-if [ -L "$HOME/.agent-sign" ]; then
-    rm -f "$HOME/.agent-sign"
-    ok "Removed the $HOME/.agent-sign link"
-elif [ -d "$HOME/.agent-sign" ]; then
-    rm -rf "$HOME/.agent-sign"
-    ok "Removed $HOME/.agent-sign (binaries, keys, config, socket)"
-else
-    ok "~/.agent-sign does not exist (already clean)"
-fi
-
-if [ -d "$HOME/.agent-commits" ]; then
-    rm -rf "$HOME/.agent-commits"
-    ok "Removed $HOME/.agent-commits (binaries, keys, config, socket)"
-fi
+# A link is removed, never followed: if either name links to a directory you
+# keep somewhere else, that directory (and the key in it) is left for you.
+for dir in "$HOME/.agent-commits" "$HOME/.agent-sign"; do
+    if [ -L "$dir" ]; then
+        TARGET="$(cd "$dir" 2>/dev/null && pwd -P || true)"
+        rm -f "$dir"
+        ok "Removed the link $dir"
+        if [ -n "$TARGET" ] && [ -d "$TARGET" ] && [ "$TARGET" != "$HOME/.agent-commits" ] && [ "$TARGET" != "$HOME/.agent-sign" ]; then
+            warn "Left $TARGET, which it pointed to: delete it yourself if you no longer need the agent key in it"
+        fi
+    elif [ -d "$dir" ]; then
+        rm -rf "$dir"
+        ok "Removed $dir (programs, key, config, leases, socket)"
+    fi
+done
 
 # ─── Step 7: Summary ────────────────────────────────────────────────────────
 echo ""

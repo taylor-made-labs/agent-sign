@@ -8,10 +8,10 @@ If Cursor is installed, `./scripts/install.sh` adds agent-commits' directory to 
 ```json
 {
   "terminal.integrated.env.osx": {
-    "PATH": "${env:HOME}/.agent-sign/bin:${env:PATH}"
+    "PATH": "${env:HOME}/.agent-commits/bin:${env:PATH}"
   },
   "terminal.integrated.env.linux": {
-    "PATH": "${env:HOME}/.agent-sign/bin:${env:PATH}"
+    "PATH": "${env:HOME}/.agent-commits/bin:${env:PATH}"
   }
 }
 ```
