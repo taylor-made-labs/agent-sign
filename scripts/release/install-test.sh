@@ -11,6 +11,8 @@
 #      left in place by the uninstaller
 #   4. uninstalling: nothing left but what the docs say is left
 #
+# and first, that answering no at the installer's first question changes nothing.
+#
 # It never touches the real home or the real user services: HOME is a
 # throwaway directory, git's global config is that home's, and `systemctl`
 # is a stand-in on PATH that logs each call and, for `enable --now` and
@@ -116,6 +118,14 @@ verified() {
     local home="$1" repo="$2"
     [ "$(cd "$repo" && in_home "$home" /usr/bin/git log -1 --format=%G?)" = "G" ]
 }
+
+echo "== 0. Saying no at the first question changes nothing"
+H0="$(new_home declined)"
+(cd "$SRC" && printf 'n\n' | env -i HOME="$H0" PATH="$H0/fakebin:/usr/bin:/bin" TERM=dumb \
+    script -qec "bash scripts/install.sh" /dev/null) >"$H0/install.log" 2>&1
+check "it showed what it would change"        grep -q 'This will:' "$H0/install.log"
+check "no ~/.agent-commits"                   test ! -e "$H0/.agent-commits"
+check "no PATH block"                         bash -c "! grep -q agent-commits '$H0/.bashrc'"
 
 echo "== 1. Fresh install"
 H1="$(new_home fresh)"

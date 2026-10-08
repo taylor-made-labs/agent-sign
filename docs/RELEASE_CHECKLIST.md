@@ -28,12 +28,21 @@ hold, and the README says so), or **Person** (only the maintainer can do it).
 | # | Check | How it's run | Status |
 |---|---|---|---|
 | R1 | No secrets in the history | `python3 scripts/release/scan-history-secrets.py . --all`, and gitleaks in CI once the CI patch is applied. | **Pass** locally (0 findings, 7 Oct 2026) |
-| R2 | License: MIT OR Apache-2.0 | `LICENSE-MIT`, `LICENSE-APACHE`, and `license = "MIT OR Apache-2.0"` in `Cargo.toml`. A dependency license check (`cargo deny`) in CI. | Files **Pass**; `cargo deny` **Open** |
-| R3 | Fresh readers trust it | Two new readers given only `README.md` and `docs/INSTALL.md` say what it does, what it doesn't protect against, and every reason they'd hesitate to use it. Each reason gets fixed or is a stated limit. A held-out reader checks only at the end. | **Open** |
+| R2 | License: MIT OR Apache-2.0 | `LICENSE-MIT`, `LICENSE-APACHE`, and `license = "MIT OR Apache-2.0"` in `Cargo.toml`. A dependency license check (`cargo deny`) in CI. | **Pass** (7 Oct 2026): files, and `cargo deny check` on the Pi: advisories, bans, licenses, sources all ok |
+| R3 | Fresh readers trust it | Two new readers given only `README.md` and `docs/INSTALL.md` say what it does, what it doesn't protect against, and every reason they'd hesitate to use it. Each reason gets fixed or is a stated limit. A held-out reader checks only at the end. | First round done (7 Oct 2026): two readers (a developer, an engineering lead). Fixed from their reports: the opening overclaimed agent identity; GitHub key added without asking; agents in terminal panes skipped the tool; no security policy; the installer's reach shown only in INSTALL.md (it now lists its changes and asks). Left for the maintainer: agent commits show as Verified for the person (a direction, not a wording fix). Held-out reader **Open**, after the remaining fixes. |
 | R4 | Every claim is backed | Each claim in the README points to an F check that passes, or is stated as a limit. | **Open** |
 | R5 | Clean install from a release | On a clean Mac and a clean Linux machine, following only the README with a downloaded release (no Rust), the install ends in a verified agent commit. Repeatable on Linux: `scripts/release/install-test.sh` (fresh install to a verified commit, upgrade from agent-sign's layout keeping key and lease, a state folder linked elsewhere, uninstall; 31 checks, in throwaway homes with a stand-in systemd). | Linux from source **Pass** on the Pi (ARM64), 7 Oct 2026: 31 of 31, and it catches planted flaws (2 of 2). From a release **Open** (no release yet). macOS **Person**: the installer replaces the live LaunchAgent, so it's run on the Mac by its owner. |
 | R6 | CI on every push | macOS, Linux x86_64 and Linux ARM64: fmt, clippy, tests, secret scan. | **Person**: apply `docs/release/ci-workflows.patch` (agents can't change `.github/workflows/`) |
 | R7 | Release downloads and Homebrew | A tag builds archives for macOS arm64 and x86_64 and Linux x86_64 and ARM64, with `SHA256SUMS.txt`; the formula installs from them. The formula's setup step is `install.sh --from-homebrew <prefix>`. | **Open** |
+
+## Only the maintainer
+
+| # | What | Why only them |
+|---|---|---|
+| P1 | Apply `docs/release/ci-workflows.patch` and push. | Agents can't change `.github/workflows/`. |
+| P2 | Turn on private vulnerability reporting (Settings, Code security), which `SECURITY.md` points to. | A repository setting. |
+| P3 | Click the real approval dialog once on macOS (F9), and run the installer on the Mac (R5). | It replaces the live service on the maintainer's machine. |
+| P4 | Merge `release/v0.1` into `main`, and tag `v0.1.0`. | Agents don't commit to `main`. |
 
 ## Last: onboarding and polish
 

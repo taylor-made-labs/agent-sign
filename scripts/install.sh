@@ -22,6 +22,7 @@ set -euo pipefail
 # Usage:
 #   ./scripts/install.sh                         from a source checkout or a release archive
 #   install.sh --from-homebrew <prefix>          after `brew install agent-commits`
+#   --yes                                        don't stop to ask before changing things
 # =============================================================================
 
 STATE_DIR="$HOME/.agent-commits"
@@ -40,8 +41,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(dirname "$SCRIPT_DIR")"
 
 HOMEBREW_PREFIX_ARG=""
+ASSUME_YES=false
 while [ $# -gt 0 ]; do
     case "$1" in
+        --yes|-y)
+            ASSUME_YES=true
+            shift
+            ;;
         --from-homebrew)
             HOMEBREW_PREFIX_ARG="${2:-}"
             [ -n "$HOMEBREW_PREFIX_ARG" ] || { echo "--from-homebrew needs the formula's prefix" >&2; exit 2; }
@@ -72,6 +78,26 @@ echo -e "${BOLD}╔════════════════════�
 echo -e "${BOLD}║            agent-commits Installer (pre-release)          ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
+
+# ─── Before anything: say what will change, and ask ────────────────────────
+# Someone at a terminal sees every change before it's made (docs/INSTALL.md
+# has the details) and can stop here. Without a terminal, or with --yes, it
+# goes ahead.
+if [ -t 0 ] && [ "$ASSUME_YES" = false ]; then
+    echo "This will:"
+    echo "  • put agent-commits' programs, a new agent signing key, and its config in ~/.agent-commits"
+    echo "  • add the agent key to git's allowed_signers file, under your git email"
+    echo "  • install a user service that keeps agent-commitsd running ($( [ "$(uname -s)" = Darwin ] && echo launchd || echo systemd))"
+    echo "  • put ~/.agent-commits/bin first on PATH in the shell profiles you have"
+    echo "    (.zshrc, .zprofile, .bashrc, .bash_profile), so agents started from them use its git"
+    echo "  • do the same for the terminals of Cursor, VS Code and Windsurf, if installed,"
+    echo "    and add a rule for Google Antigravity, if installed"
+    [ -d "$HOME/.agent-sign" ] && echo "  • move your agent-sign install to ~/.agent-commits, keeping its key and leases"
+    echo "It asks separately before adding anything to your GitHub account."
+    echo "./scripts/uninstall.sh undoes all of it."
+    read -r -p "Continue? [Y/n] " REPLY_GO || REPLY_GO=""
+    case "$REPLY_GO" in [nN]|[nN][oO]) echo "Nothing was changed."; exit 0 ;; esac
+fi
 
 # ─── Step 0: Prerequisites & Binary Resolution ──────────────────────────────
 step "Resolving binaries"
