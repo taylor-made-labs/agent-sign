@@ -1,26 +1,25 @@
-# Integrating Agent-Sign with Aider
+# agent-commits with Aider
 
-[Aider](https://aider.chat) automatically creates Git commits after editing files.
+[Aider](https://aider.chat) commits after each change it makes.
 
----
+## Setup
 
-## 1. Zero-Config Setup
+After `./scripts/install.sh`, start Aider from a new terminal so it inherits
+the `PATH` with agent-commits' wrapper first:
 
-When you run `./scripts/install.sh`, `agent-sign` is automatically added to your shell profile (`~/.zshrc`, `~/.zprofile`, `~/.bashrc`).
-
-Because Aider is launched from your shell terminal, it inherits `PATH` automatically:
-
-```bash
+```sh
 aider
 ```
 
-**Zero wrappers, zero aliases required.**
+## What happens
 
----
-
-## 2. Benefits for Aider Users
-
-* **No More Prompt Hell**: Aider commits rapidly after every file edit. Under hardware-backed keys or 1Password, this would normally mean an interrupt every 30 seconds.
-* **One-Touch Session Leasing**: You approve the session lease **once** (desktop dialog or terminal prompt) when Aider makes its first commit, and all subsequent incremental commits during that window (default 2 hours) sign headlessly in milliseconds.
-* **100% Cryptographic Verification**: Commits are signed with your dedicated Agent Sub-Key and earn the green "Verified" badge on GitHub/GitLab.
-* **Protected Personal Key**: Aider never accesses your personal private key, hardware token, or 1Password vault.
+- Aider's commits have no terminal attached, so agent-commits treats them as the
+  agent's. The first one in a repository asks you once for a lease (showing
+  which branches it covers and when it ends); after that, Aider's commits in
+  that repository are signed with the agent key without asking.
+- Commits on `main` or `master` are refused, so run Aider on another branch.
+- Aider commits often: the default limit is 10 agent commits a minute per
+  repository (`max_commits_per_minute`).
+- Your own commits from a terminal keep your normal signing.
+- Agent commits show on GitHub as Verified for you, because the agent key is
+  registered on your account.

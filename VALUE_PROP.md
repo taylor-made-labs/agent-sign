@@ -1,70 +1,67 @@
-# Agent-Sign: Value Proposition & Product Commitments
+# agent-commits: what it promises, and what it delivers today
 
-- **Status**: Living Contract / Ground Truth
-- **Version**: 1.0.0
-- **Purpose**: Tracks the explicit promises made to developers and teams, and the measurable acceptance criteria required to claim success.
+- **Status:** pre-release (0.1.0), checked against the code on 30 Sept 2026.
+- **Purpose:** the promises agent-commits makes to the people who use it, each with
+  where it stands and how that's known. A promise that isn't kept yet says
+  so.
 
----
+## The problem
 
-## 1. Executive Mission
+AI coding agents commit often. If you sign your commits with a hardware key,
+1Password or a passkey, each of those commits stops for your fingerprint or a
+touch, and the agent waits. The usual ways out are worse: turning signing
+off, or handing the agent your own key.
 
-`Agent-Sign` resolves the fundamental collision between **interactive human security** and **autonomous AI coding agent execution** in Git workflows.
+## What agent-commits does
 
-We promise that developers can enable strict, cryptographic commit verification across all repositories without suffering repetitive biometric or hardware interrupts, without exposing their master credentials, and without misattributing human actions.
+It gives agents their own signing key, held by a small service on your
+machine, and asks you once per repository whether agents may sign there.
+That permission is a **lease**, and you see its terms (which branches, when it
+ends) before you approve. The terms are fixed when you approve and never grow.
 
----
+## Promises
 
-## 2. The 5 Target Workflows & Our Commitments
+| # | Promise | Today | How it's known |
+|---|---|---|---|
+| 1 | You're asked once per repository, not once per commit. | **Kept.** Leases are saved, so restarts and sleep don't ask again. | Tests in `test_lease_engine.rs` and `test_persistent_identity_leases.rs`; daily use on the author's Mac. |
+| 2 | A lease's terms never grow on their own. | **Kept.** Config changes can only narrow a lease already granted. | `test_lease_terms.rs`, including tests that fail under deliberate mutations. |
+| 3 | Your own key stays out of agents' commits. | **Kept for commits through the wrapper.** Agents sign with a separate key; your terminal commits go to your own signer untouched. An agent can still call the real git or your signer directly. | `test_human_isolation.rs`, `test_signature_equivalence.rs`; the install test. |
+| 4 | Agent commits are signed in git's standard format and verify on GitHub. | **Kept.** They show as Verified because the agent key is registered on *your* account and you're the committer, so they're attributed to you. | `test_crypto_verification.rs`, `test_e2e_git_commit.rs`. |
+| 5 | Agent commits never land on protected branches. | **Kept** for `main` and `master` by default, checked on every commit; not for a detached HEAD. | `test_lease_engine.rs`, `test_lease_terms.rs`. |
+| 6 | If anything is wrong, the commit is refused, never signed some other way. | **Kept.** | `test_human_isolation.rs`, `test_refusals_and_revoke.rs`. |
+| 7 | Agent work is attributed to the agent, not to you. | **Not yet.** The key is registered under your email and account. A separate machine account is the planned fix. | Release checklist, M5 and N4. |
+| 8 | An agent can't approve its own lease or take the key. | **Not yet.** Agents run as your user, so they can read the key and edit the config. A separate service user is the planned fix. | Release checklist, N1 and N2. |
+| 9 | Merges, rebases and cherry-picks are agent-signed too. | **Not yet.** They use your own signing. | Release checklist, M2. |
+| 10 | The approval can't be given by accident. | **Not yet.** It's a confirmation dialog, not a biometric check, and Approve is its default button. | Release checklist, M9. |
 
-### Workflow 1: 1Password & Biometric Touch ID Users
-* **The Reality Today**: Every time an autonomous agent creates an incremental commit, a macOS modal or 1Password window demands a fingerprint, halting execution and destroying developer focus.
-* **Our Commitment**:
-  * **One-Touch Session Leasing**: Prompt for Touch ID **once** at the start of a session/task, granting a cryptographically bound lease (e.g., 2 hours).
-  * **Headless Subsequent Commits**: All subsequent commits during the lease sign silently in milliseconds.
-  * **100% Human Isolation**: Any commit initiated directly by the human (via terminal shell or IDE GUI button) bypasses the agent lease and routes to 1Password with Touch ID as normal.
+## Who it's for today
 
-### Workflow 2: YubiKey & Physical Hardware Security Token Users
-* **The Reality Today**: Security-conscious developers using FIDO2/PIV hardware tokens (`sk-ssh-ed25519` or OpenPGP smartcards) must physically reach over and touch the metal contact on their USB port for *every single commit*.
-* **Our Commitment**:
-  * **Delegated Sub-Key Delegation**: The physical token is touched once to authorize the local agent session; the agent operates with a sandboxed sub-key that cannot access authentication or SSH server access.
+- **1Password, Secure Enclave or passkey signers on macOS:** the case agent-commits is
+  used for daily. Your own commits still go through your signer; the agent's
+  go through agent-commits.
+- **Hardware keys (YubiKey, FIDO2):** the same; the agent key is an ordinary
+  file key, so the agent's commits need no touch. Your key isn't involved in
+  approving leases.
+- **GPG users:** your own commits keep using GPG. Agent commits use SSH
+  signatures, so verifying them needs an `allowed_signers` file (the
+  installer sets one up) and, on GitHub, the agent key as a signing key.
+- **Linux desktops:** builds and passes its tests on x86_64 and ARM64; little
+  daily use yet. The approval dialog needs `zenity` or `kdialog`.
+- **Servers and containers:** with no screen, agent-commits can't ask you. You can
+  turn on `auto_approve`, which grants every lease without asking; that's
+  only safe where every process that can reach the service is trusted.
 
-### Workflow 3: Traditional GPG & Pinentry Users
-* **The Reality Today**: Subshell and tool-sandbox agent executions cannot handle interactive `pinentry` dialogs. The agent either crashes, hangs in an infinite wait loop, or silently passes `--no-gpg-sign`, creating untrusted commits.
-* **Our Commitment**:
-  * **Deterministic Non-Blocking Signing**: Replaces brittle `pinentry` terminal hooks with an asynchronous local daemon that speaks Git's standard `gpg.ssh.program` interface directly.
+## Not yet measured
 
-### Workflow 4: Enterprise & Regulated Teams (SOC2 / ISO 27001)
-* **The Reality Today**: Organizations enforce GitHub branch protection (`Require signed commits`). When developers try to use AI agents, they are blocked, prompting engineering managers to either weaken repository rules or ban autonomous agent commits.
-* **Our Commitment**:
-  * **Unbroken Branch Protection**: All agent commits satisfy GitHub's cryptographic signature requirements, displaying the green "Verified" badge.
-  * **Cryptographic Provenance**: Every commit provides tamper-evident audit trailers documenting agent model, session lease ID, and human supervisor.
-  * **Policy Enforcement**: Built-in guardrails block direct commits to `main`/`master` and rate-limit runaway commit loops.
-  * **Corporate Compliance Flexibility**: Configurable attribution modes (`trailers` mode for strict employee LDAP/SSO compliance; `split` mode for open-source transparency).
+- **Overhead per commit.** No benchmark exists. On a Raspberry Pi 5, a whole
+  agent commit under an existing lease took about 16 ms in the demo script
+  (one run, not a benchmark).
 
-### Workflow 5: DevContainers, Docker & Remote SSH
-* **The Reality Today**: Forwarding your master private key or full SSH agent socket into a container where an untrusted AI agent runs creates severe host blast-radius risk.
-* **Our Commitment**:
-  * **Zero Blast-Radius Signing**: The agent key is restricted strictly to signing Git objects. It cannot clone private repos, push to remotes, or open SSH shell sessions on servers.
+## Things agent-commits won't do
 
----
-
-## 3. Measurable Acceptance Criteria (How We Prove It)
-
-To claim that `Agent-Sign` delivers on its value proposition, the system must continually satisfy the following measurable benchmarks:
-
-| Benchmark | Target Metric | How It Is Verified |
-| :--- | :--- | :--- |
-| **Signing Latency** | < 10 milliseconds overhead per commit | End-to-end benchmark test comparing raw `git commit` to `agent-sign commit`. |
-| **Prompt Frequency** | Exactly 1 prompt per lease duration (e.g. 2 hours) | Automated session test running 20 commits in succession with 0 intermediate interrupts. |
-| **Human False-Positive Rate** | 0.00% | Automated test simulating human terminal and IDE GUI commits, ensuring 0% are intercepted by the agent key. |
-| **GitHub Verification Rate** | 100% "Verified" badge compatibility | Cryptographic test validating output with `/usr/bin/ssh-keygen -Y verify` against allowed signers. |
-| **Fail-Closed Security** | 100% fail-closed on invalid token / expired lease | Test suites verifying that corrupted, forged, or expired tokens reject signing without fallback. |
-
----
-
-## 4. Explicit Anti-Goals (What We Will Never Do)
-
-1. **Never weaken human security**: We will never recommend or automate disabling biometric prompts for the human's personal keys.
-2. **Never store unencrypted master credentials**: The human's master SSH/GPG keys will remain solely inside their secure hardware vault (1Password / YubiKey / Secure Enclave).
-3. **Never rely on the LLM's memory**: All interception and policy enforcement must be deterministic in the software runtime, never dependent on prompting the AI model to pass flags.
-4. **Never create opaque lock-in**: Keys, signatures, and configs follow OpenSSH and Git native standards with zero proprietary lock-in.
+1. Weaken your own signing: it never changes how your own commits are
+   signed, and never asks for your key.
+2. Rely on the agent remembering anything: interception is in the `git` on
+   its `PATH`, not in a prompt.
+3. Lock you in: keys, signatures and config are OpenSSH, git and TOML.
+4. Let a lease grow: new access always needs a new approval.

@@ -1,0 +1,130 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 922b5b6..59e3121 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -1,10 +1,13 @@
+ name: CI
+ 
++# Every push and pull request, on the three platforms agent-commits ships for:
++# macOS (arm64), Linux x86_64, and Linux ARM64 (the Raspberry Pi's
++# architecture). Plus a scan of the whole history for secrets, since the
++# history becomes public at release.
++
+ on:
+   push:
+-    branches: [ "main" ]
+   pull_request:
+-    branches: [ "main" ]
+ 
+ env:
+   CARGO_TERM_COLOR: always
+@@ -16,7 +19,9 @@ jobs:
+     strategy:
+       fail-fast: false
+       matrix:
+-        os: [ubuntu-latest, macos-latest]
++        # ubuntu-24.04-arm is free for public repositories; while the
++        # repository is private it may wait for a runner.
++        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+ 
+     steps:
+       - name: Checkout code
+@@ -30,11 +35,28 @@ jobs:
+       - name: Rust Cache
+         uses: Swatinem/rust-cache@v2
+ 
+-      - name: Check Formatting
++      - name: Check formatting
+         run: cargo fmt --check
+ 
+-      - name: Run Clippy Linter
+-        run: cargo clippy -- -D warnings
++      - name: Clippy (all targets, warnings are errors)
++        run: cargo clippy --all-targets --locked -- -D warnings
++
++      - name: Tests (unit, integration, end to end)
++        run: cargo test --locked --no-fail-fast
++
++  secrets:
++    name: Secret scan (full history)
++    runs-on: ubuntu-latest
++    steps:
++      - name: Checkout the whole history
++        uses: actions/checkout@v4
++        with:
++          fetch-depth: 0
++
++      - name: gitleaks
++        uses: gitleaks/gitleaks-action@v2
++        env:
++          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ 
+-      - name: Run All Tests (Unit, Integration & E2E)
+-        run: cargo test --verbose
++      - name: agent-commits' own scan (every blob on every ref; prints no values)
++        run: python3 scripts/release/scan-history-secrets.py . --all
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index a93941a..227a7b3 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -18,13 +18,21 @@ jobs:
+         include:
+           - os: macos-latest
+             target: aarch64-apple-darwin
+-            archive_name: agent-sign-aarch64-apple-darwin
+-          - os: macos-13
++            archive_name: agent-commits-aarch64-apple-darwin
++          # Built on the arm64 runner for the Intel target: the macos-13
++          # Intel runner this used is retired, and the only release run
++          # (agent-sign v0.1.0) waited 24 hours for one and was cancelled.
++          - os: macos-latest
+             target: x86_64-apple-darwin
+-            archive_name: agent-sign-x86_64-apple-darwin
++            archive_name: agent-commits-x86_64-apple-darwin
+           - os: ubuntu-latest
+             target: x86_64-unknown-linux-gnu
+-            archive_name: agent-sign-x86_64-unknown-linux-gnu
++            archive_name: agent-commits-x86_64-unknown-linux-gnu
++          # Linux ARM64, for the Raspberry Pi (build-order: "a Linux ARM
++          # build"). Built natively on GitHub's ARM runner.
++          - os: ubuntu-24.04-arm
++            target: aarch64-unknown-linux-gnu
++            archive_name: agent-commits-aarch64-unknown-linux-gnu
+ 
+     steps:
+       - name: Checkout code
+@@ -36,7 +44,7 @@ jobs:
+           targets: ${{ matrix.target }}
+ 
+       - name: Build release binaries
+-        run: cargo build --release --target ${{ matrix.target }}
++        run: cargo build --release --locked --target ${{ matrix.target }}
+ 
+       - name: Package release archive
+         shell: bash
+@@ -45,15 +53,19 @@ jobs:
+           mkdir -p "$STAGING_DIR/bin"
+           mkdir -p "$STAGING_DIR/scripts"
+ 
+-          # Copy compiled binaries
+-          cp "target/${{ matrix.target }}/release/agent-signd" "$STAGING_DIR/bin/"
+-          cp "target/${{ matrix.target }}/release/agent-sign"  "$STAGING_DIR/bin/"
+-          cp "target/${{ matrix.target }}/release/agent-git"   "$STAGING_DIR/bin/"
+-          cp "target/${{ matrix.target }}/release/agent-git"   "$STAGING_DIR/bin/git"
++          # agent-commits' programs, `git` as a copy of the wrapper, and
++          # agent-sign's old names as links (see docs/MIGRATION.md)
++          for n in agent-commitsd agent-commits agent-commits-ssh-sign agent-commits-git; do
++            cp "target/${{ matrix.target }}/release/$n" "$STAGING_DIR/bin/"
++          done
++          cp "target/${{ matrix.target }}/release/agent-commits-git" "$STAGING_DIR/bin/git"
++          ln -s agent-commitsd    "$STAGING_DIR/bin/agent-signd"
++          ln -s agent-commits     "$STAGING_DIR/bin/agent-sign"
++          ln -s agent-commits-git "$STAGING_DIR/bin/agent-git"
+ 
+           # Copy scripts and metadata
+           cp -r scripts/* "$STAGING_DIR/scripts/"
+-          cp README.md LICENSE "$STAGING_DIR/"
++          cp README.md LICENSE-MIT LICENSE-APACHE "$STAGING_DIR/"
+ 
+           # Create archive
+           cd pkg

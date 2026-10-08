@@ -1,17 +1,10 @@
-# Integrating Agent-Sign with Cursor
+# agent-commits with Cursor
 
-Cursor's Agent Mode executes terminal tools and git operations within workspace sessions.
+## Setup
 
----
+If Cursor is installed, `./scripts/install.sh` adds agent-commits' directory to the
+`PATH` of Cursor's integrated terminal, in Cursor's `settings.json`:
 
-## 1. Automated Setup
-
-When you run `./scripts/install.sh`, the installer detects your Cursor installation and automatically adds the environment path configuration to `settings.json`.
-
-**No manual edits required.**
-
-### Reference Configuration (Applied Automatically)
-For reference, the installer adds this to `settings.json`:
 ```json
 {
   "terminal.integrated.env.osx": {
@@ -23,12 +16,30 @@ For reference, the installer adds this to `settings.json`:
 }
 ```
 
----
+`./scripts/uninstall.sh` removes it. Restart Cursor after installing.
 
-## 2. The Critical Invariant: 100% Human Isolation
+## Who agent-commits thinks is committing
 
-One of the foundational innovations of `Agent-Sign` is protecting human commits whether in the GUI or terminal:
+The wrapper decides by one test: are standard input and output both
+terminals? If so, it's you; otherwise, an agent.
 
-* **When Cursor's Agent commits**: Cursor's tool execution environment runs `git commit` non-interactively via piped stdio. The command hits `~/.agent-sign/bin/git`, requests an event token from `agent-signd`, and signs headlessly with the Agent Sub-Key.
-* **When YOU commit in Cursor's Source Control sidebar**: The VS Code / Cursor GUI button invokes the internal Git extension. Because it does not run through the agent event ticket workflow, `agent-sign` delegates directly to your personal signing agent (1Password, YubiKey, GPG, or standard ssh-keygen).
-* **When YOU type `git commit` in Cursor's integrated terminal**: Because an interactive terminal has an active TTY attached (`is_terminal()`), `agent-git` detects human interactive usage and passes directly to your standard Git toolchain. Your manual commits are never falsely attributed to the AI.
+- **You, typing `git commit` in the integrated terminal:** a terminal, so
+  your normal git and signer. Nothing changes for you.
+- **Cursor's agent running `git commit`:** if Cursor runs the command without
+  a terminal, agent-commits treats it as the agent's: one lease dialog per repository,
+  then signed with the agent key. If Cursor runs it in a terminal, agent-commits
+  can't tell it from you, and it goes to your own signer. Check which by
+  letting the agent commit once and running
+  `git log -1 --format='%an | %G?'`: an agent commit through agent-commits shows the
+  agent's name as author.
+- **The Source Control commit button:** it runs git without a terminal. If
+  that git resolves to agent-commits' wrapper (on macOS, Cursor may take `PATH` from
+  your login shell), agent-commits treats your click as an agent commit and asks for a
+  lease. If you'd rather it didn't, point Cursor's `git.path` setting at your
+  real git (for example `/usr/bin/git`).
+
+## Things to know
+
+- Agent commits show on GitHub as Verified for you, since the agent key is
+  registered on your account.
+- Merges and rebases use your own signing.

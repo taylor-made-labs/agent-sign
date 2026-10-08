@@ -5,6 +5,31 @@
 - **Target Repository**: `agent-sign` (`v0.1.0`)
 - **Review Scope**: Cryptographic soundness, runtime architecture, security invariants, usability, setup experience, and alignment between documentation/specifications and real implementation.
 
+> **A historical record.** This review is of agent-sign as it was on
+> 25 Sept 2026, before it became agent-commits; the file names and quotes are
+> agent-sign's. It's kept because it explains many of the changes since.
+> Where each finding stands in agent-commits (checked 30 Sept 2026):
+>
+> | Finding | Now |
+> |---|---|
+> | 1. Branch-switching deadlock | Fixed: leases can cover every unprotected branch, and revocation works. |
+> | 2. "Touch ID" is an AppleScript dialog | The docs no longer claim Touch ID. The dialog is still a confirmation with Approve as its default button (open; release checklist M9). |
+> | 3. `trailers` mode never applied | Fixed for messages given with `-m` or `--message`; `-F` and editor messages are left as they are. |
+> | 4. Repository config never loaded | Fixed for the wrapper's rules and attribution, merged over the person's config. The service deliberately reads only the person's own config. |
+> | 5. Service blocks during dialogs | Fixed: a thread per connection, and the lock isn't held during a dialog. |
+> | 6. Repositories keyed by folder name | Fixed: keyed by canonical path. |
+> | 7. Hard-coded `/usr/bin/git` and `ssh-keygen` | Fixed: git is found on `PATH`; `fallback_program` is used. |
+> | 8. Tokens never expire; revocation a no-op | Fixed: tokens expire after 60 seconds; `agent-commits revoke` works (and since 30 Sept, reports when nothing matched). |
+> | Usability 1. Terminal commits treated as the agent's | Fixed: commits with a terminal on standard input and output are the person's. An editor's commit button is still treated as an agent's. |
+> | Usability 2. No service management | Fixed: launchd and systemd user services. |
+> | Usability 3. `status` says little | Fixed: it lists leases. |
+> | Usability 4. Merge, rebase, cherry-pick not intercepted | Open (release checklist M2). |
+> | Usability 5. `alias` mode shows Unverified | Still true with the default `.internal` email; documented in SPEC.md. |
+>
+> The review's praise of a "zero blast radius" key needs a correction: the key
+> can't log in or push, but it's unencrypted and readable by the person's user,
+> and commits signed with it show as Verified for the person.
+
 ---
 
 ## 1. Executive Summary & Verdict
@@ -49,7 +74,7 @@ However, an adversarial audit of the codebase reveals a sharp dichotomy between 
 ### 🔴 Finding 1: The Branch-Switching Deadlock (Critical Bug)
 
 **Severity**: High / Functional Blocker  
-**Affected Files**: [`src/bin/agent_signd.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_signd.rs#L263-L289), [`src/lease.rs`](file:///Users/account1/dev/agent-commits/src/lease.rs#L85-L103)
+**Affected Files**: `src/bin/agent_signd.rs`, `src/lease.rs`
 
 #### The Flaw:
 In `agent_signd.rs`:
@@ -82,7 +107,7 @@ if !st.lease_engine.has_active_lease(&repo) {
 ### 🔴 Finding 2: "Touch ID" is Fictitious (AppleScript Dialogue Deception)
 
 **Severity**: High / Misleading Claim & Security Vulnerability  
-**Affected File**: [`src/bin/agent_signd.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_signd.rs#L336-L358)
+**Affected File**: `src/bin/agent_signd.rs`
 
 #### The Flaw:
 The README, SPEC, and integration docs claim:
@@ -106,7 +131,7 @@ let output = Command::new("osascript").arg("-e").arg(&script).output();
 ### 🔴 Finding 3: Commit Message Transformation (`mode = "trailers"`) is Dead Code
 
 **Severity**: High / Broken Enterprise Feature  
-**Affected Files**: [`src/attribution.rs`](file:///Users/account1/dev/agent-commits/src/attribution.rs#L55-L70), [`src/bin/agent_git.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_git.rs#L147-L200)
+**Affected Files**: `src/attribution.rs`, `src/bin/agent_git.rs`
 
 #### The Flaw:
 `AttributionEngine::transform_commit_message` is designed to append `Co-Authored-By: Agent`, `X-Agent-Signer`, and `X-Agent-Lease`. It has a passing unit test in `tests/test_interceptor.rs`.
@@ -125,7 +150,7 @@ exec_system_git(&git_args, &env_pairs)
 ### 🔴 Finding 4: Repository-Level `.agent-sign.toml` is Never Loaded
 
 **Severity**: Medium / Broken Configuration Hierarchy  
-**Affected Files**: [`src/config.rs`](file:///Users/account1/dev/agent-commits/src/config.rs#L225-L257), [`src/bin/agent_git.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_git.rs#L149), [`src/bin/agent_signd.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_signd.rs#L189)
+**Affected Files**: `src/config.rs`, `src/bin/agent_git.rs`, `src/bin/agent_signd.rs`
 
 #### The Flaw:
 Both `agent_git` and `agent_signd` call:
@@ -143,7 +168,7 @@ Consequently:
 ### 🔴 Finding 5: Single-Threaded Daemon Blocks Listener During UI Prompts
 
 **Severity**: Medium / Denial of Service & Architecture Smell  
-**Affected File**: [`src/bin/agent_signd.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_signd.rs#L217-L270)
+**Affected File**: `src/bin/agent_signd.rs`
 
 #### The Flaw:
 The incoming connection loop in `agent_signd.rs` is synchronous:
@@ -173,7 +198,7 @@ While the dialog is displayed, the daemon listener is blocked from accepting any
 ### 🔴 Finding 6: Repository Collision by Directory Base Name
 
 **Severity**: Medium / Multi-Repo Collision  
-**Affected File**: [`src/bin/agent_git.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_git.rs#L40-L54)
+**Affected File**: `src/bin/agent_git.rs`
 
 #### The Flaw:
 In `get_repo_and_branch()`:
@@ -190,7 +215,7 @@ The repository identifier used for leases and rate limits is only the directory 
 ### 🔴 Finding 7: Hardcoded System Binaries & Linux Portability Failure
 
 **Severity**: Medium / Portability & Custom Setup Failure  
-**Affected Files**: [`src/bin/agent_git.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_git.rs#L25), [`src/bin/agent_sign.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_sign.rs#L29)
+**Affected Files**: `src/bin/agent_git.rs`, `src/bin/agent_sign.rs`
 
 #### The Flaw:
 - `agent-git` hardcodes `/usr/bin/git`. On macOS, this calls the Apple Xcode Command Line Tools wrapper, bypassing user-installed modern Git from Homebrew (`/opt/homebrew/bin/git`) or MacPorts. On NixOS or systems without `/usr/bin/git`, this fails completely.
@@ -201,7 +226,7 @@ The repository identifier used for leases and rate limits is only the directory 
 ### 🔴 Finding 8: Token Leak & Unimplemented Revocation
 
 **Severity**: Low / Resource Leak & Incomplete Implementation  
-**Affected Files**: [`src/bin/agent_signd.rs`](file:///Users/account1/dev/agent-commits/src/bin/agent_signd.rs#L294-L330), [`src/lease.rs`](file:///Users/account1/dev/agent-commits/src/lease.rs)
+**Affected Files**: `src/bin/agent_signd.rs`, `src/lease.rs`
 
 #### The Flaw:
 - Tokens are stored in a `HashSet<String>`. If an agent issues a token but aborts before committing (e.g. hook failure or linter failure), the token remains in `valid_tokens` forever. The 60-second automatic token expiration promised in `BEST_PRACTICES.md` is not implemented.
@@ -212,7 +237,7 @@ The repository identifier used for leases and rate limits is only the directory 
 ## 4. Usability & User Experience Perspective
 
 ### 1. The Human Isolation Catch-22 (Cursor / Terminal PATH Pollution)
-In [`docs/integrations/cursor.md`](file:///Users/account1/dev/agent-commits/docs/integrations/cursor.md#L14-L18), the setup instruction tells users to modify their Cursor terminal settings:
+In `docs/integrations/cursor.md`, the setup instruction tells users to modify their Cursor terminal settings:
 ```json
 {
   "terminal.integrated.env.osx": {

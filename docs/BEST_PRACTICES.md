@@ -1,64 +1,79 @@
-# Agent-Sign: Software Engineering Best Practices & Guidelines
+# Engineering practices
 
-- **Version**: 1.0.0
-- **Scope**: Architectural standards, security patterns, code quality, and testing practices for `agent-sign`.
+How agent-commits' code is meant to be written, and where it stands against each
+practice today (checked 30 Sept 2026). [CONTRIBUTING.md](../CONTRIBUTING.md)
+has the rules every change must keep; this page is the longer list of aims.
+Where the code doesn't meet an aim yet, it says so, so a contributor can
+tell an aim from a guarantee.
 
----
+## 1. Structure
 
-## 1. Architectural Principles
+- **Keep decisions in the library, and the programs thin.** `src/lease.rs`
+  (lease terms), `src/attribution.rs`, `src/crypto.rs`, `src/multiplexer.rs`
+  and `src/interceptor.rs` hold the decisions; `src/bin/` parses arguments,
+  talks to the socket and runs processes.
+  *Today:* mostly. `lease.rs` also saves `leases.json`, `config.rs` runs
+  `git config` for defaults, and the wrapper's local rules live in
+  `src/bin/agent_commits_git.rs`.
+- **One protocol, unchanged across the rename.** Newline-delimited JSON over
+  a Unix socket (`src/protocol.rs`), so old and new programs interoperate.
+  *Today:* yes.
 
-### 1.1. Clean Architecture & Separation of Concerns
-1. **Core Domain (`crypto`, `lease`, `attribution`)**:
-   - Must have **zero I/O dependencies** or environment side effects.
-   - Pure, deterministic, easily testable logic.
-   - Independent of Git CLI, OS sockets, or file systems.
-2. **Services & Multiplexer (`multiplexer`, `interceptor`, `protocol`)**:
-   - Manages routing, command inspection, and IPC message schemas.
-   - Decoupled from transport specifics (can be tested in memory).
-3. **Adapters & Binaries (`agent-sign`, `agent-git`, `agent-signd`)**:
-   - Outer shell responsible for parsing CLI arguments, reading OS environment, connecting to Unix domain sockets, and spawning child processes.
-   - Thin translation layers between OS interfaces and the Core Domain.
+## 2. Failing closed
 
-### 1.2. The Fail-Closed Security Doctrine
-* Any failure in cryptographic signature creation, lease validation, or socket communication **must terminate execution with a non-zero exit code and an informative stderr message**.
-* **Never** fall back to signing with an unverified key or bypassing verification on error.
-* **Never** print private key material, tokens, or secret hashes to stdout, stderr, or logs.
+- Any failure in lease checks, tokens, the socket or signing ends with a
+  non-zero exit and a message on standard error, and nothing is signed.
+  *Today:* yes (`test_human_isolation.rs`, `test_refusals_and_revoke.rs`).
+- Never fall back to another key. *Today:* yes. Without a token, signing goes
+  to the person's own `fallback_program`, which is the person's normal
+  signing, not a fallback for an agent.
+- Never print private keys or tokens. *Today:* keys are never printed;
+  single-use tokens appear only in the environment of the git process they're
+  for.
+- A setting that can't be read must not quietly widen access.
+  *Today:* an unreadable `max_lease_ceiling` stops the service. A config file
+  that isn't valid TOML is still ignored as a whole (defaults apply), which
+  is a gap.
 
-### 1.3. Sub-Millisecond Latency Budget
-* Git signing shims execute on every commit and Git operation.
-* Every millisecond of latency is felt by developers and agents:
-  * Static dispatch and minimal heap allocations.
-  * Unix Domain Sockets (`AF_UNIX`) over localhost TCP.
-  * Fast JSON framing with newline delimiters (`\n`).
-  * Process startup overhead target: `< 5ms`.
+## 3. Files and permissions
 
----
+- State lives in `~/.agent-commits` (formerly `~/.agent-sign`, left as a link),
+  mode 0700; the key and `leases.json` are 0600; the socket is 0600.
+  *Today:* yes. The key is **not encrypted** at rest.
+- Write state files atomically: a temporary file created 0600, synced, then
+  renamed. Never overwrite a file that couldn't be read. *Today:* yes for
+  `leases.json`.
+- Tokens are single-use, random (UUID v4), and expire after 60 seconds.
+  *Today:* yes.
 
-## 2. Security & File System Permissions
+## 4. Robustness
 
-1. **Restricted Runtime Directories**:
-   * All runtime sockets, keys, and session states must live in `~/.agent-sign/`.
-   * Directory permissions: strictly `0700` (`rwx------`).
-   * Private key file permissions: strictly `0600` (`rw-------`).
-   * Sockets: strictly `0600` (`rw-------`) accessible only by the current user.
-2. **Ephemeral Event Tokens**:
-   * Tokens must be single-use (consumed immediately upon signature).
-   * Unused tokens expire automatically after 60 seconds.
-   * Cryptographically random using OsRng / CSPRNG.
+- No panics on paths an agent or a malformed request can reach.
+  *Today:* requests are parsed without panicking, but the service still
+  unwraps its state lock (a panic in one connection would poison it for the
+  rest) and has a few `expect`s on checked invariants.
+- The service handles each connection on its own thread and never holds its
+  lock while a dialog is open. *Today:* yes.
+- Stop cleanly on SIGTERM. *Today:* not handled; the service relies on the
+  socket being removed and recreated on the next start.
 
----
+## 5. Speed
 
-## 3. Error Handling & Robustness
+- The wrapper and signing program run on every commit, so keep them small:
+  no async runtime, a Unix socket, a short-lived process.
+  *Today:* the overhead hasn't been benchmarked. A whole agent commit under
+  an existing lease took about 16 ms on a Raspberry Pi 5 in the demo script
+  (one run).
 
-* **No Unhandled Panics**: Never call `.unwrap()` or `.expect()` in runtime daemon or shim paths where user input, socket drops, or malformed Git buffers can occur.
-* Use explicit `Result<T, AgentSignError>` types with clear context.
-* Always clean up stale socket files (`unlink`) before binding the Unix listener.
-* Handle `SIGINT` and `SIGTERM` gracefully in the daemon.
+## 6. Tests
 
----
-
-## 4. Testing & Verification Hierarchy
-
-* **Unit Tests**: Test core domain logic (crypto, lease state transitions, attribution string templates) in memory.
-* **Integration Tests**: Test Unix socket communication and multiplexer decisions.
-* **End-to-End (E2E) Tests**: Spin up a real temporary Git repository using system `git`, execute actual commits, and verify signature validity via `/usr/bin/ssh-keygen -Y verify`.
+- Unit tests for lease terms, attribution and signatures in memory;
+  integration tests over a real socket; end-to-end tests with real git,
+  verified by `ssh-keygen` and `git log --show-signature`. The end-to-end
+  tests start their own service in a temporary home with its own socket and
+  stand-in dialogs, so they never touch an installed agent-commits or show a real
+  dialog.
+- Every fix comes with a test that fails without it.
+- *Today:* 72 tests. Not covered automatically: the wrapper's terminal check,
+  the real dialogs, and the installer (see the install test in
+  [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)).

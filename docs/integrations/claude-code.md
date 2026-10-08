@@ -1,36 +1,39 @@
-# Integrating Agent-Sign with Claude Code
+# agent-commits with Claude Code
 
-[Claude Code](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code) executes shell commands and git commits via its built-in tool execution runtime.
+[Claude Code](https://docs.anthropic.com/en/docs/claude-code) runs shell
+commands, `git commit` included, through its own tool runner.
 
----
+## Setup
 
-## 1. Zero-Config Setup
+After `./scripts/install.sh`, start Claude Code from a **new** terminal, so it
+inherits the `PATH` with agent-commits' wrapper first:
 
-When you run `./scripts/install.sh`, `agent-sign` is automatically added to your shell profile (`~/.zshrc`, `~/.zprofile`, `~/.bashrc`).
-
-Because Claude Code is launched from your shell terminal, it inherits `PATH` automatically:
-
-```bash
+```sh
 claude
 ```
 
-**Zero wrappers, zero aliases, zero environment variables required.**
+Check from inside a session that `git` is the wrapper: ask it to run
+`command -v git`, which should print a path ending in `.agent-sign/bin/git`.
 
-Whenever Claude Code invokes `git commit`, `~/.agent-sign/bin/git` intercepts the call and coordinates with `agent-signd`.
+## What happens
 
----
+1. Claude Code runs `git commit -m "..."`. Its tool runner has no terminal
+   attached, so the wrapper treats the commit as an agent's.
+2. The first time in a repository, you get one dialog (on macOS, or a Linux
+   desktop with `zenity` or `kdialog`) showing the repository, the branch,
+   which branches the lease covers, and when it ends: by default, when you
+   revoke it with `agent-commits revoke`.
+3. Approve, and later commits in that repository are signed with the agent
+   key without asking, until the lease ends. Commits on `main` or `master`
+   are refused.
+4. Commits you type yourself in a terminal go to your normal git and signer.
 
-## 2. What Happens During Execution
+## Things to know
 
-1. When Claude decides to commit (`git commit -m "feat: implement auth"`):
-   - Claude's tool runner calls `git`, which resolves to `~/.agent-sign/bin/git`.
-   - `agent-git` inspects the command and contacts `agent-signd`.
-2. **First Commit of Session**:
-   - A single confirmation prompt appears (macOS dialog, Linux desktop GUI, or interactive terminal prompt): *"AI Agent requesting commit signing lease for 2 hours."*
-   - You approve the session lease once.
-3. **Subsequent Commits**:
-   - Claude makes 10, 20, or 50 incremental commits headlessly.
-   - Zero interruptions, zero prompts.
-   - Every commit is signed with the dedicated Agent Sub-Key and displays the green "Verified" badge on GitHub/GitLab.
-4. **Your Terminal**:
-   - Running `git commit` in your normal interactive terminal uses your personal signing key (1Password, YubiKey, GPG, or OpenSSH) as normal.
+- `merge`, `rebase`, `cherry-pick`, `revert` and `pull` aren't intercepted:
+  they use your own signing, so they may ask for your fingerprint.
+- Agent commits show on GitHub as Verified for you, because the agent key is
+  registered on your account. See the README's limits.
+- Claude Code runs as your user, so it could read the agent key or edit
+  agent-commits' config if it set out to. agent-commits catches mistakes, not a determined
+  agent.

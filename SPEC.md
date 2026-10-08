@@ -1,204 +1,318 @@
-# SPECIFICATION: Agent-Sign (Deterministic AI Agent Git Commit Signing & Identity)
+# agent-commits: specification
 
-- **Status**: Draft / RFC
-- **Date**: 2026-09-25
-- **Methodology**: Spec-Driven Development (SDD) & Test-Driven Development (TDD)
+- **Status:** pre-release (0.1.0). This page describes what the code does
+  today, checked against it on 30 Sept 2026. Where agent-commits falls short of what it
+  aims for, the gap is stated next to the aim.
+- **Formerly:** agent-sign. `agent-signd` is now `agent-commitsd`, `agent-sign` is
+  `agent-commits-ssh-sign` (signing) and `agent-commits` (command line), `agent-git` is
+  `agent-commits-git`, and `~/.agent-sign` is `~/.agent-commits`. The old names and path remain
+  as links; see [docs/MIGRATION.md](docs/MIGRATION.md).
 
----
+## 1. The problem
 
-## 1. Executive Summary & Problem Statement
+When an AI coding agent commits in a repository where the person signs their
+commits with a hardware key, 1Password, or a passkey, every agent commit
+stops for the person's fingerprint or touch. The common workarounds are
+worse: turning signing off (unsigned commits, which fail "require signed
+commits" rules), or giving the agent the person's own key (the agent can then
+sign anything as the person, anywhere).
 
-Modern software development increasingly uses autonomous and semi-autonomous AI coding agents (Antigravity, Claude Code, Cursor, Codex, Devin, Aider). When these agents commit code to Git repositories:
-1. **Biometric Fatigue**: If the human developer uses hardware-backed commit signing (e.g., 1Password SSH Agent with Touch ID), every agent commit triggers a modal interrupt, halting automation.
-2. **Insecurity via Conflation**: Disabling prompts or sharing the human's primary key allows the agent to impersonate the human across all repositories with unmitigated access.
-3. **No Provenance**: Disabling signing produces unverified commits that fail repository branch-protection rules and eliminate cryptographic audit trails.
-4. **Flawed Attribution**: Existing tools rely on cosmetic trailers (`Co-Authored-By: Claude`) without cryptographic proof, or risk misattributing manual human commits made in IDE interfaces.
+agent-commits gives agents a separate signing key, held by a small service, and asks
+the person once per repository for a **lease**: permission for agents to
+sign there, on terms the person sees before approving.
 
-`Agent-Sign` provides a **deterministic, scoped signing multiplexer and session lease daemon** that allows agents to headlessly sign commits with a dedicated GitHub-verifiable Agent Sub-Key, while ensuring 100% of human commits continue through the human's standard 1Password Touch ID flow.
+## 2. Invariants
 
----
+Each invariant says whether it holds today, and how that's checked.
 
-## 2. Fundamental System Invariants (Non-Negotiable)
+- **INV-1, the person's commits are left alone.** A `git commit` the person
+  types in an interactive terminal (standard input and output both
+  terminals) goes to the real git unchanged, with the person's own signing.
+  *Holds for terminals.* It does **not** hold for an editor's commit button
+  whose `git` is the wrapper (there's no terminal, so the wrapper treats it as
+  an agent's), and an agent driving a terminal pane looks like the person.
+  Checked by hand in the install test (`docs/RELEASE_CHECKLIST.md`, R5); the
+  terminal check itself has no automated test yet.
+- **INV-2, interception doesn't depend on the agent.** An agent that runs
+  `git commit` through the wrapper is handled without remembering flags or
+  commands. *Holds for `commit` only*; `merge`, `rebase`, `cherry-pick`,
+  `revert`, `pull` and `am` pass through to the real git and the person's own
+  signing. An agent can also bypass the wrapper by calling the real git by
+  path.
+- **INV-3, no agent signature without a lease.** The service signs only with
+  a single-use token, issued only under a lease that is in force and covers
+  the repository and branch. *Holds* (tests: `test_lease_engine.rs`,
+  `test_human_isolation.rs`, `test_e2e_git_commit.rs`).
+- **INV-4, approve once, on fixed terms.** If no lease covers a commit, the
+  person is asked once, and shown which branches the lease covers and when it
+  ends. A lease's terms are fixed at approval and never grow: using, moving,
+  saving or reloading it never extends it, and a later config change can only
+  narrow it. Leases are saved, so a crash, restart or sleep doesn't ask again.
+  *Holds* (tests: `test_lease_terms.rs`, `test_persistent_identity_leases.rs`).
+  The approval is a confirmation dialog, not a biometric check, and its
+  default button is Approve.
+- **INV-5, configurable attribution.** `split`, `trailers` and `alias` modes
+  change author, committer and message, not the signing. *Holds*, except that
+  `trailers` only rewrites a message given with `-m` or `--message`.
+- **INV-6, standard signatures.** Signatures are git's SSH signature format
+  (`gpg.format = ssh`), verifiable with `ssh-keygen -Y verify` and by GitHub
+  or GitLab. *Holds* (tests: `test_crypto_verification.rs`,
+  `test_signature_equivalence.rs`).
+- **INV-7, fail closed.** If the service is down, there's no lease, the token
+  is bad, or the person can't be asked, the commit is refused; it's never
+  signed some other way. *Holds* (tests: `test_human_isolation.rs`,
+  `test_refusals_and_revoke.rs`).
+- **INV-8, protected branches.** No lease covers a protected branch
+  (`block_branches`, default `main` and `master`), checked when a lease is
+  asked for and on every token. *Holds*, except that a detached HEAD
+  (reported as `HEAD`) is never protected.
 
-The following invariants MUST be verified by automated tests and MUST NEVER be violated:
-
-* **[INV-1] Human Isolation**: Any `git commit` initiated by a human (whether via interactive terminal shell or IDE graphical Source Control buttons) MUST bypass agent signing and delegate directly to the standard human signing agent (e.g., 1Password / `/usr/bin/ssh-keygen`), preserving biometric prompts.
-* **[INV-2] Deterministic Interception**: Any `git commit` initiated by an AI agent within an agent session MUST be deterministically intercepted without requiring the LLM to remember flags, special commands, or custom CLI syntax.
-* **[INV-3] Gated Session Lease**: Headless signing MUST NOT occur without a valid, unexpired session lease.
-* **[INV-4] Single-Touch Approval**: If no valid lease exists when an agent initiates a task or commit, the system MUST pause execution and request human biometric/confirmation approval ONCE. Subsequent commits within the lease TTL MUST proceed autonomously.
-* **[INV-5] Configurable Attribution**: The system MUST support multiple attribution modes (`split`, `trailers`, `alias`) via configuration without altering core signing mechanics.
-* **[INV-6] Cryptographic Validity**: Signatures MUST conform to standard Git SSH signature format (`gpg.format = ssh`), verifiable locally via `ssh-keygen -Y verify` and remotely via GitHub/GitLab "Verified" status.
-* **[INV-7] Fail-Closed Security**: If lease validation fails, daemon is unreachable, or signature generation errors occur, the system MUST fail closed (refusing to sign) rather than silently falling back to signing with unprotected keys.
-
----
-
-## 3. Architecture & Data Flow
+## 3. How a commit flows
 
 ```
-+-------------------------------------------------------------------------+
-|                              USER MACHINE                               |
-|                                                                         |
-|  +---------------------------+       +-------------------------------+  |
-|  |     Human Environment     |       |    Agent Tool Environment     |  |
-|  |  (Terminal / IDE GUI UI)  |       | (Antigravity / Claude / etc.) |  |
-|  +-------------+-------------+       +---------------+---------------+  |
-|                |                                     |                  |
-|                | git commit                          | git commit       |
-|                | (Standard PATH)                     | (Injected PATH)  |
-|                v                                     v                  |
-|        /usr/bin/git                     ~/.agent-sign/bin/git           |
-|                |                        (Deterministic Shim)            |
-|                |                                     |                  |
-|                |                                     v                  |
-|                |                             Attach Event Token         |
-|                |                                     |                  |
-|                +------------------+------------------+                  |
-|                                   |                                     |
-|                                   v                                     |
-|                         agent-sign multiplexer                          |
-|                         (as gpg.ssh.program)                            |
-|                                   |                                     |
-|                   Has valid AGENT_EVENT_TOKEN?                          |
-|                          /                 \                            |
-|                        NO                  YES                          |
-|                        /                     \                          |
-|                       v                       v                         |
-|             Forward to standard         Check Daemon Lease              |
-|             1Password / ssh-keygen            |                         |
-|                       |                [Valid Lease?]                   |
-|                       v                    /     \                      |
-|                Touch ID Prompt            YES     NO                    |
-|                       |                   /         \                   |
-|                       v                  v           v                  |
-|                 Human Signature    Sign Buffer   Trigger Touch ID       |
-|                                    with Agent    Once for Lease         |
-|                                      Sub-Key            |               |
-|                                         |               v               |
-|                                         |        Approved / Denied      |
-|                                         v                               |
-|                                  Agent Signature                        |
-+-----------------------------------------+-------------------------------+
-                                          |
-                                          v
-                                   GitHub / GitLab
-                         (Verified via User's Agent Sub-Key)
+  agent runs `git commit`                     person types `git commit`
+            |                                          |
+            v                                          v
+  ~/.agent-commits/bin/git  (agent-commits-git, the wrapper)   same wrapper: stdin and stdout
+            |                                 are terminals -> real git,
+            | not a terminal (or AGENT_COMMITS_FORCE)  unchanged (person's own signing)
+            v
+  local rules: forbidden paths, diff size, (optional) message format
+            |
+            v
+  agent-commitsd: lease for this repository? --no--> ask the person once (dialog)
+            |                                  approve -> lease saved
+            | yes (and branch not protected, rate under limit)
+            v
+  single-use token (60 s)
+            |
+            v
+  real git commit -c gpg.format=ssh -c gpg.ssh.program=agent-commits-ssh-sign
+            |                     with AGENT_EVENT_TOKEN and agent attribution
+            v
+  agent-commits-ssh-sign: token? --no--> the person's own signer (fallback_program)
+            | yes
+            v
+  agent-commitsd checks and burns the token, signs with the agent key -> <file>.sig
 ```
 
----
+## 4. Components
 
-## 4. Component Specifications
+### 4.1 The wrapper, `agent-commits-git` (installed as `git`)
 
-### 4.1. Component A: Deterministic Environment Interceptor (`agent-git`)
-- **Path**: `~/.agent-sign/bin/git`
-- **Role**: Sits first in `PATH` only inside the agent's tool execution context.
-- **Behavior**:
-  1. Inspects arguments. If command is not `commit`, directly execs real `/usr/bin/git` with original args and env.
-  2. If command is `commit`:
-     - Queries local daemon at `~/.agent-sign/daemon.sock` to obtain an ephemeral single-use `AGENT_EVENT_TOKEN`.
-     - Appends or injects `AGENT_EVENT_TOKEN=<token>` into the environment for this specific execution.
-     - Injects custom git configuration overrides (`-c gpg.ssh.program=~/.agent-sign/bin/agent-sign`).
-     - Execs real `git commit` with the modified environment.
+- Installed in `~/.agent-sign/bin` (a link to `~/.agent-commits/bin` once `agent-commitsd` has
+  started), which the installer puts first on `PATH` in shell profiles.
+- Every command except `commit` (the first non-option argument, so
+  `git -C dir commit` counts) runs the real git unchanged.
+- The real git: `AGENT_COMMITS_REAL_GIT` if set, else the first `git` on `PATH` that
+  isn't in a agent-commits directory and isn't the wrapper, else `/opt/homebrew/bin`,
+  `/usr/local/bin`, `/usr/bin`, `/bin`.
+- A commit with standard input and output both terminals, and neither
+  `AGENT_COMMITS_FORCE` nor `AGENT_COMMITS_SESSION` set, is the person's: it runs the real git
+  unchanged.
+- Otherwise it's an agent's. The repository is the canonical path of
+  `git rev-parse --show-toplevel`; the branch is `git branch --show-current`,
+  or `HEAD` when detached. It then:
+  1. checks the local rules against the staged changes: `forbidden_paths`,
+     `max_diff_lines` (skipped when `AGENT_COMMITS_ALLOW_LARGE_DIFF` is set), and, if
+     `enforce_conventional_commits` is on, the `-m` message's format;
+  2. asks the service for a lease (the reason sent is always "Autonomous
+     coding agent commit"; any duration it sends is ignored);
+  3. asks for a token;
+  4. runs the real git with `commit.gpgsign=true`, `gpg.format=ssh`,
+     `gpg.ssh.program` set to `agent-commits-ssh-sign` next to the wrapper,
+     `user.signingkey` set to the agent's public key, the token in
+     `AGENT_EVENT_TOKEN`, and author and committer set by the attribution
+     mode.
 
-### 4.2. Component B: Signing Multiplexer (`agent-sign`)
-- **Path**: `~/.agent-sign/bin/agent-sign`
-- **Role**: Registered as `gpg.ssh.program` in Git.
-- **Contract**: Conforms strictly to OpenSSH `ssh-keygen -Y sign -n git -f <key_path> <buffer_path>`.
-- **Behavior**:
-  1. Checks for presence of `AGENT_EVENT_TOKEN` in environment.
-  2. **If token is absent or invalid**:
-     - Immediately delegates to system default `ssh-keygen` (forwarding to 1Password agent socket).
-     - Standard human Touch ID runs.
-  3. **If token is valid**:
-     - Connects to local daemon.
-     - Validates active lease (and triggers human auth prompt if lease is uninitialized).
-     - Applies attribution transformation per configuration (`split`, `trailers`, `alias`).
-     - Signs commit buffer using the local agent SSH private key.
-     - Outputs valid SSH signature buffer to stdout / file as required by Git.
+### 4.2 The signing program, `agent-commits-ssh-sign`
 
-### 4.3. Component C: Local Daemon & Lease Engine (`agent-signd`)
-- **Socket**: `~/.agent-sign/daemon.sock`
-- **Role**: Manages in-memory active lease, rate limits, audit logs, and Touch ID / prompt authorization.
-- **Data Structures**:
-  ```yaml
-  Lease:
-    id: UUID
-    granted_at: Timestamp
-    expires_at: Timestamp
-    repo_root: Path
-    branch: String
-    max_commits: Integer
-    commits_issued: Integer
-    allowed_models: List[String]
-  ```
-- **Operations**:
-  - `request_lease(repo, duration, intent)`: If valid lease exists for repo and branch, returns existing lease ID. If not, invokes user authorization once via desktop dialog (macOS/Linux), interactive terminal confirmation, or auto-approval.
-  - `issue_token()`: Returns a single-use cryptographically random token tied to current lease (with 60-second TTL).
-  - `verify_and_sign(token, buffer)`: Verifies token, decrements remaining allowance, signs buffer using Ed25519 sub-key.
-  - `revoke_lease(repo)`: Immediately invalidates the active lease for the repository.
+Git runs it as `gpg.ssh.program` with ssh-keygen's arguments. Without a
+token it runs `fallback_program` (the person's own signer, detected by the
+installer) with the same arguments. With a token it sends the buffer to the
+service and writes the signature it gets back to `<file>.sig`. It never reads
+the agent key. `agent-commits` accepts the same arguments, as `agent-sign` did.
 
-### 4.4. Component D: Attribution Engine
-Configured via `~/.agent-sign/config.toml` and optional `.agent-sign.toml`:
+### 4.3 The service, `agent-commitsd`
+
+- One per user, run by launchd (`com.agentsign.agent-signd`) or a systemd
+  user service (`agent-signd.service`), both under the old name. It listens on
+  `~/.agent-commits/daemon.sock` (0600, in a 0700 directory), one thread per
+  connection; the lock isn't held while a dialog is open.
+- Holds the agent key: an ed25519 seed in `~/.agent-commits/keys/agent_ed25519`, 0600,
+  **not encrypted**, generated on first start if missing.
+- Reads the config once, when it starts: a change needs a restart. A
+  `max_lease_ceiling` it can't read stops it. Environment variables in the
+  service's own environment (`AGENT_COMMITS_AUTO_APPROVE`, `AGENT_COMMITS_LEASE_MODE`, ...)
+  override the file.
+- Asks the person, in order: on macOS an AppleScript dialog; on Linux with
+  `DISPLAY` or `WAYLAND_DISPLAY`, `zenity` or `kdialog`; otherwise a prompt
+  on its own terminal, which it has only when started by hand. With none of
+  these it refuses the lease and says it couldn't ask. With `auto_approve`,
+  every lease is granted without asking.
+- Tokens are single-use and expire after 60 seconds. A token authorises one
+  signature of whatever buffer is sent with it; the service doesn't check the
+  buffer is a commit.
+
+### 4.4 Leases
+
+Saved in `~/.agent-commits/leases.json` (0600, written to a temporary file, synced,
+and renamed). A file that can't be read is left untouched, and one that can't
+be parsed is set aside; either way the service starts with no leases.
+
+```yaml
+Lease:
+  id: UUID
+  repo: String                  # canonical path of the repository's top level
+  branch: String                # the branch it was approved on, or moved to
+  intent: String                # the reason the agent gave
+  mode: identity | timed | process
+  scope: branch | repo
+  granted_at_secs: u64
+  last_used_at_secs: u64        # usage record only
+  expires_at_secs: u64 or none  # fixed at approval; none = until revoked
+  commit_count: u64             # usage record only
+  follows_branches: bool        # fixed at approval; absent on older leases
+```
+
+- One lease per repository. It's in force until its effective end: the end
+  recorded at approval, brought forward if the current config's cap for its
+  mode is shorter (`max_lease_ceiling` for `identity`,
+  `default_lease_duration` for `timed`), never pushed back.
+- `process` mode isn't tied to a process: it works as `timed`, and the
+  dialog and the service's log say so.
+- With `scope = "branch"` and `allow_branch_switching = true` (the defaults)
+  a lease covers every unprotected branch of its repository and follows the
+  agent between them; the dialog says so. Otherwise it covers only its
+  branch, and another branch needs a new approval.
+- Commits are limited per repository to `max_commits_per_minute` in a
+  sliding 60-second window. There's no cap on a lease's total commits.
+- Leases belong to the machine's user, not to a particular agent: every
+  agent on the machine shares them.
+
+### 4.5 Operations (the socket protocol)
+
+Newline-delimited JSON, unchanged from agent-sign.
+
+| Request | What the service does |
+|---|---|
+| `RequestLease {repo, branch, intent, duration_secs}` | Refuses a protected branch without asking. Returns the lease if one covers the branch (moving a branch-following lease to it); otherwise asks the person and grants on approval. `duration_secs` is ignored. |
+| `IssueToken {repo, branch}` | Checks branch rules, that the lease is in force and covers the branch, and the rate limit; counts the commit; returns a token. |
+| `SignCommit {token, buffer_b64}` | Burns the token and returns the signature. |
+| `ListLeases` | The leases, with commit counts and when each ends. |
+| `RevokeLease {repo, branch, all}` | Ends one repository's lease (an error if none matches) or all of them, and saves. `branch` is ignored. |
+| `GetStatus {repo}`, `Ping` | Status and health. |
+
+### 4.6 Configuration
+
+Built-in defaults, then `~/.agent-commits/config.toml`, then the repository's
+`.agent-sign.toml` and `.agent-commits.toml`, then `AGENT_COMMITS_*` (or `AGENT_SIGN_*`)
+environment variables. Which program reads what matters:
+
+- **The service** reads only `~/.agent-commits/config.toml` and its own environment:
+  every lease, branch, rate and approval setting comes from there.
+  Repository files can't change them.
+- **The wrapper** also reads the repository's files and the environment it
+  runs in, both of which an agent can change: the local rules
+  (`forbidden_paths`, `max_diff_lines`, `enforce_conventional_commits`) and
+  attribution. So those rules catch mistakes, not an agent set on getting
+  past them.
 
 ```toml
+[security]                        # read by the service
+lease_mode = "identity"           # "identity" | "timed" | "process" (works as timed)
+lease_scope = "branch"            # "branch" | "repo"
+allow_branch_switching = true     # with branch scope: follow the agent between branches
+default_lease_duration = "2h"     # life of a timed lease
+max_lease_ceiling = "none"        # longest life of an identity lease, e.g. "7d"; unreadable = service won't start
+block_branches = ["main", "master"]   # exact names, or a prefix ending in "*", e.g. "release/*"
+allow_main_branch = false         # true turns branch protection off entirely
+max_commits_per_minute = 10
+auto_approve = false              # true grants every lease without asking
+
+[security]                        # read by the wrapper (repository files and environment apply)
+forbidden_paths = [".github/workflows/*", ".circleci/*", "*.pem", "*.key", "id_rsa*", "id_ed25519*"]
+max_diff_lines = 2000
+enforce_conventional_commits = false
+
 [attribution]
-mode = "split" # "split" | "trailers" | "alias"
+mode = "split"                    # "split" | "trailers" | "alias"
 
 [agent]
-name = "Antigravity Agent"
+name = "Agent"                    # the installer writes "Agent"; the built-in default is "Antigravity Agent"
 email = "agent@local.internal"
 
-[human]
-name = "Human Developer"
-email = "developer@example.com"
-github_username = "developer"
+[human]                           # defaults to git's user.name and user.email
+# name = "..."
+# email = "..."
 
-[security]
-default_lease_duration = "2h"
-block_branches = ["main", "master", "release/*"]
-max_commits_per_minute = 10
+[ssh]
+fallback_program = "/usr/bin/ssh-keygen"   # the person's own signer, detected by the installer
+# agent_key_path = "~/.agent-commits/keys/agent_ed25519"
 ```
 
-#### Attribution Mode Behaviors:
-- **`split`**: Sets `GIT_AUTHOR_NAME` to agent name/email, sets `GIT_COMMITTER_NAME` to human name/email. Signature made with Agent Sub-Key. Result on GitHub: *"Agent authored and Human committed (Verified)"*.
-- **`trailers`**: Leaves Author and Committer as human. Injects `Co-Authored-By: Agent <email>` and `X-Agent-Signer: agent-sign/v0.1` into the commit message. Result on GitHub: *"Human committed (Verified) with Agent co-author"*.
-- **`alias`**: Sets Committer and Author to `Human (Agent) <developer+agent@example.com>`.
+(The two `[security]` blocks are one table in a real file; they're split here
+to show who reads which keys.)
 
----
+Attribution modes:
 
-## 5. Security Threat Model
+- **`split`** (default): author is the agent, committer is the person.
+- **`trailers`**: author and committer are the person; a message given with
+  `-m` or `--message` gets `Co-Authored-By: <agent>`, `X-Agent-Signer:
+  agent-commits/v0.1` and `X-Agent-Lease: <lease id>` trailers. A message from `-F` or
+  an editor is left as it is.
+- **`alias`**: author and committer are "`<person's name> (Agent)`" with the
+  agent's email.
 
-| Threat | Mitigation |
-| :--- | :--- |
-| **Agent compromises master SSH key** | Agent never touches or sees the human's 1Password key. Agent key is a distinct, scoped SSH key registered in GitHub solely as a "Signing Key", incapable of authentication or pushing. |
-| **Runaway agent loops (1000s of commits)** | Daemon enforces hard rate limits (`max_commits_per_minute`) and lease-based total commit caps. |
-| **Accidental commit to production branch** | Daemon and wrapper reject signing if active branch matches `block_branches` policy (e.g. `main`). |
-| **Malicious process steals Agent Sub-Key** | Private key can be encrypted at rest with a key held in macOS Keychain, unlocked only during an active lease. |
-| **Prompt Injection attacks** | Agent cannot escalate permissions beyond signing code on the authorized branch; cannot bypass lease expiration without human re-authentication. |
+In every mode the signature is the agent key's. GitHub shows a commit as
+Verified when the signing key is registered on the account whose email is
+the committer's; since the installer registers the agent key on the person's
+account and `split` makes the person the committer, agent commits show as
+Verified for the person. With `alias` and the default `agent@local.internal`
+they show as Unverified.
 
----
+## 5. Threat model
 
-## 6. Test-Driven Development (TDD) Test Matrix
+agent-commits' current protections assume an agent that cooperates: it runs `git`
+from its `PATH` and doesn't set out to get around agent-commits. Agents today run as
+the person's own user account, and agent-commits doesn't change that.
 
-The following test suites MUST be implemented and passing:
+| Threat | What agent-commits does today | Gap |
+|---|---|---|
+| An agent signs as the person with the person's key | The agent key is separate; agents never talk to the person's signer through agent-commits. | An agent can still call the real git (or the person's signer) directly. |
+| The agent key is copied | It's registered on GitHub as a signing key only, so it can't log in, clone or push. | It's unencrypted and readable by the person's user, so any process running as them can copy it, and commits signed with it show as Verified for the person. |
+| An agent approves its own lease | The dialog comes from the service, not the agent. | An agent running as the person can edit the config (`auto_approve`), start its own service, or answer a terminal prompt. |
+| Runaway commit loops | `max_commits_per_minute` per repository. | No total cap per lease. |
+| Commits on protected branches | Refused on every token. | Detached HEAD isn't protected; `allow_main_branch` turns protection off. |
+| Changes to CI workflows or key files | `forbidden_paths` and `max_diff_lines` in the wrapper. | A repository's `.agent-commits.toml` or an environment variable, both writable by the agent, can loosen them. |
+| Approving by accident | The dialog states the repository, branch, coverage, end, and the agent's reason. | Its default button is Approve, and the dialog text is built into an AppleScript string. |
+| Mixing agents' work | None. | One key and one set of leases per machine user; agents aren't told apart. |
 
-### Suite 1: Human Isolation & Default Fallback (`test_human_isolation`)
-- [ ] `test_human_terminal_commit_invokes_standard_ssh_agent`: Ensure standard `git commit` without token invokes standard `ssh-keygen` and passes through to 1Password.
-- [ ] `test_ide_gui_commit_not_intercepted`: Verify that calls lacking `AGENT_EVENT_TOKEN` never trigger agent signing or agent attribution.
-- [ ] `test_corrupt_or_expired_token_fails_closed`: Invalid tokens must not sign with agent key.
+The release checklist (`docs/RELEASE_CHECKLIST.md`) tracks the work on these
+gaps: a separate service user (so agents can't read the key or approve their
+own leases), attribution to a separate GitHub machine account, and a dialog
+with no default Approve.
 
-### Suite 2: Deterministic Interception & Attribution (`test_interceptor`)
-- [ ] `test_agent_git_injects_event_token_on_commit`: Verify wrapper detects `commit` command and attaches valid event token.
-- [ ] `test_agent_git_passes_non_commit_commands_untouched`: Commands like `git status`, `git diff`, `git push` pass through without modification.
-- [ ] `test_attribution_split_mode`: Verify author and committer headers match specification.
-- [ ] `test_attribution_trailers_mode`: Verify trailers are correctly formatted in commit message.
+## 6. Tests
 
-### Suite 3: Lease Lifecycle & Guardrails (`test_lease_engine`)
-- [ ] `test_lease_granted_after_single_auth`: Approving prompt grants lease for configured duration.
-- [ ] `test_subsequent_commits_within_ttl_require_zero_prompts`: Multiple commits within lease succeed headlessly.
-- [ ] `test_expired_lease_triggers_new_prompt`: Commits after TTL trigger re-authorization.
-- [ ] `test_branch_protection_blocks_main`: Commits targeting protected branches are blocked with descriptive error.
-- [ ] `test_rate_limiter_throttles_rapid_commits`: Exceeding threshold blocks commit and notifies developer.
+`cargo test --locked` runs them all; the end-to-end ones start their own
+service in a temporary home with its own socket, so they never touch an
+installed agent-commits.
 
-### Suite 4: Cryptographic Verification (`test_crypto_verification`)
-- [ ] `test_generated_signature_validates_with_ssh_keygen`: Output signature passes `ssh-keygen -Y verify -f allowed_signers`.
-- [ ] `test_signature_format_matches_git_ssh_specification`: Headers and format strictly adhere to OpenSSH signature format (`-----BEGIN SSH SIGNATURE-----`).
+| File | What it shows |
+|---|---|
+| `test_human_isolation.rs` | Without a token, signing goes to the person's signer; a bad token is refused. |
+| `test_interceptor.rs` | Only `commit` is intercepted; `split` and `trailers` attribution. |
+| `test_lease_engine.rs` | Granting, commits under a lease, protected branches, rate limit, branch switching, revocation. |
+| `test_lease_terms.rs` | Terms fixed at approval; config narrows, never widens; the dialog's terms; the unreadable ceiling. |
+| `test_persistent_identity_leases.rs` | Leases survive restarts; revocation persists; ceiling; scope. |
+| `test_crypto_verification.rs` | Keys and signatures in OpenSSH format, verified by `ssh-keygen`. |
+| `test_signature_equivalence.rs` | Every program name makes byte-identical signatures to agent-sign's. |
+| `test_e2e_git_commit.rs` | Real git commits through the wrapper, signing program and service, verified by git; old and new names. |
+| `test_switch_over.rs` | An agent-sign install switched to agent-commits keeps signing without a new approval. |
+| `test_migration.rs` | Moving `~/.agent-sign` to `~/.agent-commits`. |
+| `test_refusals_and_revoke.rs` | "Couldn't ask" versus "denied"; revoking a repository with no lease is an error; `agent-commits revoke .`; the doctor's advice. |
+
+Not covered by an automated test yet: the wrapper's terminal check (INV-1),
+the real dialogs, and the installer and uninstaller (covered by the install
+test in the checklist).
