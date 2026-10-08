@@ -3,7 +3,7 @@
 //!
 //! Between the service removing its old socket and listening on the new one
 //! there's a moment when connecting fails: the socket file is missing, or is
-//! there with nothing listening yet. Measured on an M-series Mac, the service
+//! there with nothing listening yet. Measured on an Intel Mac (Core i9, 2019), the service
 //! answers about 85 ms after it starts. Clients retry for a short, configurable
 //! wait (`AGENT_COMMITS_CONNECT_WAIT_MS`, 2 seconds by default) rather than
 //! failing a commit an agent made at that moment. A service that never comes

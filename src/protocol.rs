@@ -101,7 +101,7 @@ pub fn client_socket_path() -> PathBuf {
 }
 
 /// How long a client waits for the service to start answering, by default:
-/// about twenty times the ~85 ms it takes to start on an M-series Mac, so a
+/// about twenty times the ~85 ms it takes to start on an Intel Mac (Core i9, 2019), so a
 /// restart (an upgrade, launchd or systemd bringing it back) doesn't fail a
 /// commit an agent makes at that moment. `AGENT_COMMITS_CONNECT_WAIT_MS`
 /// changes it; 0 turns the wait off.
