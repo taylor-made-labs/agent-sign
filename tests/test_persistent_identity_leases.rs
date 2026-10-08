@@ -102,10 +102,12 @@ fn test_identity_lease_ceiling_enforcement() {
     let tmp = tempdir().unwrap();
     let storage_file = tmp.path().join("leases.json");
 
-    // Configure 1-second max ceiling
+    // A 2-second ceiling. Lease times are whole seconds, so a 1-second
+    // ceiling granted just before a second boundary has already ended a
+    // moment later; 2 seconds leaves at least one whole second of life.
     let policy = LeasePolicy {
         mode: LeaseMode::Identity,
-        max_ceiling: Some(Duration::from_secs(1)),
+        max_ceiling: Some(Duration::from_secs(2)),
         ..Default::default()
     };
 
@@ -121,7 +123,7 @@ fn test_identity_lease_ceiling_enforcement() {
     );
 
     // Wait for ceiling to elapse
-    sleep(Duration::from_millis(1100));
+    sleep(Duration::from_millis(2100));
 
     // Must be expired
     assert!(!engine.has_active_lease("corp/repo-c"));
