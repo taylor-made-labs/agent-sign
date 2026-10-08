@@ -1,0 +1,18 @@
+# systemd user unit for agent-commitsd under agent-commits' own names. Not installed by
+# scripts/install.sh yet, which keeps agent-sign's agent-signd.service (it
+# still works: ~/.agent-sign/bin/agent-signd is a link to agent-commitsd).
+# docs/MIGRATION.md, phase 2, switches to this one.
+[Unit]
+Description=agent-commits service: agent signing key and leases (formerly agent-signd)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.agent-commits/bin/agent-commitsd
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

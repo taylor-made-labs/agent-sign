@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  LaunchAgent for agent-commitsd under agent-commits' own names. Not installed by
+  scripts/install.sh yet, which keeps agent-sign's com.agentsign.agent-signd
+  unit (it still works: ~/.agent-sign/bin/agent-signd is a link to agent-commitsd).
+  docs/MIGRATION.md, phase 2, switches to this one.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.agentcommits.agent-commitsd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>exec "$HOME/.agent-commits/bin/agent-commitsd"</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/agent-commitsd.stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/agent-commitsd.stderr.log</string>
+</dict>
+</plist>

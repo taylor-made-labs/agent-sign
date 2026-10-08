@@ -2,9 +2,10 @@
 set -euo pipefail
 
 # =============================================================================
-# Agent-Sign Uninstaller
-# Cleanly removes all agent-sign state, binaries, keys, config, and services.
-# Run this before re-installing, or to fully remove agent-sign from your system.
+# agent-commits (formerly agent-sign) uninstaller
+# Removes agent-commits' service, programs, keys, leases and config, and undoes the
+# installer's PATH, editor and allowed_signers changes. It leaves your own git
+# settings alone, including gpg.ssh.allowedSignersFile if the installer set it.
 # =============================================================================
 
 BOLD='\033[1m'
@@ -19,12 +20,12 @@ info() { echo -e "${BOLD}==> ${NC}$1"; }
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}║         Agent-Sign Uninstaller                   ║${NC}"
+echo -e "${BOLD}║                agent-commits Uninstaller                  ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 
 # ─── Step 1: Stop daemon ────────────────────────────────────────────────────
-info "Stopping agent-signd daemon..."
+info "Stopping the agent-commits service (agent-commitsd, installed as agent-signd)..."
 
 OS="$(uname -s)"
 if [ "$OS" = "Darwin" ]; then
@@ -37,22 +38,36 @@ elif [ "$OS" = "Linux" ] && command -v systemctl &>/dev/null; then
     systemctl --user daemon-reload 2>/dev/null || true
 fi
 
-if pgrep -f "agent-signd" &>/dev/null; then
-    pkill -f "agent-signd" 2>/dev/null && ok "Running daemon processes killed" || true
-    sleep 1
-fi
+# A service started by hand rather than by launchd or systemd. Match the
+# process name exactly, and only your own processes: matching command lines
+# (as `pkill -f` does) would also stop any shell or SSH session whose command
+# happens to contain the name.
+for name in agent-signd agent-commitsd; do
+    if pgrep -u "$(id -u)" -x "$name" &>/dev/null; then
+        pkill -u "$(id -u)" -x "$name" 2>/dev/null && ok "Stopped a running $name" || true
+        sleep 1
+    fi
+done
 
 # ─── Step 2: Remove agent key from allowed_signers ──────────────────────────
 info "Cleaning up allowed_signers..."
 
-PUB_KEY_FILE="$HOME/.agent-sign/keys/agent_ed25519.pub"
+# ~/.agent-commits after agent-commitsd has migrated; ~/.agent-sign is then a link to it.
+if [ -d "$HOME/.agent-commits" ]; then
+    PUB_KEY_FILE="$HOME/.agent-commits/keys/agent_ed25519.pub"
+else
+    PUB_KEY_FILE="$HOME/.agent-sign/keys/agent_ed25519.pub"
+fi
 ALLOWED_SIGNERS_FILE=$(git config --global gpg.ssh.allowedSignersFile 2>/dev/null || echo "")
 ALLOWED_SIGNERS_FILE="${ALLOWED_SIGNERS_FILE/#\~/$HOME}"
 
 if [ -n "$ALLOWED_SIGNERS_FILE" ] && [ -f "$ALLOWED_SIGNERS_FILE" ] && [ -f "$PUB_KEY_FILE" ]; then
     AGENT_KEY_DATA=$(awk '{print $2}' "$PUB_KEY_FILE" 2>/dev/null || echo "")
     if [ -n "$AGENT_KEY_DATA" ] && grep -qF "$AGENT_KEY_DATA" "$ALLOWED_SIGNERS_FILE"; then
-        grep -vF "$AGENT_KEY_DATA" "$ALLOWED_SIGNERS_FILE" > "${ALLOWED_SIGNERS_FILE}.tmp"
+        # grep exits 1 when no line is left (the agent's was the only one, as on
+        # a machine where the installer created the file). That's success here;
+        # under `set -e` it used to stop the uninstaller halfway.
+        { grep -vF "$AGENT_KEY_DATA" "$ALLOWED_SIGNERS_FILE" || [ $? -eq 1 ]; } > "${ALLOWED_SIGNERS_FILE}.tmp"
         mv "${ALLOWED_SIGNERS_FILE}.tmp" "$ALLOWED_SIGNERS_FILE"
         ok "Agent key removed from $ALLOWED_SIGNERS_FILE"
     else
@@ -122,11 +137,19 @@ fi
 # ─── Step 6: Remove installed directory ─────────────────────────────────────
 info "Removing ~/.agent-sign directory..."
 
-if [ -d "$HOME/.agent-sign" ]; then
+if [ -L "$HOME/.agent-sign" ]; then
+    rm -f "$HOME/.agent-sign"
+    ok "Removed the $HOME/.agent-sign link"
+elif [ -d "$HOME/.agent-sign" ]; then
     rm -rf "$HOME/.agent-sign"
     ok "Removed $HOME/.agent-sign (binaries, keys, config, socket)"
 else
     ok "~/.agent-sign does not exist (already clean)"
+fi
+
+if [ -d "$HOME/.agent-commits" ]; then
+    rm -rf "$HOME/.agent-commits"
+    ok "Removed $HOME/.agent-commits (binaries, keys, config, socket)"
 fi
 
 # ─── Step 7: Summary ────────────────────────────────────────────────────────
@@ -135,15 +158,17 @@ echo -e "${GREEN}${BOLD}Uninstall complete.${NC}"
 echo ""
 echo "What was removed:"
 echo "  • Daemon process and service (launchd/systemd)"
-echo "  • ~/.agent-sign/ (binaries, keypair, config, socket)"
+echo "  • ~/.agent-commits/ and ~/.agent-sign/ (binaries, keypair, config, socket)"
 echo "  • Agent key entry from allowed_signers"
 echo "  • Shell PATH entries from shell profiles"
 echo "  • IDE terminal environment settings (Cursor / VS Code / Windsurf)"
 echo "  • Antigravity agent rule"
 echo ""
 echo "What was NOT modified:"
-echo "  • Your ~/.gitconfig (personal signing key, gpg.format, etc.)"
-echo "  • Your GitHub/GitLab SSH keys (remove the agent signing key manually if desired)"
+echo "  • Your git config (your signing key, gpg.format, and gpg.ssh.allowedSignersFile,"
+echo "    which the installer sets if it wasn't set; unset it with"
+echo "    git config --global --unset gpg.ssh.allowedSignersFile if you don't use it)"
+echo "  • Your GitHub/GitLab account: remove the agent's signing key there yourself"
 echo ""
 echo "To reinstall fresh: ./scripts/install.sh"
 echo ""

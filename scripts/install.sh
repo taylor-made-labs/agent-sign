@@ -2,9 +2,18 @@
 set -euo pipefail
 
 # =============================================================================
-# Agent-Sign Installer
-# Builds, installs, configures, and verifies the complete agent-sign toolchain.
+# agent-commits (formerly Agent-Sign) Installer
+# Builds, installs, configures, and verifies the complete toolchain.
 # Supports macOS (launchd) and Linux (systemd --user).
+#
+# Programs: agent-commitsd (service), agent-commits (CLI), agent-commits-ssh-sign (git's signing program),
+# agent-commits-git (the wrapper, installed as `git`). The old names agent-signd,
+# agent-sign, and agent-git are installed as links to them.
+#
+# This installer still uses the agent-sign layout (~/.agent-sign/bin on PATH,
+# the com.agentsign.agent-signd LaunchAgent). agent-commitsd moves ~/.agent-sign to
+# ~/.agent-commits on its first start and leaves ~/.agent-sign as a link, so those
+# paths keep working. See docs/MIGRATION.md.
 # =============================================================================
 
 INSTALL_DIR="$HOME/.agent-sign/bin"
@@ -28,12 +37,19 @@ step()  { echo -e "\n${CYAN}${BOLD}── $1 ──${NC}"; }
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}║         Agent-Sign Toolchain Installer           ║${NC}"
+echo -e "${BOLD}║            agent-commits Installer (pre-release)          ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 
 # ─── Step 0: Prerequisites & Binary Resolution ──────────────────────────────
 step "Resolving binaries"
+
+# A machine that already has ~/.agent-commits (migrated, or set up by agent-commitsd alone) gets
+# the ~/.agent-sign link the migration would have left, rather than a second
+# state directory that agent-commitsd would refuse to choose between.
+if [ -d "$HOME/.agent-commits" ] && [ ! -e "$HOME/.agent-sign" ] && [ ! -L "$HOME/.agent-sign" ]; then
+    ln -s "$HOME/.agent-commits" "$HOME/.agent-sign"
+fi
 
 mkdir -p "$INSTALL_DIR"
 mkdir -p "$KEYS_DIR"
@@ -41,16 +57,32 @@ chmod 700 "$CONFIG_DIR"
 chmod 700 "$KEYS_DIR"
 
 VERSION="v0.1.0"
-REPO="taylor-made-labs/agent-sign"
+REPO="taylor-made-labs/agent-commits"
 INSTALLED_FROM_RELEASE=false
 
+# Installs the built programs into $INSTALL_DIR: the agent-commits names as files,
+# `git` as a copy of the wrapper, and agent-sign's old names as links so the
+# existing LaunchAgent, PATH, and git config keep working. Each file is copied
+# to a temporary name and renamed into place, so a running binary is never
+# overwritten in place.
+install_binaries() {
+    local src="$1"
+    local name
+    for name in agent-commitsd agent-commits agent-commits-ssh-sign agent-commits-git; do
+        cp "$src/$name" "$INSTALL_DIR/.$name.new"
+        mv -f "$INSTALL_DIR/.$name.new" "$INSTALL_DIR/$name"
+    done
+    cp "$src/agent-commits-git" "$INSTALL_DIR/.git.new"
+    mv -f "$INSTALL_DIR/.git.new" "$INSTALL_DIR/git"
+    ln -s agent-commitsd    "$INSTALL_DIR/.agent-signd.new" && mv -f "$INSTALL_DIR/.agent-signd.new" "$INSTALL_DIR/agent-signd"
+    ln -s agent-commits     "$INSTALL_DIR/.agent-sign.new"  && mv -f "$INSTALL_DIR/.agent-sign.new"  "$INSTALL_DIR/agent-sign"
+    ln -s agent-commits-git "$INSTALL_DIR/.agent-git.new"   && mv -f "$INSTALL_DIR/.agent-git.new"   "$INSTALL_DIR/agent-git"
+}
+
 # Check if we are running in the source repo with target/release already built
-if [ -f "target/release/agent-signd" ] && [ -f "target/release/agent-sign" ] && [ -f "target/release/agent-git" ]; then
+if [ -f "target/release/agent-commitsd" ] && [ -f "target/release/agent-commits" ] && [ -f "target/release/agent-commits-ssh-sign" ] && [ -f "target/release/agent-commits-git" ]; then
     info "Using existing local release binaries from target/release/"
-    cp target/release/agent-signd "$INSTALL_DIR/agent-signd"
-    cp target/release/agent-sign  "$INSTALL_DIR/agent-sign"
-    cp target/release/agent-git   "$INSTALL_DIR/agent-git"
-    cp target/release/agent-git   "$INSTALL_DIR/git"
+    install_binaries target/release
     INSTALLED_FROM_RELEASE=true
 fi
 
@@ -69,20 +101,22 @@ if [ "$INSTALLED_FROM_RELEASE" = false ]; then
     elif [ "$OS" = "Linux" ]; then
         if [ "$ARCH" = "x86_64" ]; then
             TARGET_TRIPLE="x86_64-unknown-linux-gnu"
+        elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
+            TARGET_TRIPLE="aarch64-unknown-linux-gnu"
         fi
     fi
 
     if [ -n "$TARGET_TRIPLE" ] && command -v curl &>/dev/null; then
-        TARBALL="agent-sign-${TARGET_TRIPLE}.tar.gz"
+        TARBALL="agent-commits-${TARGET_TRIPLE}.tar.gz"
         URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
         info "Attempting to download pre-compiled release: ${TARBALL}..."
 
         TMP_DIR=$(mktemp -d)
         if curl -fsSL "$URL" -o "$TMP_DIR/$TARBALL" 2>/dev/null; then
             tar -xzf "$TMP_DIR/$TARBALL" -C "$TMP_DIR"
-            EXTRACTED_DIR="$TMP_DIR/agent-sign-${TARGET_TRIPLE}"
-            if [ -d "$EXTRACTED_DIR/bin" ]; then
-                cp "$EXTRACTED_DIR/bin/"* "$INSTALL_DIR/"
+            EXTRACTED_DIR="$TMP_DIR/agent-commits-${TARGET_TRIPLE}"
+            if [ -x "$EXTRACTED_DIR/bin/agent-commitsd" ]; then
+                install_binaries "$EXTRACTED_DIR/bin"
                 ok "Downloaded and installed pre-compiled binaries for ${TARGET_TRIPLE}"
                 INSTALLED_FROM_RELEASE=true
             fi
@@ -104,16 +138,14 @@ if [ "$INSTALLED_FROM_RELEASE" = false ]; then
     fi
     info "Building from source with Cargo..."
     cargo build --release --quiet 2>&1 | tail -5
-    cp target/release/agent-signd "$INSTALL_DIR/agent-signd"
-    cp target/release/agent-sign  "$INSTALL_DIR/agent-sign"
-    cp target/release/agent-git   "$INSTALL_DIR/agent-git"
-    cp target/release/agent-git   "$INSTALL_DIR/git"
+    install_binaries target/release
     ok "Build and installation from source complete"
 fi
 
-chmod +x "$INSTALL_DIR/agent-signd"
-chmod +x "$INSTALL_DIR/agent-sign"
-chmod +x "$INSTALL_DIR/agent-git"
+chmod +x "$INSTALL_DIR/agent-commitsd"
+chmod +x "$INSTALL_DIR/agent-commits"
+chmod +x "$INSTALL_DIR/agent-commits-ssh-sign"
+chmod +x "$INSTALL_DIR/agent-commits-git"
 chmod +x "$INSTALL_DIR/git"
 
 ok "Binaries ready in $INSTALL_DIR"
@@ -121,7 +153,8 @@ ok "Binaries ready in $INSTALL_DIR"
 # ─── Step 3: Generate agent keypair ─────────────────────────────────────────
 step "Agent signing keypair"
 
-"$INSTALL_DIR/agent-signd" setup 2>&1 | grep -v "^=\|^$" || true
+# agent-commitsd also moves ~/.agent-sign to ~/.agent-commits here (leaving a link) on first run.
+"$INSTALL_DIR/agent-commitsd" setup 2>&1 | grep -v "^=\|^$" || true
 
 if [ -f "$PUB_KEY_FILE" ]; then
     AGENT_PUB_KEY=$(cat "$PUB_KEY_FILE")
@@ -185,12 +218,30 @@ HUMAN_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
 
 if [ ! -f "$CONFIG_FILE" ]; then
     cat > "$CONFIG_FILE" <<EOF
-# Agent-Sign Configuration
-# Documentation: https://github.com/taylor-made-labs/agent-sign
+# agent-commits configuration (formerly agent-sign; this file keeps its format)
+# Documentation: https://github.com/taylor-made-labs/agent-commits (README.md, SPEC.md)
+# agent-commitsd reads this file when it starts: restart the service after changing it.
 
 [security]
-# Session lease duration before re-approval is needed
+# A lease is your approval, given once, for agents to sign commits in one
+# repository. Its terms are fixed when you approve and never grow; changing
+# these settings later can only narrow leases already granted.
+#
+# Lease mode: "identity" (default: until you revoke it, or max_lease_ceiling),
+# "timed" (default_lease_duration after approval), or "process" (not tied to a
+# process yet; works as "timed")
+lease_mode = "identity"
+
+# Lease scope: "branch" (default) or "repo". With branch scope and
+# allow_branch_switching (default true), a lease covers every unprotected
+# branch of the repository, and the approval says so.
+lease_scope = "branch"
+
+# How long a "timed" lease lasts
 default_lease_duration = "2h"
+
+# Optional longest life for "identity" leases (e.g. "24h", "7d", or "none")
+# max_lease_ceiling = "7d"
 
 # Protect production branches (agent commits blocked unless overridden)
 allow_main_branch = false
@@ -199,13 +250,16 @@ block_branches = ["main", "master"]
 # Guard against runaway commit loops
 max_commits_per_minute = 10
 
-# Set to true for CI/headless environments (no interactive prompt)
+# true grants every lease without asking. Only for a machine with no screen
+# (where agent-commitsd can't ask you), and only if every process that can reach the
+# service is trusted. See docs/INSTALL.md, "Headless machines".
 auto_approve = false
 
 [attribution]
-# "split"    -> Author: Agent, Committer: You (recommended for OSS)
-# "trailers" -> Author: You + Co-Authored-By trailers (enterprise LDAP compliant)
-# "alias"    -> Author & Committer: You (Agent) <you+agent@domain.com>
+# "split"    -> Author: the agent, Committer: you
+# "trailers" -> Author and Committer: you, plus Co-Authored-By and X-Agent-*
+#               trailers (only when the message is given with -m or --message)
+# "alias"    -> Author and Committer: "<your name> (Agent)" <the [agent] email>
 mode = "split"
 
 [agent]
@@ -218,8 +272,8 @@ email = "agent@local.internal"
 # email = "$HUMAN_EMAIL"
 
 [ssh]
-# Your existing signing program — human commits are forwarded here.
-# Agent-sign delegates to this when no agent event token is present.
+# Your existing signing program. A signing request without an agent token
+# (your own commits, when git calls agent-commits' signing program) is passed to it.
 fallback_program = "$FALLBACK_PROGRAM"
 EOF
     ok "Config written to $CONFIG_FILE"
@@ -265,13 +319,23 @@ fi
 # ─── Step 7: Stop any existing daemon ───────────────────────────────────────
 step "Managing daemon"
 
-# Stop any running agent-signd
-if pgrep -f "agent-signd" &>/dev/null; then
-    info "Stopping existing agent-signd process(es)..."
-    pkill -f "agent-signd" 2>/dev/null || true
-    sleep 1
-    ok "Existing daemon stopped"
+# Stop a service installed earlier through its service manager, then any
+# service started by hand. Match the process name exactly, and only your own
+# processes: matching command lines (as `pkill -f` does) would also stop any
+# shell or SSH session whose command happens to contain the name.
+if [ "$(uname -s)" = "Darwin" ]; then
+    launchctl bootout "gui/$(id -u)/com.agentsign.agent-signd" 2>/dev/null && ok "Stopped the running service (launchd)" || true
+elif command -v systemctl &>/dev/null; then
+    systemctl --user stop agent-signd 2>/dev/null && ok "Stopped the running service (systemd)" || true
 fi
+for name in agent-signd agent-commitsd; do
+    if pgrep -u "$(id -u)" -x "$name" &>/dev/null; then
+        info "Stopping a running $name started by hand..."
+        pkill -u "$(id -u)" -x "$name" 2>/dev/null || true
+        sleep 1
+        ok "Stopped"
+    fi
+done
 
 # Remove stale socket
 if [ -S "$CONFIG_DIR/daemon.sock" ]; then
@@ -293,7 +357,7 @@ if [ "$OS" = "Darwin" ]; then
 
         cp "$PLIST_SRC" "$PLIST_DST"
         launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"
-        ok "Daemon installed and started via launchd (auto-starts on login)"
+        ok "Service installed and started: LaunchAgent com.agentsign.agent-signd (starts at login)"
     else
         warn "LaunchAgent plist not found at $PLIST_SRC — starting daemon manually"
         "$INSTALL_DIR/agent-signd" &
@@ -310,7 +374,9 @@ elif [ "$OS" = "Linux" ]; then
         cp "$SERVICE_SRC" "$SERVICE_DST"
         systemctl --user daemon-reload
         systemctl --user enable --now agent-signd
-        ok "Daemon installed and started via systemd (auto-starts on login)"
+        ok "Service installed and started: systemd user service agent-signd"
+        info "It runs while you're logged in. On a machine you log out of (a server),"
+        info "keep it running with: loginctl enable-linger \"\$USER\""
     else
         "$INSTALL_DIR/agent-signd" &
         disown
@@ -428,16 +494,23 @@ verify() {
     fi
 }
 
-verify "agent-signd binary exists"  "[ -x '$INSTALL_DIR/agent-signd' ]"
-verify "agent-sign binary exists"   "[ -x '$INSTALL_DIR/agent-sign' ]"
-verify "agent-git binary exists"    "[ -x '$INSTALL_DIR/agent-git' ]"
+verify "agent-commitsd binary exists"        "[ -x '$INSTALL_DIR/agent-commitsd' ]"
+verify "agent-commits binary exists"         "[ -x '$INSTALL_DIR/agent-commits' ]"
+verify "agent-commits-ssh-sign binary exists" "[ -x '$INSTALL_DIR/agent-commits-ssh-sign' ]"
+verify "agent-commits-git binary exists"     "[ -x '$INSTALL_DIR/agent-commits-git' ]"
 verify "git shim exists"            "[ -x '$INSTALL_DIR/git' ]"
+verify "old names still work"       "[ -x '$INSTALL_DIR/agent-signd' ] && [ -x '$INSTALL_DIR/agent-sign' ] && [ -x '$INSTALL_DIR/agent-git' ]"
 verify "Private key exists"         "[ -f '$KEYS_DIR/agent_ed25519' ]"
 verify "Public key exists"          "[ -f '$PUB_KEY_FILE' ]"
 verify "Config file exists"         "[ -f '$CONFIG_FILE' ]"
-verify "Key permissions (0600)"     "[ \"\$(stat -f '%Lp' '$KEYS_DIR/agent_ed25519' 2>/dev/null || stat -c '%a' '$KEYS_DIR/agent_ed25519' 2>/dev/null)\" = '600' ]"
+# GNU stat first: on Linux, `stat -f` means "file system status" and prints
+# something else, so trying the BSD form first failed this check on Linux.
+verify "Key permissions (0600)"     "[ \"\$(stat -c '%a' '$KEYS_DIR/agent_ed25519' 2>/dev/null || stat -f '%Lp' '$KEYS_DIR/agent_ed25519' 2>/dev/null)\" = '600' ]"
 verify "Daemon socket exists"       "[ -S '$CONFIG_DIR/daemon.sock' ]"
-verify "Daemon responds to ping"    "'$INSTALL_DIR/agent-signd' status 2>&1 | grep -q 'active'"
+# grep without -q reads all of the output: with -q it stops at the first match,
+# agent-commitsd's next line then hits a closed pipe, and under pipefail the check
+# failed at random.
+verify "Daemon responds to ping"    "'$INSTALL_DIR/agent-commitsd' status 2>&1 | grep 'active' >/dev/null"
 verify "Shell PATH configured"      "grep -q '# >>> agent-sign >>>' ~/.zshrc 2>/dev/null || grep -q '# >>> agent-sign >>>' ~/.bashrc 2>/dev/null || grep -q '# >>> agent-sign >>>' ~/.zprofile 2>/dev/null"
 
 echo ""
@@ -456,11 +529,11 @@ if command -v gh &>/dev/null; then
     if gh auth status &>/dev/null; then
         info "Found authenticated GitHub CLI (gh). Attempting automated key registration..."
         # Check if already registered
-        if gh ssh-key list 2>/dev/null | grep -qF "$AGENT_KEY_DATA"; then
+        if gh ssh-key list 2>/dev/null | grep -F "$AGENT_KEY_DATA" >/dev/null; then
             ok "Agent signing key is already registered on GitHub!"
             REGISTERED_VIA_GH=true
         else
-            if gh ssh-key add "$PUB_KEY_FILE" --type signing --title "Agent-Sign Sub-Key ($(hostname -s))" 2>/dev/null; then
+            if gh ssh-key add "$PUB_KEY_FILE" --type signing --title "agent-commits agent signing key ($(hostname -s))" 2>/dev/null; then
                 ok "Successfully added Agent Signing Key to your GitHub account via gh CLI!"
                 REGISTERED_VIA_GH=true
             else
@@ -513,25 +586,21 @@ fi
 step "Setup Complete"
 
 echo ""
-echo -e "${BOLD}1. Agent tools are ready — zero aliases required!${NC}"
-echo -e "   The installer automatically configured:"
-echo -e "     ${GREEN}✓${NC} Shell PATH in your shell profiles (~/.zshrc / ~/.zprofile)"
-echo -e "     ${GREEN}✓${NC} IDE terminal environments (Cursor / VS Code / Windsurf)"
-echo -e "     ${GREEN}✓${NC} Claude Code, Antigravity, Aider, and any CLI tools inherit PATH automatically"
+echo -e "${BOLD}1. Open a new terminal${NC} (or run ${GREEN}source ~/.bashrc${NC} / ${GREEN}source ~/.zshrc${NC})."
+echo -e "   The installer put $INSTALL_DIR first on PATH in the shell profiles"
+echo -e "   it found, so agents started from a new terminal run the wrapper as git."
+echo -e "   Then check the setup with: ${GREEN}agent-commits doctor${NC}"
 echo ""
-echo -e "   To activate in your current terminal session:"
-echo -e "     ${GREEN}source ~/.zshrc${NC}  (or open a new terminal window)"
+echo -e "${BOLD}2. Your own commits${NC} from an interactive terminal skip agent-commits and use"
+echo -e "   your own signing (${DETECTED_SOURCE:-none detected}). An editor's commit button whose"
+echo -e "   git is the wrapper looks like an agent to agent-commits, and asks for a lease."
 echo ""
-echo -e "${BOLD}2. Verify daemon status anytime:${NC}"
-echo -e "     ${GREEN}$INSTALL_DIR/agent-signd status${NC}"
+echo -e "${BOLD}3. What the agent key can do:${NC} it's registered as a signing key only, so"
+echo -e "   it can't log in or push. But it's stored unencrypted, readable by your"
+echo -e "   user, and signatures made with it show as Verified for you; see the"
+echo -e "   README's \"What it protects against, and what it doesn't\"."
 echo ""
-echo -e "   Your human commits (terminal, IDE buttons) continue to use"
-echo -e "   your personal signing key ($DETECTED_SOURCE) as normal."
-echo ""
-echo -e "${BOLD}3. Zero blast-radius reassurance:${NC}"
-echo -e "   The agent key is strictly a Git SSH signing key. It cannot access SSH"
-echo -e "   servers, clone private repos, or push to remotes."
-echo -e "   To cleanly uninstall at any time: ${CYAN}./scripts/uninstall.sh${NC}"
+echo -e "   To uninstall: ${CYAN}./scripts/uninstall.sh${NC}"
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"
 echo -e "${BOLD}║              Installation Complete ✓             ║${NC}"
