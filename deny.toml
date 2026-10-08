@@ -1,0 +1,24 @@
+# `cargo deny check`: what agent-commits' dependencies may be.
+#
+# Licenses: permissive only, so agent-commits stays usable under
+# MIT OR Apache-2.0 with nothing new for an organization to review. A
+# dependency offered under several licenses passes if one of them is here.
+# Advisories: no dependency with a known vulnerability (RustSec).
+# Sources: crates.io only.
+
+[graph]
+all-features = true
+
+[licenses]
+allow = ["MIT", "Apache-2.0", "BSD-3-Clause", "Unicode-3.0"]
+confidence-threshold = 0.9
+
+[advisories]
+ignore = []
+
+[bans]
+multiple-versions = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
