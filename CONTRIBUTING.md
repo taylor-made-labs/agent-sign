@@ -1,27 +1,41 @@
-# Contributing to Agent-Sign
+# Contributing to agent-commits
 
-Thank you for your interest in contributing to `agent-sign`!
+Thank you for your interest in agent-commits (formerly agent-sign).
 
-## Philosophy & Core Rules
-This project strictly follows **Spec-Driven Development (SDD)** and **Test-Driven Development (TDD)**:
-1. **Never violate the 7 Invariants**: Every pull request must respect all invariants in [SPEC.md](SPEC.md).
-2. **Never break human isolation**: Human commits (terminal or IDE GUI) must never be intercepted or falsely attributed.
-3. **Fail-Closed Security**: In the presence of errors, the system must fail closed (refusing to sign) rather than falling back to unverified keys.
-4. **All PRs must include tests**: Any new feature or bug fix must include automated tests in `tests/`.
+## Rules the code keeps
 
-## Development Workflow
-```bash
-# 1. Run all test suites (unit, integration & E2E)
-cargo test
+1. **The invariants in [SPEC.md](SPEC.md) hold.** Every change respects them,
+   and a change to one is its own, explained change.
+2. **A person's own commits are never touched.** Commits from your own
+   terminal go straight to git.
+3. **Fail closed.** On any error, refuse to sign; never fall back to another
+   key.
+4. **Lease terms never grow on their own.** A lease's terms are fixed when
+   the person approves it; nothing may extend them, and config changes may
+   only narrow them..
+5. **Every fix or feature comes with a test** in `tests/`, one that fails
+   without the change.
 
-# 2. Check code formatting
+## Checks
+
+```sh
 cargo fmt --check
-
-# 3. Run Clippy linter
-cargo clippy -- -D warnings
+cargo clippy --all-targets --locked -- -D warnings
+cargo test --locked
 ```
 
-## Submitting Pull Requests
-- Keep PRs focused on a single concern.
-- Ensure all CI checks pass.
-- Update `SPEC.md` if any component contracts or data schemas change.
+The end-to-end tests start their own service in a temporary home with its
+own socket and stand-in dialogs, so they never touch an installed agent-commits.
+
+## Sending changes
+
+- Keep each pull request to one concern, and each commit small.
+- Sign off every commit (`git commit -s`), certifying the
+  [Developer Certificate of Origin](https://developercertificate.org/).
+  There's no contributor agreement.
+- Update [SPEC.md](SPEC.md) when a component's contract or data changes.
+
+Unless you say otherwise, any contribution you send for inclusion is
+licensed as the rest of agent-commits is: under either the
+[Apache License 2.0](LICENSE-APACHE) or the [MIT License](LICENSE-MIT), at
+the user's choice, with no other terms.
