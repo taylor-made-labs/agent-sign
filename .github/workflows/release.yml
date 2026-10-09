@@ -19,12 +19,20 @@ jobs:
           - os: macos-latest
             target: aarch64-apple-darwin
             archive_name: agent-sign-aarch64-apple-darwin
-          - os: macos-13
+          # Built on the arm64 runner for the Intel target: the macos-13
+          # Intel runner this used is retired, and the only release run
+          # (agent-sign v0.1.0) waited 24 hours for one and was cancelled.
+          - os: macos-latest
             target: x86_64-apple-darwin
             archive_name: agent-sign-x86_64-apple-darwin
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive_name: agent-sign-x86_64-unknown-linux-gnu
+          # Linux ARM64, for the Raspberry Pi (build-order: "a Linux ARM
+          # build"). Built natively on GitHub's ARM runner.
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive_name: agent-sign-aarch64-unknown-linux-gnu
 
     steps:
       - name: Checkout code
@@ -36,7 +44,7 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build release binaries
-        run: cargo build --release --target ${{ matrix.target }}
+        run: cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Package release archive
         shell: bash
@@ -45,15 +53,15 @@ jobs:
           mkdir -p "$STAGING_DIR/bin"
           mkdir -p "$STAGING_DIR/scripts"
 
-          # Copy compiled binaries
-          cp "target/${{ matrix.target }}/release/agent-signd" "$STAGING_DIR/bin/"
-          cp "target/${{ matrix.target }}/release/agent-sign"  "$STAGING_DIR/bin/"
-          cp "target/${{ matrix.target }}/release/agent-git"   "$STAGING_DIR/bin/"
-          cp "target/${{ matrix.target }}/release/agent-git"   "$STAGING_DIR/bin/git"
+          # agent-sign's programs, and `git` as a copy of the wrapper
+          for n in agent-signd agent-sign agent-ssh-sign agent-git; do
+            cp "target/${{ matrix.target }}/release/$n" "$STAGING_DIR/bin/"
+          done
+          cp "target/${{ matrix.target }}/release/agent-git" "$STAGING_DIR/bin/git"
 
           # Copy scripts and metadata
           cp -r scripts/* "$STAGING_DIR/scripts/"
-          cp README.md LICENSE "$STAGING_DIR/"
+          cp README.md LICENSE-MIT LICENSE-APACHE "$STAGING_DIR/"
 
           # Create archive
           cd pkg

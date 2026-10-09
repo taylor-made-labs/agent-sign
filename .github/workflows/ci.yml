@@ -1,10 +1,13 @@
 name: CI
 
+# Every push and pull request, on the three platforms agent-sign ships for:
+# macOS (arm64), Linux x86_64, and Linux ARM64 (the Raspberry Pi's
+# architecture). Plus a scan of the whole history for secrets, since the
+# history becomes public at release.
+
 on:
   push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +19,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        # ubuntu-24.04-arm is free for public repositories; while the
+        # repository is private it may wait for a runner.
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
 
     steps:
       - name: Checkout code
@@ -30,11 +35,61 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@v2
 
-      - name: Check Formatting
+      - name: Check formatting
         run: cargo fmt --check
 
-      - name: Run Clippy Linter
-        run: cargo clippy -- -D warnings
+      - name: Clippy (all targets, warnings are errors)
+        run: cargo clippy --all-targets --locked -- -D warnings
 
-      - name: Run All Tests (Unit, Integration & E2E)
-        run: cargo test --verbose
+      - name: Tests (unit, integration, end to end)
+        run: cargo test --locked --no-fail-fast
+
+  secrets:
+    name: Secret scan (full history)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the whole history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: agent-sign's own scan (every blob on every ref; prints no values)
+        run: python3 scripts/release/scan-history-secrets.py . --all
+
+  licenses:
+    name: Dependency licenses and advisories (cargo deny)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: cargo deny (see deny.toml)
+        uses: EmbarkStudios/cargo-deny-action@v2
+
+  install:
+    name: Install test (Linux)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Fresh install, upgrade from agent-sign, linked state, uninstall
+        run: scripts/release/install-test.sh
