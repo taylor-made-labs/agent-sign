@@ -1,12 +1,8 @@
-# agent-commits: specification
+# agent-sign: specification
 
 - **Status:** pre-release (0.1.0). This page describes what the code does
-  today, checked against it on 30 Sept 2026. Where agent-commits falls short of what it
+  today, checked against it on 30 Sept 2026. Where agent-sign falls short of what it
   aims for, the gap is stated next to the aim.
-- **Formerly:** agent-sign. `agent-signd` is now `agent-commitsd`, `agent-sign` is
-  `agent-commits-ssh-sign` (signing) and `agent-commits` (command line), `agent-git` is
-  `agent-commits-git`, and `~/.agent-sign` is `~/.agent-commits`. The old names and path remain
-  as links; see [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## 1. The problem
 
@@ -17,7 +13,7 @@ worse: turning signing off (unsigned commits, which fail "require signed
 commits" rules), or giving the agent the person's own key (the agent can then
 sign anything as the person, anywhere).
 
-agent-commits gives agents a separate signing key, held by a small service, and asks
+agent-sign gives agents a separate signing key, held by a small service, and asks
 the person once for a **lease**: permission for agents to sign, on terms the
 person sees before approving, in the scope the person chooses (one
 repository, every repository under a folder, or every repository).
@@ -75,77 +71,77 @@ Each invariant says whether it holds today, and how that's checked.
   agent runs `git commit`                     person types `git commit`
             |                                          |
             v                                          v
-  ~/.agent-commits/bin/git  (agent-commits-git, the wrapper)   same wrapper: stdin and stdout
+  ~/.agent-sign/bin/git  (agent-git, the wrapper)   same wrapper: stdin and stdout
             |                                 are terminals -> real git,
-            | not a terminal (or AGENT_COMMITS_FORCE)  unchanged (person's own signing)
+            | not a terminal (or AGENT_SIGN_FORCE)  unchanged (person's own signing)
             v
   local rules: forbidden paths, diff size, (optional) message format
             |
             v
-  agent-commitsd: lease for this repository? --no--> ask the person once (dialog)
+  agent-signd: lease for this repository? --no--> ask the person once (dialog)
             |                                  approve -> lease saved
             | yes (and branch not protected, rate under limit)
             v
   single-use token (60 s)
             |
             v
-  real git commit -c gpg.format=ssh -c gpg.ssh.program=agent-commits-ssh-sign
+  real git commit -c gpg.format=ssh -c gpg.ssh.program=agent-ssh-sign
             |                     with AGENT_EVENT_TOKEN and agent attribution
             v
-  agent-commits-ssh-sign: token? --no--> the person's own signer (fallback_program)
+  agent-ssh-sign: token? --no--> the person's own signer (fallback_program)
             | yes
             v
-  agent-commitsd checks and burns the token, signs with the agent key -> <file>.sig
+  agent-signd checks and burns the token, signs with the agent key -> <file>.sig
 ```
 
 ## 4. Components
 
-### 4.1 The wrapper, `agent-commits-git` (installed as `git`)
+### 4.1 The wrapper, `agent-git` (installed as `git`)
 
-- Installed in `~/.agent-commits/bin`, which the installer puts first on `PATH`
+- Installed in `~/.agent-sign/bin`, which the installer puts first on `PATH`
   in shell profiles.
 - Every command except `commit` (the first non-option argument, so
   `git -C dir commit` counts) runs the real git unchanged.
-- The real git: `AGENT_COMMITS_REAL_GIT` if set, else the first `git` on `PATH` that
-  isn't in a agent-commits directory and isn't the wrapper, else `/opt/homebrew/bin`,
+- The real git: `AGENT_SIGN_REAL_GIT` if set, else the first `git` on `PATH` that
+  isn't in a agent-sign directory and isn't the wrapper, else `/opt/homebrew/bin`,
   `/usr/local/bin`, `/usr/bin`, `/bin`.
 - A commit with standard input and output both terminals, neither
-  `AGENT_COMMITS_FORCE` nor `AGENT_COMMITS_SESSION` set, and no agent mark
+  `AGENT_SIGN_FORCE` nor `AGENT_SIGN_SESSION` set, and no agent mark
   (see INV-1) is the person's: it runs the real git unchanged.
 - Otherwise it's an agent's. The repository is the canonical path of
   `git rev-parse --show-toplevel`; the branch is `git branch --show-current`,
   or `HEAD` when detached. It then:
   1. checks the local rules against the staged changes: `forbidden_paths`,
-     `max_diff_lines` (skipped when `AGENT_COMMITS_ALLOW_LARGE_DIFF` is set), and, if
+     `max_diff_lines` (skipped when `AGENT_SIGN_ALLOW_LARGE_DIFF` is set), and, if
      `enforce_conventional_commits` is on, the `-m` message's format;
   2. asks the service for a lease (the reason sent is always "Autonomous
      coding agent commit"; any duration it sends is ignored);
   3. asks for a token;
   4. runs the real git with `commit.gpgsign=true`, `gpg.format=ssh`,
-     `gpg.ssh.program` set to `agent-commits-ssh-sign` next to the wrapper,
+     `gpg.ssh.program` set to `agent-ssh-sign` next to the wrapper,
      `user.signingkey` set to the agent's public key, the token in
      `AGENT_EVENT_TOKEN`, and author and committer set by the attribution
      mode.
 
-### 4.2 The signing program, `agent-commits-ssh-sign`
+### 4.2 The signing program, `agent-ssh-sign`
 
 Git runs it as `gpg.ssh.program` with ssh-keygen's arguments. Without a
 token it runs `fallback_program` (the person's own signer, detected by the
 installer) with the same arguments. With a token it sends the buffer to the
 service and writes the signature it gets back to `<file>.sig`. It never reads
-the agent key. `agent-commits` accepts the same arguments, as `agent-sign` did.
+the agent key. `agent-sign` accepts the same arguments, as `agent-sign` did.
 
-### 4.3 The service, `agent-commitsd`
+### 4.3 The service, `agent-signd`
 
-- One per user, run by launchd (`com.agentcommits.agent-commitsd`) or a systemd
-  user service (`agent-commitsd.service`). It listens on
-  `~/.agent-commits/daemon.sock` (0600, in a 0700 directory), one thread per
+- One per user, run by launchd (`com.agentsign.agent-signd`) or a systemd
+  user service (`agent-signd.service`). It listens on
+  `~/.agent-sign/daemon.sock` (0600, in a 0700 directory), one thread per
   connection; the lock isn't held while a dialog is open.
-- Holds the agent key: an ed25519 seed in `~/.agent-commits/keys/agent_ed25519`, 0600,
+- Holds the agent key: an ed25519 seed in `~/.agent-sign/keys/agent_ed25519`, 0600,
   **not encrypted**, generated on first start if missing.
 - Reads the config once, when it starts: a change needs a restart. A
   `max_lease_ceiling` it can't read stops it. Environment variables in the
-  service's own environment (`AGENT_COMMITS_AUTO_APPROVE`, `AGENT_COMMITS_LEASE_MODE`, ...)
+  service's own environment (`AGENT_SIGN_AUTO_APPROVE`, `AGENT_SIGN_LEASE_MODE`, ...)
   override the file.
 - Asks the person, in order: on macOS an AppleScript dialog; on Linux with
   `DISPLAY` or `WAYLAND_DISPLAY`, `zenity` or `kdialog`; otherwise a prompt
@@ -158,7 +154,7 @@ the agent key. `agent-commits` accepts the same arguments, as `agent-sign` did.
 
 ### 4.4 Leases
 
-Saved in `~/.agent-commits/leases.json` (0600, written to a temporary file, synced,
+Saved in `~/.agent-sign/leases.json` (0600, written to a temporary file, synced,
 and renamed). A file that can't be read is left untouched, and one that can't
 be parsed is set aside; either way the service starts with no leases.
 
@@ -215,11 +211,10 @@ Newline-delimited JSON, unchanged from agent-sign.
 
 ### 4.6 Configuration
 
-Built-in defaults, then `~/.agent-commits/config.toml`, then the repository's
-`.agent-sign.toml` and `.agent-commits.toml`, then `AGENT_COMMITS_*` (or `AGENT_SIGN_*`)
-environment variables. Which program reads what matters:
+Built-in defaults, then `~/.agent-sign/config.toml`, then the repository's
+`.agent-sign.toml`, then `AGENT_SIGN_*` environment variables. Which program reads what matters:
 
-- **The service** reads only `~/.agent-commits/config.toml` and its own environment:
+- **The service** reads only `~/.agent-sign/config.toml` and its own environment:
   every lease, branch, rate and approval setting comes from there.
   Repository files can't change them.
 - **The wrapper** also reads the repository's files and the environment it
@@ -258,12 +253,12 @@ email = "agent@local.internal"
 
 [ssh]
 fallback_program = "/usr/bin/ssh-keygen"   # the person's own signer, detected by the installer
-# agent_key_path = "~/.agent-commits/keys/agent_ed25519"
+# agent_key_path = "~/.agent-sign/keys/agent_ed25519"
 ```
 
 The author name of an agent commit is the agent that made it, when that can
 be told and `[agent] name` is still the default ("Agent", or agent-sign's
-"Antigravity Agent"): `AGENT_COMMITS_AGENT_NAME` if the agent was started
+"Antigravity Agent"): `AGENT_SIGN_AGENT_NAME` if the agent was started
 with it, otherwise the first mark set among `CLAUDECODE` (Claude Code),
 `GEMINI_CLI` (Gemini CLI) and `CODEX_THREAD_ID` (Codex). A name the person
 configured is kept. This is attribution, not identity: any program can set
@@ -277,7 +272,7 @@ Attribution modes:
 - **`split`** (default): author is the agent, committer is the person.
 - **`trailers`**: author and committer are the person; a message given with
   `-m` or `--message` gets `Co-Authored-By: <agent>`, `X-Agent-Signer:
-  agent-commits/v0.1` and `X-Agent-Lease: <lease id>` trailers. A message from `-F` or
+  agent-sign/v0.1` and `X-Agent-Lease: <lease id>` trailers. A message from `-F` or
   an editor is left as it is.
 - **`alias`**: author and committer are "`<person's name> (Agent)`" with the
   agent's email.
@@ -291,18 +286,18 @@ they show as Unverified.
 
 ## 5. Threat model
 
-agent-commits' current protections assume an agent that cooperates: it runs `git`
-from its `PATH` and doesn't set out to get around agent-commits. Agents today run as
-the person's own user account, and agent-commits doesn't change that.
+agent-sign's current protections assume an agent that cooperates: it runs `git`
+from its `PATH` and doesn't set out to get around agent-sign. Agents today run as
+the person's own user account, and agent-sign doesn't change that.
 
-| Threat | What agent-commits does today | Gap |
+| Threat | What agent-sign does today | Gap |
 |---|---|---|
-| An agent signs as the person with the person's key | The agent key is separate; agents never talk to the person's signer through agent-commits. | An agent can still call the real git (or the person's signer) directly. |
+| An agent signs as the person with the person's key | The agent key is separate; agents never talk to the person's signer through agent-sign. | An agent can still call the real git (or the person's signer) directly. |
 | The agent key is copied | It's registered on GitHub as a signing key only, so it can't log in, clone or push. | It's unencrypted and readable by the person's user, so any process running as them can copy it, and commits signed with it show as Verified for the person. |
 | An agent approves its own lease | The dialog comes from the service, not the agent. | An agent running as the person can edit the config (`auto_approve`), start its own service, or answer a terminal prompt. |
 | Runaway commit loops | `max_commits_per_minute` per repository. | No total cap per lease. |
 | Commits on protected branches | Refused on every token. | Detached HEAD isn't protected; `allow_main_branch` turns protection off. |
-| Changes to CI workflows or key files | `forbidden_paths` and `max_diff_lines` in the wrapper. | A repository's `.agent-commits.toml` or an environment variable, both writable by the agent, can loosen them. |
+| Changes to CI workflows or key files | `forbidden_paths` and `max_diff_lines` in the wrapper. | A repository's `.agent-sign.toml` or an environment variable, both writable by the agent, can loosen them. |
 | Approving by accident | The dialog states the repository, branch, coverage, end, and the agent's reason. | Its default button is Approve, and the dialog text is built into an AppleScript string. |
 | Mixing agents' work | None. | One key and one set of leases per machine user; agents aren't told apart. |
 
@@ -315,7 +310,7 @@ with no default Approve.
 
 `cargo test --locked` runs them all; the end-to-end ones start their own
 service in a temporary home with its own socket, so they never touch an
-installed agent-commits.
+installed agent-sign.
 
 | File | What it shows |
 |---|---|
@@ -327,9 +322,7 @@ installed agent-commits.
 | `test_crypto_verification.rs` | Keys and signatures in OpenSSH format, verified by `ssh-keygen`. |
 | `test_signature_equivalence.rs` | Every program name makes byte-identical signatures to agent-sign's. |
 | `test_e2e_git_commit.rs` | Real git commits through the wrapper, signing program and service, verified by git; old and new names. |
-| `test_switch_over.rs` | An agent-sign install switched to agent-commits keeps signing without a new approval. |
-| `test_migration.rs` | Moving `~/.agent-sign` to `~/.agent-commits`. |
-| `test_refusals_and_revoke.rs` | "Couldn't ask" versus "denied"; revoking a repository with no lease is an error; `agent-commits revoke .`; the doctor's advice. |
+| `test_refusals_and_revoke.rs` | "Couldn't ask" versus "denied"; revoking a repository with no lease is an error; `agent-sign revoke .`; the doctor's advice. |
 
 Not covered by an automated test yet: the real dialogs. The installer and
 uninstaller are covered on Linux by `scripts/release/install-test.sh`.

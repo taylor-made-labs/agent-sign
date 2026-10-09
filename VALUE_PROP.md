@@ -1,7 +1,7 @@
-# agent-commits: what it promises, and what it delivers today
+# agent-sign: what it promises, and what it delivers today
 
 - **Status:** pre-release (0.1.0), checked against the code on 30 Sept 2026.
-- **Purpose:** the promises agent-commits makes to the people who use it, each with
+- **Purpose:** the promises agent-sign makes to the people who use it, each with
   where it stands and how that's known. A promise that isn't kept yet says
   so.
 
@@ -12,7 +12,7 @@ AI coding agents commit often. If you sign your commits with a hardware key,
 touch, and the agent waits. The usual ways out are worse: turning signing
 off, or handing the agent your own key.
 
-## What agent-commits does
+## What agent-sign does
 
 It gives agents their own signing key, held by a small service on your
 machine, and asks you once whether agents may sign: in one repository, in
@@ -37,9 +37,9 @@ ends) before you approve. The terms are fixed when you approve and never grow.
 
 ## Who it's for today
 
-- **1Password, Secure Enclave or passkey signers on macOS:** the case agent-commits is
+- **1Password, Secure Enclave or passkey signers on macOS:** the case agent-sign is
   used for daily. Your own commits still go through your signer; the agent's
-  go through agent-commits.
+  go through agent-sign.
 - **Hardware keys (YubiKey, FIDO2):** the same; the agent key is an ordinary
   file key, so the agent's commits need no touch. Your key isn't involved in
   approving leases.
@@ -48,7 +48,7 @@ ends) before you approve. The terms are fixed when you approve and never grow.
   installer sets one up) and, on GitHub, the agent key as a signing key.
 - **Linux desktops:** builds and passes its tests on x86_64 and ARM64; little
   daily use yet. The approval dialog needs `zenity` or `kdialog`.
-- **Servers and containers:** with no screen, agent-commits can't ask you. You can
+- **Servers and containers:** with no screen, agent-sign can't ask you. You can
   turn on `auto_approve`, which grants every lease without asking; that's
   only safe where every process that can reach the service is trusted.
 
@@ -58,7 +58,7 @@ ends) before you approve. The terms are fixed when you approve and never grow.
   agent commit under an existing lease took about 16 ms in the demo script
   (one run, not a benchmark).
 
-## Things agent-commits won't do
+## Things agent-sign won't do
 
 1. Weaken your own signing: it never changes how your own commits are
    signed, and never asks for your key.

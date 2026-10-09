@@ -1,22 +1,22 @@
-# agent-commits with Aider
+# agent-sign with Aider
 
 [Aider](https://aider.chat) commits after each change it makes.
 
 ## Setup
 
 After `./scripts/install.sh`, start Aider from a new terminal so it inherits
-the `PATH` with agent-commits' wrapper first:
+the `PATH` with agent-sign's wrapper first:
 
 ```sh
-AGENT_COMMITS_AGENT_NAME=Aider aider
+AGENT_SIGN_AGENT_NAME=Aider aider
 ```
 
-(`AGENT_COMMITS_AGENT_NAME` makes Aider's commits say "Aider" as their
+(`AGENT_SIGN_AGENT_NAME` makes Aider's commits say "Aider" as their
 author; without it they say "Agent".)
 
 ## What happens
 
-- Aider's commits have no terminal attached, so agent-commits treats them as the
+- Aider's commits have no terminal attached, so agent-sign treats them as the
   agent's. The first one in a repository asks you once for a lease (showing
   which branches it covers and when it ends); after that, Aider's commits in
   that repository are signed with the agent key without asking.

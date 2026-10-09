@@ -6,9 +6,9 @@
 - **Review Scope**: Cryptographic soundness, runtime architecture, security invariants, usability, setup experience, and alignment between documentation/specifications and real implementation.
 
 > **A historical record.** This review is of agent-sign as it was on
-> 25 Sept 2026, before it became agent-commits; the file names and quotes are
+> 25 Sept 2026, before it became agent-sign; the file names and quotes are
 > agent-sign's. It's kept because it explains many of the changes since.
-> Where each finding stands in agent-commits (checked 30 Sept 2026):
+> Where each finding stands in agent-sign (checked 30 Sept 2026):
 >
 > | Finding | Now |
 > |---|---|
@@ -19,7 +19,7 @@
 > | 5. Service blocks during dialogs | Fixed: a thread per connection, and the lock isn't held during a dialog. |
 > | 6. Repositories keyed by folder name | Fixed: keyed by canonical path. |
 > | 7. Hard-coded `/usr/bin/git` and `ssh-keygen` | Fixed: git is found on `PATH`; `fallback_program` is used. |
-> | 8. Tokens never expire; revocation a no-op | Fixed: tokens expire after 60 seconds; `agent-commits revoke` works (and since 30 Sept, reports when nothing matched). |
+> | 8. Tokens never expire; revocation a no-op | Fixed: tokens expire after 60 seconds; `agent-sign revoke` works (and since 30 Sept, reports when nothing matched). |
 > | Usability 1. Terminal commits treated as the agent's | Fixed: commits with a terminal on standard input and output are the person's. An editor's commit button is still treated as an agent's. |
 > | Usability 2. No service management | Fixed: launchd and systemd user services. |
 > | Usability 3. `status` says little | Fixed: it lists leases. |

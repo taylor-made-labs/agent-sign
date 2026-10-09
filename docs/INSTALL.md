@@ -1,12 +1,12 @@
-# Installing agent-commits
+# Installing agent-sign
 
-agent-commits runs on macOS (as a launchd user agent) and on Linux (as a systemd user
+agent-sign runs on macOS (as a launchd user agent) and on Linux (as a systemd user
 service). There are no prebuilt releases yet, so you build it from source.
 
 ## What you need
 
 - macOS, or Linux with systemd (x86_64 or ARM64, such as a Raspberry Pi 5)
-- Rust 1.88 or newer (install from https://rustup.rs). agent-commits is checked with
+- Rust 1.88 or newer (install from https://rustup.rs). agent-sign is checked with
   1.93 and 1.98.
 - git 2.34 or newer (SSH commit signing), and `ssh-keygen` (git uses it to
   verify SSH signatures). On macOS both come with the Xcode command line
@@ -20,8 +20,8 @@ service). There are no prebuilt releases yet, so you build it from source.
 ## Install
 
 ```sh
-git clone https://github.com/taylor-made-labs/agent-commits.git
-cd agent-commits
+git clone https://github.com/taylor-made-labs/agent-sign.git
+cd agent-sign
 cargo build --release --locked
 ./scripts/install.sh
 ```
@@ -31,20 +31,19 @@ skip the build, the installer still works: it tries to download a release
 (there isn't one yet; it says so and moves on) and then builds with Cargo
 itself.
 
-Where things go: everything is in `~/.agent-commits` (the programs, the
-agent key, the config, leases and the service's socket). An agent-sign
-install is moved there first, keeping its key and leases; see
-[Upgrading from agent-sign](#upgrading-from-agent-sign).
+Where things go: everything is in `~/.agent-sign` (the programs, the
+agent key, the config, leases and the service's socket). Installing over an
+existing install keeps its key and leases; see [Upgrading](#upgrading).
 
 Then open a new terminal (the installer changes your shell's `PATH`) and run:
 
 ```sh
-agent-commits doctor
+agent-sign doctor
 ```
 
 It checks every piece and says how to fix anything that's wrong.
 
-To see it work end to end, run `./scripts/demo-sandbox.sh` from the `agent-commits`
+To see it work end to end, run `./scripts/demo-sandbox.sh` from the `agent-sign`
 directory. It makes two signed agent commits in a throwaway repository
 (you'll see the lease dialog once), shows one refused by a local rule, then
 deletes the repository and revokes its lease.
@@ -61,14 +60,14 @@ account's key, as noted below.
 
 | Where | What |
 |---|---|
-| `~/.agent-commits/bin` | The programs: `agent-commitsd`, `agent-commits`, `agent-commits-ssh-sign`, `agent-commits-git`, a copy of `agent-commits-git` named `git`, and agent-sign's old names as links. |
-| `~/.agent-commits/keys` | A new ed25519 key for the agent, readable only by your user (and so by any agent running as you). It is not encrypted. |
-| `~/.agent-commits/config.toml` | Settings, with your existing SSH signing program detected (git's `gpg.ssh.program`, 1Password's `op-ssh-sign`, or `ssh-keygen`). Only written if missing. |
+| `~/.agent-sign/bin` | The programs: `agent-signd`, `agent-sign`, `agent-ssh-sign`, `agent-git`, and a copy of `agent-git` named `git`. |
+| `~/.agent-sign/keys` | A new ed25519 key for the agent, readable only by your user (and so by any agent running as you). It is not encrypted. |
+| `~/.agent-sign/config.toml` | Settings, with your existing SSH signing program detected (git's `gpg.ssh.program`, 1Password's `op-ssh-sign`, or `ssh-keygen`). Only written if missing. |
 | git's `allowed_signers` file (the list of SSH keys git trusts when it checks signatures) | One line with the agent's public key, **under your git email** (and `gpg.ssh.allowedSignersFile` set globally, to `~/.config/git/allowed_signers`, if it wasn't set; the uninstaller leaves that setting). This is what makes `git log --show-signature` report agent commits as good, and it attributes them to you. |
-| launchd or systemd | A user service that runs `agent-commitsd` and restarts it if it stops (`~/Library/LaunchAgents/com.agentcommits.agent-commitsd.plist`, or `~/.config/systemd/user/agent-commitsd.service`). Before installing it, the installer stops a service installed earlier (removing agent-sign's, if it's there), and any `agent-signd` or `agent-commitsd` process of yours started by hand. |
-| `~/.zshrc`, `~/.zprofile`, `~/.bashrc`, `~/.bash_profile` | A marked block putting `~/.agent-commits/bin` first on `PATH` (replacing agent-sign's block, if there is one), in each of these files that exists, so every program started from your shell, agents included, gets the wrapper as `git`. |
+| launchd or systemd | A user service that runs `agent-signd` and restarts it if it stops (`~/Library/LaunchAgents/com.agentsign.agent-signd.plist`, or `~/.config/systemd/user/agent-signd.service`). Before installing it, the installer stops a service installed earlier, and any `agent-signd` or `agent-signd` process of yours started by hand. |
+| `~/.zshrc`, `~/.zprofile`, `~/.bashrc`, `~/.bash_profile` | A marked block putting `~/.agent-sign/bin` first on `PATH` (once), in each of these files that exists, so every program started from your shell, agents included, gets the wrapper as `git`. |
 | Cursor, VS Code and Windsurf `settings.json` | The same `PATH` for their built-in terminals, if those editors are installed. |
-| `~/.gemini/config/rules/agent-commits.md` | A rule for Google Antigravity, if it's installed. |
+| `~/.gemini/config/rules/agent-sign.md` | A rule for Google Antigravity, if it's installed. |
 | Your GitHub account | Only if you say yes: with `gh` logged in and you at the terminal, the installer asks whether to add the agent's public key to your account as a **signing key** (it can't be used to log in or push). Otherwise, or if you say no, the public key is printed (and copied to your clipboard, on a desktop) and GitHub's settings page is opened when there's a browser, for you to add it yourself. |
 
 Two consequences worth knowing:
@@ -76,7 +75,7 @@ Two consequences worth knowing:
 - Because the agent key is registered under your email and on your GitHub
   account, and you're the committer in the default `split` attribution mode
   (the agent is the author, you're the committer), GitHub shows agent commits
-  as Verified for you. agent-commits' aim is attribution
+  as Verified for you. agent-sign's aim is attribution
   to the agent's own identity; that isn't built yet.
 - Editors that read your login shell's `PATH` (VS Code on macOS does) may
   run the wrapper for their own commit button. With no terminal attached,
@@ -84,21 +83,21 @@ Two consequences worth knowing:
 
 ## Headless machines (servers, containers, CI)
 
-With no screen, `agent-commitsd` can't ask you (it runs in the background, so a
+With no screen, `agent-signd` can't ask you (it runs in the background, so a
 terminal you're logged in to over SSH doesn't help), so it refuses new
-leases (failing closed), and the agent sees "agent-commits couldn't ask you to
-approve a lease". To use agent-commits anyway, turn on auto-approval, which grants
+leases (failing closed), and the agent sees "agent-sign couldn't ask you to
+approve a lease". To use agent-sign anyway, turn on auto-approval, which grants
 every lease without asking. Use it only where every process that can reach
 the service is trusted.
 
-1. In `~/.agent-commits/config.toml`, under `[security]`, set `auto_approve = true`. A repository's `.agent-commits.toml`
+1. In `~/.agent-sign/config.toml`, under `[security]`, set `auto_approve = true`. A repository's `.agent-sign.toml`
    can't turn it on.
 2. Restart the service, which reads its config only when it starts:
-   `systemctl --user restart agent-commitsd` on Linux, or
-   `launchctl kickstart -k gui/$(id -u)/com.agentcommits.agent-commitsd` on macOS.
+   `systemctl --user restart agent-signd` on Linux, or
+   `launchctl kickstart -k gui/$(id -u)/com.agentsign.agent-signd` on macOS.
 
-Alternatively, set `AGENT_COMMITS_AUTO_APPROVE=1` in the service's environment
-(`systemctl --user edit agent-commitsd`), or run `agent-commitsd --auto-approve` yourself.
+Alternatively, set `AGENT_SIGN_AUTO_APPROVE=1` in the service's environment
+(`systemctl --user edit agent-signd`), or run `agent-signd --auto-approve` yourself.
 
 On Linux, a user service stops when you log out unless lingering is on:
 `loginctl enable-linger "$USER"` (some systems allow this only for an
@@ -121,24 +120,26 @@ git verify-commit HEAD
 
 This stops and removes the service, removes the `PATH` blocks and editor
 settings, removes the agent key's line from `allowed_signers`, and deletes
-`~/.agent-commits` and `~/.agent-sign`, including the agent key and all leases.
+`~/.agent-sign`, including the agent key and all leases (if it's a link to a
+folder kept elsewhere, only the link is removed).
 It leaves git's global `gpg.ssh.allowedSignersFile` setting (unset it with
 `git config --global --unset gpg.ssh.allowedSignersFile` if nothing else uses
 it). Remove the key from GitHub (Settings, SSH and GPG keys) yourself.
 
 ## Not ready yet
 
-- **Prebuilt releases.** `.github/workflows/release.yml` still packages
-  agent-sign's program names and has no Linux ARM64 build; the fix,
+- **Prebuilt releases.** `.github/workflows/release.yml` packages only three of the
+  four programs and has no Linux ARM64 build; the fix,
   `docs/release/ci-workflows.patch`, is waiting to be applied (see
   [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)). Until then, build from
   source as above.
-- **Homebrew.** `Formula/agent-commits.rb` installs from those releases, so
+- **Homebrew.** `Formula/agent-sign.rb` installs from those releases, so
   it can't be used until the first one is published, and it isn't in a tap
   yet. After `brew install`, its caveats give the one command that finishes
   setup (`install.sh --from-homebrew`).
 
-## Upgrading from agent-sign
+## Upgrading
 
-See [MIGRATION.md](MIGRATION.md). Nothing needs to be done by hand: the key,
-leases and config carry over, and the old names keep working.
+Run the installer again from the new version. The key, leases and config
+carry over, with no new approval. [MIGRATION.md](MIGRATION.md) lists what
+changed since the first agent-sign.

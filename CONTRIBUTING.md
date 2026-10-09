@@ -1,6 +1,6 @@
-# Contributing to agent-commits
+# Contributing to agent-sign
 
-Thank you for your interest in agent-commits (formerly agent-sign).
+Thank you for your interest in agent-sign.
 
 ## Rules the code keeps
 
@@ -25,7 +25,7 @@ cargo test --locked
 ```
 
 The end-to-end tests start their own service in a temporary home with its
-own socket and stand-in dialogs, so they never touch an installed agent-commits.
+own socket and stand-in dialogs, so they never touch an installed agent-sign.
 
 ## Sending changes
 
@@ -36,6 +36,6 @@ own socket and stand-in dialogs, so they never touch an installed agent-commits.
 - Update [SPEC.md](SPEC.md) when a component's contract or data changes.
 
 Unless you say otherwise, any contribution you send for inclusion is
-licensed as the rest of agent-commits is: under either the
+licensed as the rest of agent-sign is: under either the
 [Apache License 2.0](LICENSE-APACHE) or the [MIT License](LICENSE-MIT), at
 the user's choice, with no other terms.

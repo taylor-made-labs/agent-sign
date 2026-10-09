@@ -1,6 +1,6 @@
 # Release checklist
 
-agent-commits 0.1.0 is ready for users when every check below passes. It
+agent-sign 0.1.0 is ready for users when every check below passes. It
 covers both halves of "ready": the tool works (F), and someone who finds it
 can install it and trust what it says (R). Each check says how it's run, so
 anyone can rerun it; the status column records the latest run.
@@ -17,9 +17,9 @@ hold, and the README says so), or **Person** (only the maintainer can do it).
 | F3 | Your own commits never use the agent key | Automated: a commit from a terminal goes to your normal git and signing (`tests/test_human_isolation.rs`). Manual: an editor's commit button and GitHub Desktop. | Terminal **Pass**; editor buttons **Limit** (if the editor's git is the wrapper, it looks like an agent) |
 | F4 | Fails closed | Automated: with no lease, a revoked lease, an expired lease, a forged or replayed token, or the service stopped, an agent commit is refused with a message saying why, and is never signed with another key. | **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` (denied, revoked, ended, forged and reused tokens, service stopped: each refused, and no commit exists afterwards) |
 | F5 | The rules refuse with a reason | Automated: commits on `main`/`master`, touching CI workflows or key files, over the diff-size limit, or over the rate limit are refused, each with its own message. | **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` (protected branch without asking, CI workflow and key files, diff size, rate limit) |
-| F10 | Commits name the agent | Automated: with each known agent mark, or `AGENT_COMMITS_AGENT_NAME`, the commit's author is that agent; a configured name is kept (`tests/test_agent_name.rs`). | **Pass** (7 Oct 2026) |
+| F10 | Commits name the agent | Automated: with each known agent mark, or `AGENT_SIGN_AGENT_NAME`, the commit's author is that agent; a configured name is kept (`tests/test_agent_name.rs`). | **Pass** (7 Oct 2026) |
 | F6 | Terms never grow after approval | Automated: `tests/test_lease_terms.rs` (config can only narrow; an unreadable ceiling stops the service). | **Pass** (7 Oct 2026) |
-| F7 | Real agents actually go through it | Manual, recorded: Claude Code, Codex and Cursor, each started the normal way, on macOS and on Linux, make a commit; the commit is signed with the agent key, or `agent-commits doctor` says plainly that this agent bypasses the wrapper. | Claude Code (desktop app) on macOS **Pass**: every commit of this release went through the wrapper and verifies (`%G?` = `G`), 7 Oct 2026. Codex **Open** (its account here is at its usage limit until 21 Oct). Cursor, and Linux, **Open**. |
+| F7 | Real agents actually go through it | Manual, recorded: Claude Code, Codex and Cursor, each started the normal way, on macOS and on Linux, make a commit; the commit is signed with the agent key, or `agent-sign doctor` says plainly that this agent bypasses the wrapper. | Claude Code (desktop app) on macOS **Pass**: every commit of this release went through the wrapper and verifies (`%G?` = `G`), 7 Oct 2026. Codex **Open** (its account here is at its usage limit until 21 Oct). Cursor, and Linux, **Open**. |
 | F8 | Edge cases, repeated | Automated: two agents committing at once (same repository and different ones), the service restarted mid-work, hundreds of commits in a row, repository paths with spaces and non-ASCII characters, symlinked repositories, worktrees, detached HEAD, `--amend`, and each approval scope's boundaries (a folder doesn't cover a sibling whose name starts the same). Each case runs enough times to rule out flakes. | Mostly **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` covers paths with spaces and accents, a symlinked repository (one lease), a worktree, detached HEAD, `--amend`, 200 commits in a row, two agents committing at once in two repositories, and a restart between commits; `tests/test_service_restart.rs` covers a commit during a restart; the full suite (117 tests) passed 2 runs in 2. **Limit**: a home folder long enough to push the socket path past 104 bytes (macOS) stops the service. Not yet: two agents committing in the same repository at once (git itself locks the index). |
 | F9 | The approval scope is the person's choice | Automated: the dialog offers this repository, this folder and everything under it, or everywhere, and the lease covers exactly the scope chosen (`tests/test_approval_scope.rs`, with stand-in dialogs). Manual, once each: the real macOS and Linux dialogs show the three choices and return the one picked. | Automated **Pass** (7 Oct 2026); real dialogs **Person** (one click on the Mac) |
 
@@ -46,7 +46,7 @@ hold, and the README says so), or **Person** (only the maintainer can do it).
 
 ## Last: onboarding and polish
 
-Not needed for 0.1.0, but on the roadmap: `agent-commits upgrade` with
+Not needed for 0.1.0, but on the roadmap: `agent-sign upgrade` with
 automatic rollback, an install with no terminal steps, and a first-run page.
 
 ## Rerunning the checks
