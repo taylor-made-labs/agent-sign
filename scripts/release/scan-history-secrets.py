@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Scan every file version in a git repository's history for secrets.
 
-A release check for agent-sign, whose history (inherited from agent-sign) becomes
-public at release. gitleaks is the standard tool and is preferred when it is
+A release check for agent-sign, whose whole history is public. gitleaks is the standard tool and is preferred when it is
 installed (`gitleaks git --log-opts=--all`); this script is the fallback that
 needs only Python and git, so the check can always be run.
 
@@ -16,7 +15,9 @@ Rules follow gitleaks' commonest detectors (private keys, GitHub, AWS,
 Anthropic, OpenAI, Slack, Google, Stripe and 1Password tokens, JWTs) plus two
 broad ones (a quoted secret-like assignment; a 64-hex-digit value, the shape
 of an ed25519 seed). Cargo.lock's checksum lines are skipped, since every one
-is a 64-hex-digit hash.
+is a 64-hex-digit hash. So is a quoted assignment whose value is only zeros
+and dashes after an optional short prefix (such as a test's forged token
+"ev_00000000-0000-..."): a placeholder carries no secret.
 
 Usage: scan-history-secrets.py [repo] [rev ...]
 """
@@ -42,6 +43,14 @@ RULES = {
     "hex-64": re.compile(r"\b[0-9a-fA-F]{64}\b"),
 }
 CARGO_LOCK_CHECKSUM = re.compile(r'^checksum = "[0-9a-f]{64}"$')
+QUOTED_VALUE = re.compile(r"['\"]([^'\"]*)['\"]")
+PLACEHOLDER = re.compile(r"[A-Za-z]{0,8}_?[0-]+")
+
+
+def is_placeholder_assignment(text):
+    """Whether every quoted value on a secret-assignment line is a placeholder."""
+    values = QUOTED_VALUE.findall(text)
+    return bool(values) and all(PLACEHOLDER.fullmatch(v) for v in values)
 
 
 def git(repo, *args, text=True):
@@ -70,6 +79,8 @@ def main():
                 continue
             for rule, rx in RULES.items():
                 if rx.search(text):
+                    if rule == "secret-assignment" and is_placeholder_assignment(text):
+                        continue
                     findings.append((rule, sha[:10], path, n))
     commits = git(repo, "rev-list", "--count", *revs).strip()
     print(f"Scanned {blobs} file versions in {commits} commits ({' '.join(revs)}).")
