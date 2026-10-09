@@ -474,6 +474,25 @@ impl LeaseEngine {
         before_end && recently_used
     }
 
+    /// Everything besides a fixed end that will end `lease`, in plain words.
+    pub fn describe_endings(&self, lease: &Lease) -> String {
+        let mut endings = Vec::new();
+        if let Some(work) = &lease.work {
+            endings.push(format!(
+                "when branch '{}' is merged or deleted",
+                work.branch
+            ));
+        }
+        if let Some(idle) = self.policy.idle_limit {
+            endings.push(format!(
+                "after {} with no agent commits",
+                describe_duration(idle)
+            ));
+        }
+        endings.push("when you turn it off (agent-sign revoke)".to_string());
+        join_alternatives(&endings)
+    }
+
     /// Ends every lease whose work is finished, as `check` reports it (the
     /// service passes [`crate::work::work_state`]). Returns each lease ended,
     /// with why. Leases with no recorded work are left to the other rules.
@@ -751,6 +770,7 @@ impl LeaseEngine {
                     last_used_epoch: lease.last_used_at_secs,
                     commit_count: lease.commit_count,
                     covers: lease.coverage.describe(),
+                    ends: self.describe_endings(lease),
                     expires_in_secs: self
                         .effective_end(lease)
                         .map(|end| end.saturating_sub(current_epoch_secs())),

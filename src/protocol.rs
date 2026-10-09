@@ -21,6 +21,11 @@ pub struct LeaseInfo {
     /// repository under /w/dev"). Empty from services older than scopes.
     #[serde(default)]
     pub covers: String,
+    /// What else ends the lease, besides `expires_in_secs`, in plain words
+    /// ("when branch 'feat/a' is merged or deleted, after 7 days with no agent
+    /// commits, or when you turn it off"). Empty from older services.
+    #[serde(default)]
+    pub ends: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -692,3 +692,25 @@ fn by_default_a_commit_of_any_size_is_signed() {
     assert!(out.status.success(), "{}", stderr(&out));
     assert!(s.head_verifies(&repo));
 }
+
+#[test]
+fn the_lease_list_says_how_each_lease_ends() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    assert!(s.agent_commit(&repo, "a.txt").status.success());
+    let out = Command::new(env!("CARGO_BIN_EXE_agent-sign"))
+        .arg("leases")
+        .env("HOME", &s.home)
+        .env("AGENT_SIGN_SOCKET", &s.socket)
+        .output()
+        .unwrap();
+    let listed = String::from_utf8_lossy(&out.stdout);
+    assert!(!listed.contains("when revoked"), "{listed}");
+    assert!(
+        listed.contains(
+            "when branch 'feat/a' is merged or deleted, after 7 days with no agent commits, \
+             or when you turn it off (agent-sign revoke)"
+        ),
+        "{listed}"
+    );
+}

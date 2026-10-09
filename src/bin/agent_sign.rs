@@ -93,12 +93,19 @@ fn run_leases() -> ExitCode {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
 
+            let mut endings: Vec<(String, String)> = Vec::new();
             for lease in leases {
                 let granted_desc = format_relative_time(now.saturating_sub(lease.granted_at_epoch));
+                // A fixed end, if there is one; the other endings (the work,
+                // the idle backstop, revoking) are listed under the table.
                 let expires_desc = match lease.expires_in_secs {
-                    Some(rem) => format!("in {}", format_relative_time(rem)),
-                    None => "when revoked".to_string(),
+                    Some(rem) => format!("by {}", format_relative_time(rem)),
+                    None if lease.ends.is_empty() => "when revoked".to_string(),
+                    None => "see below".to_string(),
                 };
+                if !lease.ends.is_empty() {
+                    endings.push((lease.repo.clone(), lease.ends.clone()));
+                }
                 // A lease wider than one repository covers every unprotected
                 // branch; the branch it holds is only where it was approved.
                 let wide = lease.covers.starts_with("every repository");
@@ -122,6 +129,13 @@ fn run_leases() -> ExitCode {
                     lease.commit_count,
                     covers_display
                 );
+            }
+            if !endings.is_empty() {
+                println!();
+                println!("Each lease also ends:");
+                for (repo, ends) in endings {
+                    println!("  {}: {}", repo, ends);
+                }
             }
             println!();
             ExitCode::SUCCESS
