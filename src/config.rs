@@ -145,6 +145,10 @@ pub struct SecurityConfig {
     pub default_lease_duration: String,
     #[serde(default = "default_max_lease_ceiling")]
     pub max_lease_ceiling: String,
+    /// The backstop: a lease ends after this long with no agent commit under
+    /// it, such as "7d", or "none" to turn it off.
+    #[serde(default = "default_end_after_idle")]
+    pub end_after_idle: String,
     #[serde(default = "default_block_branches")]
     pub block_branches: Vec<String>,
     #[serde(default)]
@@ -169,6 +173,12 @@ fn default_lease_duration_str() -> String {
 
 fn default_max_lease_ceiling() -> String {
     "none".to_string()
+}
+
+/// A week without agent commits: long enough for work that pauses over a
+/// weekend, short enough that a forgotten approval doesn't stay open.
+fn default_end_after_idle() -> String {
+    "7d".to_string()
 }
 
 fn default_block_branches() -> Vec<String> {
@@ -201,6 +211,7 @@ impl Default for SecurityConfig {
             lease_scope: LeaseScope::default(),
             default_lease_duration: default_lease_duration_str(),
             max_lease_ceiling: default_max_lease_ceiling(),
+            end_after_idle: default_end_after_idle(),
             block_branches: default_block_branches(),
             allow_main_branch: false,
             allow_branch_switching: true,
@@ -222,6 +233,23 @@ impl SecurityConfig {
     /// ceiling ("none" or empty). A value that isn't a duration is an error,
     /// not "no ceiling": the person meant to bound leases, so the service
     /// refuses to start rather than silently leave them unbounded.
+    /// The idle backstop (`end_after_idle`), or `None` when it's "none". As
+    /// with the ceiling, a value that isn't a duration stops the service
+    /// rather than silently leaving leases without the backstop.
+    pub fn idle_limit_duration(&self) -> Result<Option<Duration>, String> {
+        let s = self.end_after_idle.trim();
+        if s.is_empty() || s.eq_ignore_ascii_case("none") {
+            Ok(None)
+        } else {
+            parse_duration_string(s).map(Some).ok_or_else(|| {
+                format!(
+                    "end_after_idle = \"{}\" is not a duration; use a number with s, m, h or d (for example \"7d\"), or \"none\"",
+                    s
+                )
+            })
+        }
+    }
+
     pub fn max_ceiling_duration(&self) -> Result<Option<Duration>, String> {
         let s = self.max_lease_ceiling.trim();
         if s.is_empty() || s.eq_ignore_ascii_case("none") {
@@ -381,6 +409,10 @@ impl Config {
 
         if let Some(val) = paths::env_var("MAX_LEASE_CEILING") {
             config.security.max_lease_ceiling = val;
+        }
+
+        if let Some(val) = paths::env_var("END_AFTER_IDLE") {
+            config.security.end_after_idle = val;
         }
 
         if let Some(val) = paths::env_var("MODE") {

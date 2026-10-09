@@ -89,6 +89,7 @@ fn lease(mode: LeaseMode, granted_ago: u64, recorded_end_after: Option<u64>) -> 
         commit_count: 0,
         follows_branches: Some(true),
         coverage: Default::default(),
+        work: None,
     }
 }
 
@@ -397,7 +398,11 @@ fn the_approval_prompt_states_the_fixed_terms() {
         t.covers,
         "every branch except protected ones (main, master)"
     );
-    assert_eq!(t.ends, "when you revoke it (agent-sign revoke)");
+    assert_eq!(
+        t.ends,
+        "when the work on branch 'feat/a' is merged or the branch is deleted, \
+         or when you turn it off (agent-sign revoke)"
+    );
 
     let one_branch_week = LeasePolicy {
         allow_branch_switching: false,
@@ -406,16 +411,22 @@ fn the_approval_prompt_states_the_fixed_terms() {
     };
     let t = one_branch_week.describe_terms("feat/a");
     assert_eq!(t.covers, "only branch 'feat/a'");
-    assert_eq!(t.ends, "7 days after approval, or sooner if you revoke it");
+    assert_eq!(
+        t.ends,
+        "7 days after approval at the latest; sooner when the work on branch \
+         'feat/a' is merged or the branch is deleted, or when you turn it off \
+         (agent-sign revoke)"
+    );
 
     let timed = LeasePolicy {
         mode: LeaseMode::Timed,
         default_ttl: Duration::from_secs(2 * 3600),
         ..Default::default()
     };
-    assert_eq!(
-        timed.describe_terms("x").ends,
-        "2 hours after approval, or sooner if you revoke it"
+    assert!(
+        timed.describe_terms("x").ends.starts_with(
+            "2 hours after approval at the latest; sooner when the work on branch 'x'"
+        )
     );
 
     let process = LeasePolicy {

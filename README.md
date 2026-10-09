@@ -19,8 +19,10 @@ so agent commits show as Verified for you, with the agent's name as author.
 See [what it protects against, and what it doesn't](#what-it-protects-against-and-what-it-doesnt).
 
 The approval is a **lease**, and you see its terms before you approve: what
-it covers, which branches, and when it ends (by default, when you revoke
-it). They're fixed when you approve and never grow on their own. Commits you
+it covers, which branches, and when it ends. No lease lasts forever: it ends
+when the branch it was approved for is merged or deleted, after a week with
+no agent commits, or when you turn it off, whichever comes first. The terms
+are fixed when you approve and never grow on their own. Commits you
 make yourself in a terminal go through your normal signing.
 
 **Status: pre-release (0.1.0).** Its author uses it daily on macOS for every
@@ -130,7 +132,8 @@ An AI agent asks to sign git commits as the agent without asking you again.
 Repository: /Users/you/code/project
 Branch now: feat/parser
 Branches: every branch except protected ones (main, master)
-Ends: when you revoke it (agent-sign revoke)
+Ends: when the work on branch 'feat/parser' is merged or the branch is deleted,
+  after 7 days with no agent commits, or when you turn it off (agent-sign revoke)
 Reason given by the agent: Autonomous coding agent commit
 
 Choose what this approval covers. These terms are fixed when you approve.
@@ -164,13 +167,19 @@ When a commit is refused, the agent sees why; the messages are listed in
 
 | Setting in `~/.agent-sign/config.toml`, under `[security]` | Default | What it does |
 |---|---|---|
-| `lease_mode` | `"identity"` | `identity`: until you revoke it (or `max_lease_ceiling`, if set). `timed`: `default_lease_duration` after approval. |
+| `lease_mode` | `"identity"` | `identity`: until its work is finished (see below). `timed`: also no later than `default_lease_duration` after approval. |
+| `end_after_idle` | `"7d"` | A lease ends after this long with no agent commit under it, so one whose branch is never merged or deleted still ends. `"none"` turns this off. A value agent-sign can't read stops the service rather than being ignored. |
 | `max_lease_ceiling` | `"none"` | Longest life of an `identity` lease, such as `"7d"`. It also shortens leases already granted. A value agent-sign can't read stops the service rather than being ignored. |
 | `default_lease_duration` | `"2h"` | Life of a `timed` lease. |
 | `allow_branch_switching` | `true` | With `lease_scope = "branch"` (the default), `true` makes a lease cover every unprotected branch of the repository, following the agent between them; `false` limits it to the branch it was approved on. `lease_scope = "repo"` always covers every unprotected branch. |
 | `block_branches` | `["main", "master"]` | Branches no lease covers (a name, or a prefix ending in `*`). |
 | `allow_main_branch` | `false` | `true` turns that protection off. |
 | `max_commits_per_minute` | `10` | Commit rate limit per repository. |
+
+Every lease also ends with its work: when the branch it was approved for is
+merged into `main` or `master` (counting only commits made since the
+approval, and a merge on GitHub once you've fetched it) or deleted. Detached
+HEAD has no branch to follow, so there only the other endings apply.
 
 Changing these only ever narrows leases already granted: a shorter ceiling
 ends older leases sooner, and a longer one doesn't extend them. The service

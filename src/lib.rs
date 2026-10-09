@@ -15,3 +15,4 @@ pub mod multiplexer;
 pub mod paths;
 pub mod protocol;
 pub mod ssh_sign;
+pub mod work;

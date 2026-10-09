@@ -181,10 +181,19 @@ Lease:
   and is only offered when the config lets leases follow branches. A commit
   uses the most specific lease that covers its repository and branch.
   Unattended approval (`auto_approve`) grants this repository only.
-- Each lease is in force until its effective end: the end
-  recorded at approval, brought forward if the current config's cap for its
-  mode is shorter (`max_lease_ceiling` for `identity`,
-  `default_lease_duration` for `timed`), never pushed back.
+- Each lease is in force until the first of:
+  - its effective end: the end recorded at approval, brought forward if the
+    current config's cap for its mode is shorter (`max_lease_ceiling` for
+    `identity`, `default_lease_duration` for `timed`), never pushed back
+  - its work is finished: the branch it was approved on (recorded with its
+    tip at approval, as `work`) is deleted, or has commits since approval
+    that are now in `main` or `master` (local, or `origin`'s as last
+    fetched). Checked by the service on every request (`src/work.rs`).
+    Detached HEAD never counts as finished.
+  - `end_after_idle` (default 7 days) passes with no agent commit under it
+  - the person revokes it
+  No lease lasts forever unless the person sets both `end_after_idle` and
+  `max_lease_ceiling` to "none" and never merges or deletes the branch.
 - `process` mode isn't tied to a process: it works as `timed`, and the
   dialog and the service's log say so.
 - With `scope = "branch"` and `allow_branch_switching = true` (the defaults)
@@ -230,6 +239,7 @@ lease_scope = "branch"            # "branch" | "repo"
 allow_branch_switching = true     # with branch scope: follow the agent between branches
 default_lease_duration = "2h"     # life of a timed lease
 max_lease_ceiling = "none"        # longest life of an identity lease, e.g. "7d"; unreadable = service won't start
+end_after_idle = "7d"             # a lease ends after this long with no agent commit; "none" turns it off; unreadable = service won't start
 block_branches = ["main", "master"]   # exact names, or a prefix ending in "*", e.g. "release/*"
 allow_main_branch = false         # true turns branch protection off entirely
 max_commits_per_minute = 10

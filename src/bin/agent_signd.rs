@@ -185,6 +185,7 @@ fn run_daemon(
         Config::load(None)
     };
     let max_ceiling = config.security.max_ceiling_duration()?;
+    let idle_limit = config.security.idle_limit_duration()?;
     if config.security.lease_mode == agent_sign::config::LeaseMode::Process {
         eprintln!(
             "[agent-signd] lease_mode = \"process\" is not tied to a process yet: leases end after default_lease_duration ({}), as in \"timed\" mode.",
@@ -236,6 +237,7 @@ fn run_daemon(
         scope: config.security.lease_scope,
         default_ttl: config.security.lease_duration(),
         max_ceiling,
+        idle_limit,
         block_branches: config.security.block_branches.clone(),
         allow_main_branch: config.security.allow_main_branch,
         allow_branch_switching: config.security.allow_branch_switching,
@@ -310,7 +312,8 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
         } => {
             // Check active lease state without holding lock across UI dialog
             let (blocked, covering, can_follow, auto_approve_val, terms, choices) = {
-                let st = state.lock().unwrap();
+                let mut st = state.lock().unwrap();
+                end_finished_work(&mut st);
                 let engine = &st.lease_engine;
                 let covering = engine
                     .find_lease(&repo, &branch)
@@ -368,10 +371,13 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 match approval {
                     Approval::Approved(coverage) => {
                         let mut st = state.lock().unwrap();
-                        match st
-                            .lease_engine
-                            .try_grant_lease_covering(&repo, &branch, &intent, coverage)
-                        {
+                        match st.lease_engine.try_grant_for_work(
+                            &repo,
+                            &branch,
+                            &intent,
+                            coverage,
+                            work_at(&repo, &branch),
+                        ) {
                             Ok(lease) => Response::LeaseGranted {
                                 lease_id: lease.id,
                                 expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
@@ -387,6 +393,7 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
         }
         Request::IssueToken { repo, branch } => {
             let mut st = state.lock().unwrap();
+            end_finished_work(&mut st);
             // Prune expired tokens (> 60s)
             let now = Instant::now();
             st.valid_tokens
@@ -435,7 +442,8 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             }
         }
         Request::ListLeases => {
-            let st = state.lock().unwrap();
+            let mut st = state.lock().unwrap();
+            end_finished_work(&mut st);
             let leases = st.lease_engine.list_leases();
             Response::LeaseList { leases }
         }
@@ -464,6 +472,38 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
     };
 
     let _ = send_response(stream, &response);
+}
+
+/// The work an approval asked from `repo` on `branch` is for, if the
+/// branch's tip can be read (see `agent_sign::work`). A lease granted with
+/// it ends when that work is merged or deleted.
+fn work_at(repo: &str, branch: &str) -> Option<agent_sign::lease::Work> {
+    let base = agent_sign::work::branch_tip(Path::new(repo), branch)?;
+    Some(agent_sign::lease::Work {
+        repo: repo.to_string(),
+        branch: branch.to_string(),
+        base,
+    })
+}
+
+/// Ends the leases whose work is finished, and says so in the service's log.
+fn end_finished_work(st: &mut DaemonState) {
+    let ended = st.lease_engine.end_finished_work(|w| {
+        agent_sign::work::work_state(Path::new(&w.repo), &w.branch, &w.base)
+    });
+    for (lease, why) in ended {
+        let why = match why {
+            agent_sign::work::WorkState::Merged => "was merged",
+            _ => "was deleted",
+        };
+        eprintln!(
+            "[agent-signd] Ended the approval for {} ({}): branch '{}' {}",
+            lease.repo,
+            lease.coverage.describe(),
+            lease.work.map(|w| w.branch).unwrap_or_default(),
+            why
+        );
+    }
 }
 
 /// The person's answer to a lease request, or that there was no way to ask.

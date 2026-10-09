@@ -299,7 +299,7 @@ if [ ! -f "$CONFIG_FILE" ]; then
 # repository. Its terms are fixed when you approve and never grow; changing
 # these settings later can only narrow leases already granted.
 #
-# Lease mode: "identity" (default: until you revoke it, or max_lease_ceiling),
+# Lease mode: "identity" (default: until its work is finished, see below, or max_lease_ceiling),
 # "timed" (default_lease_duration after approval), or "process" (not tied to a
 # process yet; works as "timed")
 lease_mode = "identity"
@@ -314,6 +314,11 @@ default_lease_duration = "2h"
 
 # Optional longest life for "identity" leases (e.g. "24h", "7d", or "none")
 # max_lease_ceiling = "7d"
+
+# Every lease ends when the branch it was approved for is merged or deleted,
+# or when you revoke it. As a backstop, it also ends after this long with no
+# agent commits ("none" turns the backstop off).
+end_after_idle = "7d"
 
 # Protect production branches (agent commits blocked unless overridden)
 allow_main_branch = false

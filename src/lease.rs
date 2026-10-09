@@ -129,6 +129,22 @@ pub struct Lease {
     /// `agent-sign revoke` takes.
     #[serde(default)]
     pub coverage: Coverage,
+    /// The piece of work the lease was approved for. When it's finished
+    /// (merged or deleted, see [`crate::work`]) the lease ends. `None` when
+    /// the branch couldn't be read at approval, and for leases saved before
+    /// this was recorded: those end only by the other rules.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub work: Option<Work>,
+}
+
+/// The work a lease was approved for: the repository and branch the agent
+/// asked from, and the branch's tip at that moment (so that commits made
+/// since can be told from where the branch started).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Work {
+    pub repo: String,
+    pub branch: String,
+    pub base: String,
 }
 
 impl Lease {
@@ -160,6 +176,10 @@ pub struct LeasePolicy {
     pub allow_main_branch: bool,
     pub allow_branch_switching: bool,
     pub max_commits_per_minute: u32,
+    /// The backstop: a lease ends after this long with no agent commit under
+    /// it (`end_after_idle` in the config), so one whose work is never merged
+    /// or deleted still ends. `None` turns the backstop off.
+    pub idle_limit: Option<Duration>,
 }
 
 impl Default for LeasePolicy {
@@ -173,6 +193,7 @@ impl Default for LeasePolicy {
             allow_main_branch: false,
             allow_branch_switching: true,
             max_commits_per_minute: 10,
+            idle_limit: None,
         }
     }
 }
@@ -236,22 +257,48 @@ impl LeasePolicy {
         } else {
             format!("only branch '{}'", branch)
         };
+        // Every lease ends with its work, after the idle backstop, and when
+        // revoked; a time limit, if one applies, is said first.
+        let mut endings = vec![format!(
+            "when the work on branch '{}' is merged or the branch is deleted",
+            branch
+        )];
+        if let Some(idle) = self.idle_limit {
+            endings.push(format!(
+                "after {} with no agent commits",
+                describe_duration(idle)
+            ));
+        }
+        endings.push("when you turn it off (agent-sign revoke)".to_string());
+        let either = join_alternatives(&endings);
         let ends = match (self.mode, self.max_ceiling) {
-            (LeaseMode::Identity, None) => "when you revoke it (agent-sign revoke)".to_string(),
+            (LeaseMode::Identity, None) => either,
             (LeaseMode::Identity, Some(cap)) => format!(
-                "{} after approval, or sooner if you revoke it",
-                describe_duration(cap)
+                "{} after approval at the latest; sooner {}",
+                describe_duration(cap),
+                either
             ),
             (LeaseMode::Timed, _) => format!(
-                "{} after approval, or sooner if you revoke it",
-                describe_duration(self.default_ttl)
+                "{} after approval at the latest; sooner {}",
+                describe_duration(self.default_ttl),
+                either
             ),
             (LeaseMode::Process, _) => format!(
-                "{} after approval, or sooner if you revoke it (\"process\" mode is not tied to a process yet; it works as \"timed\")",
-                describe_duration(self.default_ttl)
+                "{} after approval at the latest (\"process\" mode is not tied to a process yet; it works as \"timed\"); sooner {}",
+                describe_duration(self.default_ttl),
+                either
             ),
         };
         TermsText { covers, ends }
+    }
+}
+
+/// "a, b, or c".
+fn join_alternatives(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{}, or {}", rest.join(", "), last),
     }
 }
 
@@ -415,10 +462,42 @@ impl LeaseEngine {
         }
     }
 
-    /// Whether a lease is still in force under its terms and the current config.
+    /// Whether a lease is still in force under its terms and the current
+    /// config: before its end, and used within the idle backstop.
     pub fn is_lease_active(&self, lease: &Lease) -> bool {
-        self.effective_end(lease)
-            .is_none_or(|end| current_epoch_secs() < end)
+        let now = current_epoch_secs();
+        let before_end = self.effective_end(lease).is_none_or(|end| now < end);
+        let recently_used = self
+            .policy
+            .idle_limit
+            .is_none_or(|idle| now < lease.last_used_at_secs.saturating_add(idle.as_secs()));
+        before_end && recently_used
+    }
+
+    /// Ends every lease whose work is finished, as `check` reports it (the
+    /// service passes [`crate::work::work_state`]). Returns each lease ended,
+    /// with why. Leases with no recorded work are left to the other rules.
+    pub fn end_finished_work(
+        &mut self,
+        check: impl Fn(&Work) -> crate::work::WorkState,
+    ) -> Vec<(Lease, crate::work::WorkState)> {
+        use crate::work::WorkState;
+        let finished: Vec<(String, WorkState)> = self
+            .leases
+            .iter()
+            .filter_map(|(key, lease)| {
+                let state = check(lease.work.as_ref()?);
+                (state != WorkState::Ongoing).then(|| (key.clone(), state))
+            })
+            .collect();
+        let ended: Vec<(Lease, WorkState)> = finished
+            .into_iter()
+            .filter_map(|(key, state)| self.leases.remove(&key).map(|l| (l, state)))
+            .collect();
+        if !ended.is_empty() {
+            self.save_to_disk();
+        }
+        ended
     }
 
     /// Whether a lease covers every unprotected branch of its repository: what
@@ -509,6 +588,19 @@ impl LeaseEngine {
         intent: &str,
         coverage: Coverage,
     ) -> Result<Lease, String> {
+        self.try_grant_for_work(repo, branch, intent, coverage, None)
+    }
+
+    /// Grants a lease with the coverage the person chose, for a piece of
+    /// work: it ends when that work is finished (see [`Self::end_finished_work`]).
+    pub fn try_grant_for_work(
+        &mut self,
+        repo: &str,
+        branch: &str,
+        intent: &str,
+        coverage: Coverage,
+        work: Option<Work>,
+    ) -> Result<Lease, String> {
         // Enforce branch protection [INV-7] unless allow_main_branch is true
         if self.is_branch_blocked(branch) {
             return Err(format!(
@@ -558,6 +650,7 @@ impl LeaseEngine {
             commit_count: 0,
             follows_branches: Some(self.policy.follows_branches()),
             coverage,
+            work,
         };
 
         self.leases.insert(key, lease.clone());

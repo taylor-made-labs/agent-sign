@@ -602,3 +602,74 @@ fn an_agent_in_a_terminal_pane_is_still_treated_as_an_agent() {
     assert_eq!(commits(&repo), 2);
     assert!(s.head_verifies(&repo), "signed with the agent key");
 }
+
+// --- Every lease ends --------------------------------------------------------
+
+#[test]
+fn unfinished_work_keeps_its_approval() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    for f in ["a.txt", "b.txt", "c.txt"] {
+        assert!(s.agent_commit(&repo, f).status.success());
+    }
+    assert_eq!(s.times_asked(), 1);
+}
+
+#[test]
+fn merging_the_work_ends_its_approval() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    assert!(s.agent_commit(&repo, "a.txt").status.success());
+    // The person merges the agent's branch into main.
+    git_ok(&repo, &["checkout", "-q", "main"]);
+    git_ok(
+        &repo,
+        &["merge", "-q", "--no-ff", "-m", "merge feat/a", "feat/a"],
+    );
+    git_ok(&repo, &["checkout", "-q", "feat/a"]);
+    // The next agent commit asks again.
+    assert!(s.agent_commit(&repo, "b.txt").status.success());
+    assert_eq!(s.times_asked(), 2);
+}
+
+#[test]
+fn deleting_the_branch_ends_its_approval() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    assert!(s.agent_commit(&repo, "a.txt").status.success());
+    git_ok(&repo, &["checkout", "-q", "-b", "feat/b"]);
+    git_ok(&repo, &["branch", "-q", "-D", "feat/a"]);
+    assert!(s.agent_commit(&repo, "b.txt").status.success());
+    assert_eq!(s.times_asked(), 2);
+}
+
+#[test]
+fn an_approval_unused_past_the_backstop_asks_again() {
+    let s = Setup::new("[security]\nend_after_idle = \"2s\"\n", false);
+    let repo = s.repo("r", "feat/a");
+    assert!(s.agent_commit(&repo, "a.txt").status.success());
+    std::thread::sleep(Duration::from_millis(3100));
+    assert!(s.agent_commit(&repo, "b.txt").status.success());
+    assert_eq!(s.times_asked(), 2);
+}
+
+#[test]
+fn an_unreadable_backstop_stops_the_service_instead_of_dropping_it() {
+    let dir = tempdir().unwrap();
+    let state = dir.path().join(".agent-sign");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(
+        state.join("config.toml"),
+        "[security]\nend_after_idle = \"soon\"\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
+        .arg("--socket")
+        .arg(dir.path().join("s.sock"))
+        .env("HOME", dir.path())
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("end_after_idle"));
+}
