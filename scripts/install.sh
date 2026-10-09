@@ -594,10 +594,19 @@ step "GitHub / GitLab Signing Key Setup"
 
 REGISTERED_VIA_GH=false
 
+# Already on the account (an upgrade, or added before)? Then there's nothing
+# to add, and nothing to ask, print, copy or open. Reading the key list
+# changes nothing, so it needs no yes.
+if command -v gh &>/dev/null && gh auth status &>/dev/null \
+    && gh ssh-key list 2>/dev/null | grep -F "$AGENT_KEY_DATA" >/dev/null; then
+    ok "The agent's signing key is already on your GitHub account"
+    REGISTERED_VIA_GH=true
+fi
+
 # Adding a key to someone's GitHub account is theirs to agree to: ask, and
 # only when there's a person at the terminal to answer.
 ADD_WITH_GH=false
-if command -v gh &>/dev/null && gh auth status &>/dev/null && [ -t 0 ]; then
+if [ "$REGISTERED_VIA_GH" = false ] && command -v gh &>/dev/null && gh auth status &>/dev/null && [ -t 0 ]; then
     echo ""
     echo "The GitHub CLI (gh) is signed in. agent-sign can add the agent's public"
     echo "key to your GitHub account as a signing key (it can sign, not log in or push),"
@@ -618,9 +627,12 @@ if [ "$ADD_WITH_GH" = true ]; then
 fi
 
 if [ "$REGISTERED_VIA_GH" = false ]; then
-    # Copy to clipboard if utility available
+    # The clipboard and the browser are the person's: only touch them when
+    # they're at the terminal to see why.
     COPIED_CLIPBOARD=false
-    if command -v pbcopy &>/dev/null; then
+    if [ ! -t 0 ]; then
+        :
+    elif command -v pbcopy &>/dev/null; then
         pbcopy < "$PUB_KEY_FILE"
         COPIED_CLIPBOARD=true
     elif command -v wl-copy &>/dev/null; then
@@ -644,8 +656,8 @@ if [ "$REGISTERED_VIA_GH" = false ]; then
         ok "Public key automatically copied to your clipboard!"
     fi
 
-    # Try to open the URL directly if in an interactive desktop session
-    if [ -t 0 ] || [ -n "${DISPLAY:-}" ] || [ "$(uname -s)" = "Darwin" ]; then
+    # Open the page only for someone at the terminal.
+    if [ -t 0 ]; then
         if [ "$OS" = "Darwin" ] && command -v open &>/dev/null; then
             open "https://github.com/settings/ssh/new" 2>/dev/null || true
             ok "Opened GitHub SSH settings in your browser."
