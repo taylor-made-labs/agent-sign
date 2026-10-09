@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use agent_commits::attribution::KNOWN_AGENTS;
-use agent_commits::protocol::{Request, Response, send_request};
+use agent_sign::attribution::KNOWN_AGENTS;
+use agent_sign::protocol::{Request, Response, send_request};
 use tempfile::{TempDir, tempdir};
 
 const THIS_REPOSITORY: &str = "This repository only";
@@ -81,7 +81,7 @@ impl Setup {
     fn new(config: &str, auto_approve: bool) -> Setup {
         let dir = tempdir().unwrap();
         let home = dir.path().to_path_buf();
-        let state = home.join(".agent-commits");
+        let state = home.join(".agent-sign");
         fs::create_dir_all(&state).unwrap();
         fs::write(state.join("config.toml"), config).unwrap();
 
@@ -118,14 +118,14 @@ impl Setup {
     }
 
     fn start_service(&mut self, auto_approve: bool) {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-commitsd"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
         cmd.arg("--socket")
             .arg(&self.socket)
             .env("HOME", &self.home)
             .env("PATH", &self.fakebin)
             .env("DISPLAY", ":99")
             .env_remove("WAYLAND_DISPLAY")
-            .env_remove("AGENT_COMMITS_AUTO_APPROVE")
+            .env_remove("AGENT_SIGN_AUTO_APPROVE")
             .env_remove("AGENT_SIGN_AUTO_APPROVE")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -181,17 +181,14 @@ impl Setup {
 
     /// Runs the wrapper as an agent would (no terminal, no agent marks).
     fn agent_git(&self, repo: &Path, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-commits-git"));
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-git"));
         cmd.args(args)
             .current_dir(repo)
             .env("HOME", &self.home)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("AGENT_COMMITS_SOCKET", &self.socket)
-            .env(
-                "AGENT_COMMITS_BIN",
-                env!("CARGO_BIN_EXE_agent-commits-ssh-sign"),
-            )
+            .env("AGENT_SIGN_SOCKET", &self.socket)
+            .env("AGENT_SIGN_BIN", env!("CARGO_BIN_EXE_agent-ssh-sign"))
             .stdin(Stdio::null());
         for (var, _) in KNOWN_AGENTS {
             cmd.env_remove(var);
@@ -214,8 +211,7 @@ impl Setup {
 
     /// Whether HEAD's signature verifies with the agent key.
     fn head_verifies(&self, repo: &Path) -> bool {
-        let key =
-            fs::read_to_string(self.home.join(".agent-commits/keys/agent_ed25519.pub")).unwrap();
+        let key = fs::read_to_string(self.home.join(".agent-sign/keys/agent_ed25519.pub")).unwrap();
         let signers = self.home.join("allowed_signers");
         fs::write(&signers, format!("person@example.com {}\n", key.trim())).unwrap();
         let out = git(
@@ -378,7 +374,7 @@ fn a_stopped_service_refuses_after_a_short_wait_and_makes_no_commit() {
     let out = s.agent_git(
         &repo,
         &["commit", "-q", "-m", "b"],
-        &[("AGENT_COMMITS_CONNECT_WAIT_MS", "300")],
+        &[("AGENT_SIGN_CONNECT_WAIT_MS", "300")],
     );
     assert!(start.elapsed() < Duration::from_secs(5));
     assert!(!out.status.success());
@@ -543,7 +539,7 @@ impl Setup {
     fn commit_in_a_terminal(&self, repo: &Path, file: &str, marks: &[(&str, &str)]) -> Output {
         fs::write(repo.join(file), format!("{file}\n")).unwrap();
         git_ok(repo, &["add", file]);
-        let wrapper = env!("CARGO_BIN_EXE_agent-commits-git");
+        let wrapper = env!("CARGO_BIN_EXE_agent-git");
         let mut cmd = Command::new("script");
         if cfg!(target_os = "macos") {
             cmd.args(["-q", "/dev/null", wrapper, "commit", "-q", "-m", file]);
@@ -558,11 +554,8 @@ impl Setup {
             .env("HOME", &self.home)
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("AGENT_COMMITS_SOCKET", &self.socket)
-            .env(
-                "AGENT_COMMITS_BIN",
-                env!("CARGO_BIN_EXE_agent-commits-ssh-sign"),
-            )
+            .env("AGENT_SIGN_SOCKET", &self.socket)
+            .env("AGENT_SIGN_BIN", env!("CARGO_BIN_EXE_agent-ssh-sign"))
             .stdin(Stdio::null());
         for (var, _) in KNOWN_AGENTS {
             cmd.env_remove(var);

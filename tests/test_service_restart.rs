@@ -5,7 +5,7 @@
 //! there's a moment when connecting fails: the socket file is missing, or is
 //! there with nothing listening yet. Measured on an Intel Mac (Core i9, 2019), the service
 //! answers about 85 ms after it starts. Clients retry for a short, configurable
-//! wait (`AGENT_COMMITS_CONNECT_WAIT_MS`, 2 seconds by default) rather than
+//! wait (`AGENT_SIGN_CONNECT_WAIT_MS`, 2 seconds by default) rather than
 //! failing a commit an agent made at that moment. A service that never comes
 //! back still fails the commit, after the wait.
 
@@ -13,7 +13,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
 use std::time::{Duration, Instant};
 
-use agent_commits::protocol::{Request, Response, send_request_waiting};
+use agent_sign::protocol::{Request, Response, send_request_waiting};
 use tempfile::tempdir;
 
 /// Answers one request with Pong.

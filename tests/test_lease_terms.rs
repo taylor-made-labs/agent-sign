@@ -1,11 +1,11 @@
-//! agent-commits' lease model, as tests: a lease's terms are fixed when the person
+//! agent-sign's lease model, as tests: a lease's terms are fixed when the person
 //! approves it and never grow on their own.
 //!
 //! Each test names the property it holds: a lease survives a restart without
 //! asking again, and nothing lets its terms grow without a new approval.
 
-use agent_commits::config::{LeaseMode, LeaseScope};
-use agent_commits::lease::{LeaseEngine, LeasePolicy};
+use agent_sign::config::{LeaseMode, LeaseScope};
+use agent_sign::lease::{LeaseEngine, LeasePolicy};
 
 /// Branch rules are checked when a token is issued, whatever the lease's
 /// scope. Before, a repository-scoped lease signed commits on `main`, because
@@ -63,7 +63,7 @@ fn allow_main_branch_still_allows_protected_branches() {
 
 // --- Terms are fixed when approved, and only ever narrowed ------------------
 
-use agent_commits::lease::{Lease, current_epoch_secs};
+use agent_sign::lease::{Lease, current_epoch_secs};
 use std::time::Duration;
 
 /// Writes one lease to a leases.json, as an earlier service run would have.
@@ -260,7 +260,7 @@ fn a_repo_lease_is_narrowed_to_its_branch_when_the_config_narrows() {
     assert!(engine.issue_commit_token("/r", "feat/a").is_ok());
 }
 
-/// Leases saved before agent-commits recorded branch following (the Mac's 14 leases)
+/// Leases saved before agent-sign recorded branch following (the Mac's 14 leases)
 /// keep working exactly as before: the current config decides, so the next
 /// commit after an upgrade needs no approval.
 #[test]
@@ -344,7 +344,7 @@ fn an_unreadable_lease_file_is_never_overwritten() {
 /// A ceiling that isn't a duration is an error, never "no ceiling".
 #[test]
 fn an_unreadable_ceiling_is_an_error_not_unbounded() {
-    use agent_commits::config::SecurityConfig;
+    use agent_sign::config::SecurityConfig;
     let with = |v: &str| SecurityConfig {
         max_lease_ceiling: v.to_string(),
         ..Default::default()
@@ -371,7 +371,7 @@ fn service_refuses_to_start_with_an_unreadable_ceiling() {
     let socket = dir.path().join("daemon.sock");
     std::fs::write(&socket, b"").unwrap(); // stands in for a running service's socket
 
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_agent-commitsd"))
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_agent-signd"))
         .arg("--socket")
         .arg(&socket)
         .arg("--config")
@@ -397,7 +397,7 @@ fn the_approval_prompt_states_the_fixed_terms() {
         t.covers,
         "every branch except protected ones (main, master)"
     );
-    assert_eq!(t.ends, "when you revoke it (agent-commits revoke)");
+    assert_eq!(t.ends, "when you revoke it (agent-sign revoke)");
 
     let one_branch_week = LeasePolicy {
         allow_branch_switching: false,
@@ -429,7 +429,7 @@ fn the_approval_prompt_states_the_fixed_terms() {
 
 #[test]
 fn durations_are_described_in_whole_units() {
-    use agent_commits::lease::describe_duration;
+    use agent_sign::lease::describe_duration;
     assert_eq!(describe_duration(Duration::from_secs(86400)), "1 day");
     assert_eq!(
         describe_duration(Duration::from_secs(90 * 60)),
@@ -449,7 +449,7 @@ fn old_configs_with_the_dropped_auto_revoke_key_still_load() {
         "[security]\nlease_mode = \"identity\"\nauto_revoke_on_branch_delete = true\nmax_commits_per_minute = 7\n",
     )
     .unwrap();
-    let config = agent_commits::config::Config::load_from_file(&file).unwrap();
+    let config = agent_sign::config::Config::load_from_file(&file).unwrap();
     assert_eq!(config.security.max_commits_per_minute, 7);
     assert_eq!(config.security.lease_mode, LeaseMode::Identity);
 }

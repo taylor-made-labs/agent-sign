@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # =============================================================================
-# agent-commits (formerly agent-sign) uninstaller
-# Removes agent-commits' service, programs, keys, leases and config, and undoes the
+# agent-sign uninstaller
+# Removes agent-sign's service, programs, keys, leases and config, and undoes the
 # installer's PATH, editor and allowed_signers changes. It leaves your own git
 # settings alone, including gpg.ssh.allowedSignersFile if the installer set it.
 # =============================================================================
@@ -20,17 +20,16 @@ info() { echo -e "${BOLD}==> ${NC}$1"; }
 
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"
-echo -e "${BOLD}║                agent-commits Uninstaller                  ║${NC}"
+echo -e "${BOLD}║                agent-sign Uninstaller                  ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 
 # ─── Step 1: Stop daemon ────────────────────────────────────────────────────
-info "Stopping the agent-commits service (and agent-sign's, if it's still installed)..."
+info "Stopping the agent-sign service..."
 
-# agent-commits' service, and agent-sign's from an install made before the rename.
 OS="$(uname -s)"
 if [ "$OS" = "Darwin" ]; then
-    for label in com.agentcommits.agent-commitsd com.agentsign.agent-signd; do
+    for label in com.agentsign.agent-signd; do
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null && ok "Stopped LaunchAgent $label" || true
         if [ -f "$HOME/Library/LaunchAgents/$label.plist" ]; then
             rm -f "$HOME/Library/LaunchAgents/$label.plist"
@@ -38,7 +37,7 @@ if [ "$OS" = "Darwin" ]; then
         fi
     done
 elif [ "$OS" = "Linux" ] && command -v systemctl &>/dev/null; then
-    for unit in agent-commitsd agent-signd; do
+    for unit in agent-signd; do
         systemctl --user stop "$unit" 2>/dev/null && ok "Stopped systemd unit $unit" || true
         systemctl --user disable "$unit" 2>/dev/null || true
         if [ -f "$HOME/.config/systemd/user/$unit.service" ]; then
@@ -53,7 +52,7 @@ fi
 # process name exactly, and only your own processes: matching command lines
 # (as `pkill -f` does) would also stop any shell or SSH session whose command
 # happens to contain the name.
-for name in agent-signd agent-commitsd; do
+for name in agent-signd agent-signd; do
     if pgrep -u "$(id -u)" -x "$name" &>/dev/null; then
         pkill -u "$(id -u)" -x "$name" 2>/dev/null && ok "Stopped a running $name" || true
         sleep 1
@@ -63,12 +62,7 @@ done
 # ─── Step 2: Remove agent key from allowed_signers ──────────────────────────
 info "Cleaning up allowed_signers..."
 
-# ~/.agent-commits after agent-commitsd has migrated; ~/.agent-sign is then a link to it.
-if [ -d "$HOME/.agent-commits" ]; then
-    PUB_KEY_FILE="$HOME/.agent-commits/keys/agent_ed25519.pub"
-else
-    PUB_KEY_FILE="$HOME/.agent-sign/keys/agent_ed25519.pub"
-fi
+PUB_KEY_FILE="$HOME/.agent-sign/keys/agent_ed25519.pub"
 ALLOWED_SIGNERS_FILE=$(git config --global gpg.ssh.allowedSignersFile 2>/dev/null || echo "")
 ALLOWED_SIGNERS_FILE="${ALLOWED_SIGNERS_FILE/#\~/$HOME}"
 
@@ -91,17 +85,14 @@ fi
 # ─── Step 3: Remove shell profile PATH entries ─────────────────────────────
 info "Cleaning up shell profile PATH entries..."
 
-# Removes the installer's marked PATH block (and agent-sign's, from an
-# older install).
+# Removes the installer's marked PATH block.
 cleanup_shell_profile() {
-    local file="$1" name
-    for name in agent-commits agent-sign; do
-        if [ -f "$file" ] && grep -q "# >>> $name >>>" "$file"; then
-            sed -i.bak "/# >>> $name >>>/,/# <<< $name <<</d" "$file"
-            rm -f "${file}.bak"
-            ok "Removed $name's PATH block from $file"
-        fi
-    done
+    local file="$1"
+    if [ -f "$file" ] && grep -q "# >>> agent-sign >>>" "$file"; then
+        sed -i.bak "/# >>> agent-sign >>>/,/# <<< agent-sign <<</d" "$file"
+        rm -f "${file}.bak"
+        ok "Removed agent-sign's PATH block from $file"
+    fi
 }
 
 cleanup_shell_profile "$HOME/.zshrc"
@@ -124,9 +115,9 @@ ide_configs = [
     os.path.expanduser("~/.config/Windsurf/User/settings.json"),
 ]
 
-# The snippet the installer adds, under either installer's comment, pointing
-# at either directory.
-pattern = r',?\s*// Added (?:automatically by agent-sign installer|by the agent-commits installer)\s*"terminal\.integrated\.env\.osx":\s*\{\s*"PATH":\s*"[^\"]*\.agent-(?:sign|commits)/bin[^\"]*"\s*\},\s*"terminal\.integrated\.env\.linux":\s*\{\s*"PATH":\s*"[^\"]*\.agent-(?:sign|commits)/bin[^\"]*"\s*\}'
+# The snippet the installer adds, under the comment this installer writes or
+# the one earlier versions wrote.
+pattern = r',?\s*// Added (?:automatically by agent-sign installer|by the agent-sign installer)\s*"terminal\.integrated\.env\.osx":\s*\{\s*"PATH":\s*"[^\"]*\.agent-sign/bin[^\"]*"\s*\},\s*"terminal\.integrated\.env\.linux":\s*\{\s*"PATH":\s*"[^\"]*\.agent-sign/bin[^\"]*"\s*\}'
 
 for config_path in ide_configs:
     if not os.path.exists(config_path):
@@ -134,43 +125,40 @@ for config_path in ide_configs:
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             content = f.read()
-        if ".agent-sign/bin" not in content and ".agent-commits/bin" not in content:
+        if ".agent-sign/bin" not in content:
             continue
         new_content = re.sub(pattern, "", content)
         if new_content != content:
             with open(config_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
-            print(f"  \033[0;32m✓\033[0m Removed agent-commits' terminal PATH from {config_path}")
+            print(f"  \033[0;32m✓\033[0m Removed agent-sign's terminal PATH from {config_path}")
     except Exception as e:
         print(f"  \033[0;33m⚠\033[0m Could not revert {config_path}: {e}")
 PYEOF
 
 # ─── Step 5: Remove Antigravity rule ─────────────────────────────────────────
-for rule in agent-commits agent-sign; do
-    if [ -f "$HOME/.gemini/config/rules/$rule.md" ]; then
-        rm -f "$HOME/.gemini/config/rules/$rule.md"
-        ok "Removed Antigravity rule $rule.md"
-    fi
-done
+if [ -f "$HOME/.gemini/config/rules/agent-sign.md" ]; then
+    rm -f "$HOME/.gemini/config/rules/agent-sign.md"
+    ok "Removed Antigravity rule agent-sign.md"
+fi
 
 # ─── Step 6: Remove installed directory ─────────────────────────────────────
-info "Removing ~/.agent-commits (and ~/.agent-sign)..."
+info "Removing ~/.agent-sign..."
 
-# A link is removed, never followed: if either name links to a directory you
-# keep somewhere else, that directory (and the key in it) is left for you.
-for dir in "$HOME/.agent-commits" "$HOME/.agent-sign"; do
-    if [ -L "$dir" ]; then
-        TARGET="$(cd "$dir" 2>/dev/null && pwd -P || true)"
-        rm -f "$dir"
-        ok "Removed the link $dir"
-        if [ -n "$TARGET" ] && [ -d "$TARGET" ] && [ "$TARGET" != "$HOME/.agent-commits" ] && [ "$TARGET" != "$HOME/.agent-sign" ]; then
-            warn "Left $TARGET, which it pointed to: delete it yourself if you no longer need the agent key in it"
-        fi
-    elif [ -d "$dir" ]; then
-        rm -rf "$dir"
-        ok "Removed $dir (programs, key, config, leases, socket)"
+# A link is removed, never followed: if ~/.agent-sign links to a directory
+# you keep somewhere else, that directory (and the key in it) is left for you.
+DIR="$HOME/.agent-sign"
+if [ -L "$DIR" ]; then
+    TARGET="$(cd "$DIR" 2>/dev/null && pwd -P || true)"
+    rm -f "$DIR"
+    ok "Removed the link $DIR"
+    if [ -n "$TARGET" ] && [ -d "$TARGET" ]; then
+        warn "Left $TARGET, which it pointed to: delete it yourself if you no longer need the agent key in it"
     fi
-done
+elif [ -d "$DIR" ]; then
+    rm -rf "$DIR"
+    ok "Removed $DIR (programs, key, config, leases, socket)"
+fi
 
 # ─── Step 7: Summary ────────────────────────────────────────────────────────
 echo ""
@@ -178,7 +166,7 @@ echo -e "${GREEN}${BOLD}Uninstall complete.${NC}"
 echo ""
 echo "What was removed:"
 echo "  • Daemon process and service (launchd/systemd)"
-echo "  • ~/.agent-commits/ and ~/.agent-sign/ (binaries, keypair, config, socket)"
+echo "  • ~/.agent-sign/ (binaries, keypair, config, socket)"
 echo "  • Agent key entry from allowed_signers"
 echo "  • Shell PATH entries from shell profiles"
 echo "  • IDE terminal environment settings (Cursor / VS Code / Windsurf)"

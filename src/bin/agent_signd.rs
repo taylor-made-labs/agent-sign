@@ -1,4 +1,4 @@
-//! `agent-commitsd`: the agent-commits service (formerly `agent-signd`).
+//! `agent-signd`: the agent-sign service.
 //!
 //! One per user. It holds the agent signing key and the leases, answers the
 //! wrapper, the signing program, and the CLI over a Unix socket in the state
@@ -19,16 +19,16 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use clap::{Parser, Subcommand};
 
-use agent_commits::config::Config;
-use agent_commits::crypto::AgentKeyPair;
-use agent_commits::lease::{Coverage, LeaseEngine, LeasePolicy};
-use agent_commits::protocol::{Request, Response, default_socket_path, send_response};
+use agent_sign::config::Config;
+use agent_sign::crypto::AgentKeyPair;
+use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy};
+use agent_sign::protocol::{Request, Response, default_socket_path, send_response};
 
 #[derive(Parser)]
 #[command(
-    name = "agent-commitsd",
+    name = "agent-signd",
     version = "0.1.0",
-    about = "agent-commits service: holds the agent signing key and leases (formerly agent-signd)"
+    about = "agent-sign service: holds the agent signing key and leases"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -58,9 +58,6 @@ enum Commands {
     Status,
     /// Run daemon in foreground
     Run,
-    /// Move ~/.agent-sign to ~/.agent-commits (leaving a link) and report what was done.
-    /// `run` and `setup` do this automatically on start.
-    Migrate,
 }
 
 struct DaemonState {
@@ -75,58 +72,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Setup) => {
-            migrate_on_start()?;
-            run_setup()
-        }
+        Some(Commands::Setup) => run_setup(),
         Some(Commands::Status) => run_status(cli.socket.as_deref()),
-        Some(Commands::Migrate) => {
-            migrate_on_start()?;
-            Ok(())
-        }
-        Some(Commands::Run) | None => {
-            migrate_on_start()?;
-            run_daemon(
-                cli.socket.as_deref(),
-                cli.config.as_deref(),
-                cli.allow_main,
-                cli.auto_approve,
-            )
-        }
-    }
-}
-
-/// Moves an agent-sign home to `~/.agent-commits` before anything reads or creates
-/// state, so an upgrade needs no action from the person.
-///
-/// A conflict (both directories hold state) stops the service: carrying on
-/// could mean signing with a different key than the one GitHub and
-/// `allowed_signers` know. Any other failure is reported and the service
-/// carries on with whichever directory `agent_commits::paths::state_dir` finds, which
-/// is the old one when the move was undone.
-fn migrate_on_start() -> Result<(), Box<dyn std::error::Error>> {
-    use agent_commits::migrate::{MigrationError, MigrationOutcome, migrate_state_dir};
-
-    match migrate_state_dir(&agent_commits::paths::home_dir()) {
-        Ok(MigrationOutcome::NothingToMigrate) | Ok(MigrationOutcome::AlreadyMigrated) => {}
-        Ok(outcome) => eprintln!("[agent-commitsd] {}", outcome),
-        Err(e @ (MigrationError::Conflict { .. } | MigrationError::NotADirectory { .. })) => {
-            eprintln!("[agent-commitsd] Refusing to start: {}", e);
-            return Err(Box::new(e));
-        }
-        Err(e) => eprintln!(
-            "[agent-commitsd] Migration to ~/.agent-commits did not complete: {} (using {})",
-            e,
-            get_state_dir().display()
+        Some(Commands::Run) | None => run_daemon(
+            cli.socket.as_deref(),
+            cli.config.as_deref(),
+            cli.allow_main,
+            cli.auto_approve,
         ),
     }
-    Ok(())
 }
 
-/// The state directory: `~/.agent-commits`, or `~/.agent-sign` if it has not been
-/// migrated (see `agent_commits::paths::state_dir_in`).
+/// The state directory, `~/.agent-sign` (see `agent_sign::paths`).
 fn get_state_dir() -> PathBuf {
-    agent_commits::paths::state_dir()
+    agent_sign::paths::state_dir()
 }
 
 fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
@@ -156,7 +115,7 @@ fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     println!("\n========================================================");
-    println!(" agent-commits Setup Complete");
+    println!(" agent-sign Setup Complete");
     println!("========================================================");
     println!("Private Key: {}", priv_key_path.display());
     println!("Public Key:  {}", pub_key_path.display());
@@ -181,7 +140,7 @@ fn run_status(custom_socket: Option<&Path>) -> Result<(), Box<dyn std::error::Er
         return Ok(());
     }
 
-    match agent_commits::protocol::send_request(&socket_path, &Request::Ping)? {
+    match agent_sign::protocol::send_request(&socket_path, &Request::Ping)? {
         Response::Pong => println!(
             "Daemon is active and healthy (socket: {})",
             socket_path.display()
@@ -190,7 +149,7 @@ fn run_status(custom_socket: Option<&Path>) -> Result<(), Box<dyn std::error::Er
     }
 
     if let Ok(Response::LeaseList { leases }) =
-        agent_commits::protocol::send_request(&socket_path, &Request::ListLeases)
+        agent_sign::protocol::send_request(&socket_path, &Request::ListLeases)
     {
         if leases.is_empty() {
             println!("Active Leases: None");
@@ -226,9 +185,9 @@ fn run_daemon(
         Config::load(None)
     };
     let max_ceiling = config.security.max_ceiling_duration()?;
-    if config.security.lease_mode == agent_commits::config::LeaseMode::Process {
+    if config.security.lease_mode == agent_sign::config::LeaseMode::Process {
         eprintln!(
-            "[agent-commitsd] lease_mode = \"process\" is not tied to a process yet: leases end after default_lease_duration ({}), as in \"timed\" mode.",
+            "[agent-signd] lease_mode = \"process\" is not tied to a process yet: leases end after default_lease_duration ({}), as in \"timed\" mode.",
             config.security.default_lease_duration
         );
     }
@@ -294,7 +253,7 @@ fn run_daemon(
     let listener = UnixListener::bind(&socket_path)?;
     fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))?;
 
-    println!("agent-commitsd running on {}", socket_path.display());
+    println!("agent-signd running on {}", socket_path.display());
 
     for stream in listener.incoming() {
         match stream {
@@ -496,7 +455,7 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 // access had ended when nothing matched.
                 Response::Error {
                     message: format!(
-                        "no lease for '{}': give the repository's or folder's full path, or `everywhere`, as `agent-commits leases` shows it",
+                        "no lease for '{}': give the repository's or folder's full path, or `everywhere`, as `agent-sign leases` shows it",
                         repo
                     ),
                 }
@@ -546,7 +505,7 @@ impl Approval {
 
 /// Sent back when the service couldn't ask the person, so the agent (and the
 /// person reading its output) learns why and what to do.
-const NO_WAY_TO_ASK: &str = "agent-commits couldn't ask you to approve a lease: there is no desktop session for a dialog, and the service has no terminal. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
+const NO_WAY_TO_ASK: &str = "agent-sign couldn't ask you to approve a lease: there is no desktop session for a dialog, and the service has no terminal. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
 
 /// A string as an AppleScript string literal.
 #[cfg(target_os = "macos")]
@@ -563,7 +522,7 @@ fn request_human_approval(
     repo: &str,
     branch: &str,
     intent: &str,
-    terms: &agent_commits::lease::TermsText,
+    terms: &agent_sign::lease::TermsText,
     choices: &[(Coverage, String)],
 ) -> Approval {
     let prompt_text = format!(
@@ -578,7 +537,7 @@ fn request_human_approval(
     {
         let items: Vec<String> = labels.iter().map(|l| applescript_string(l)).collect();
         let script = format!(
-            "choose from list {{{}}} with title \"agent-commits\" with prompt {} default items {{{}}} OK button name \"Approve\" cancel button name \"Deny\"",
+            "choose from list {{{}}} with title \"agent-sign\" with prompt {} default items {{{}}} OK button name \"Approve\" cancel button name \"Deny\"",
             items.join(", "),
             applescript_string(&prompt_text),
             items[0]
@@ -601,7 +560,7 @@ fn request_human_approval(
             let mut zenity_args = vec![
                 "--list".to_string(),
                 "--radiolist".to_string(),
-                "--title=agent-commits".to_string(),
+                "--title=agent-sign".to_string(),
                 format!("--text={}", prompt_text),
                 "--column= ".to_string(),
                 "--column=Covers".to_string(),
@@ -631,7 +590,7 @@ fn request_human_approval(
             } else {
                 let mut kdialog_args = vec![
                     "--title".to_string(),
-                    "agent-commits".to_string(),
+                    "agent-sign".to_string(),
                     "--radiolist".to_string(),
                     prompt_text.clone(),
                 ];
@@ -660,7 +619,7 @@ fn request_human_approval(
     // 3. Fallback to interactive terminal prompt if stdin is a TTY
     if std::io::stdin().is_terminal() {
         eprintln!("\n========================================================");
-        eprintln!(" 🔏 agent-commits approval request");
+        eprintln!(" 🔏 agent-sign approval request");
         eprintln!("========================================================");
         eprintln!("Repository: {}", repo);
         eprintln!("Branch now: {}", branch);
@@ -692,9 +651,9 @@ fn request_human_approval(
         }
     }
 
-    eprintln!("[agent-commitsd] No interactive approval backend available; signing lease denied.");
+    eprintln!("[agent-signd] No interactive approval backend available; signing lease denied.");
     eprintln!(
-        "[agent-commitsd] Hint: In headless environments, containers, or CI, run with --auto-approve or AGENT_COMMITS_AUTO_APPROVE=1 (AGENT_SIGN_AUTO_APPROVE=1 also works)"
+        "[agent-signd] Hint: In headless environments, containers, or CI, run with --auto-approve or AGENT_SIGN_AUTO_APPROVE=1 (AGENT_SIGN_AUTO_APPROVE=1 also works)"
     );
     Approval::NoWayToAsk
 }

@@ -1,17 +1,12 @@
 //! End-to-end: a real service, the git wrapper, the signing program, and git,
 //! each in a temporary home with its own socket.
 //!
-//! Every scenario runs twice: once with agent-commits' program names, `AGENT_COMMITS_*`
-//! variables, and `.agent-commits.toml`, and once through links with agent-sign's old
-//! names (`agent-signd`, `agent-git`, `agent-sign`), its `AGENT_SIGN_*`
-//! variables, and `.agent-sign.toml`, to show the rename changed nothing an
-//! existing setup relies on.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
-use tempfile::{TempDir, tempdir};
+use tempfile::tempdir;
 
 /// The programs and names one run of a scenario uses.
 struct Bins {
@@ -20,37 +15,16 @@ struct Bins {
     sign: PathBuf,
     env_prefix: &'static str,
     repo_config: &'static str,
-    /// Keeps the directory of old-name links alive for the run.
-    _links: Option<TempDir>,
 }
 
 impl Bins {
     fn new_names() -> Self {
         Bins {
-            daemon: PathBuf::from(env!("CARGO_BIN_EXE_agent-commitsd")),
-            git: PathBuf::from(env!("CARGO_BIN_EXE_agent-commits-git")),
-            sign: PathBuf::from(env!("CARGO_BIN_EXE_agent-commits-ssh-sign")),
-            env_prefix: "AGENT_COMMITS_",
-            repo_config: ".agent-commits.toml",
-            _links: None,
-        }
-    }
-
-    /// The old names as symlinks, the way an upgraded install provides them.
-    fn old_names() -> Self {
-        let links = tempdir().expect("Failed to create link dir");
-        let link = |name: &str, target: &str| {
-            let path = links.path().join(name);
-            std::os::unix::fs::symlink(target, &path).unwrap();
-            path
-        };
-        Bins {
-            daemon: link("agent-signd", env!("CARGO_BIN_EXE_agent-commitsd")),
-            git: link("agent-git", env!("CARGO_BIN_EXE_agent-commits-git")),
-            sign: link("agent-sign", env!("CARGO_BIN_EXE_agent-commits")),
+            daemon: PathBuf::from(env!("CARGO_BIN_EXE_agent-signd")),
+            git: PathBuf::from(env!("CARGO_BIN_EXE_agent-git")),
+            sign: PathBuf::from(env!("CARGO_BIN_EXE_agent-ssh-sign")),
             env_prefix: "AGENT_SIGN_",
             repo_config: ".agent-sign.toml",
-            _links: Some(links),
         }
     }
 
@@ -88,7 +62,7 @@ fn start_test_daemon(dir: &Path, bins: &Bins) -> TestDaemon {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn test agent-commitsd");
+        .expect("Failed to spawn test agent-signd");
 
     // Poll until socket exists
     let start = std::time::Instant::now();
@@ -193,7 +167,7 @@ fn scenario_agent_git_commit_and_verification(bins: &Bins) {
     assert!(log_str.contains("Human Developer <dev@example.com>"));
 
     // 6. Verify signature using system ssh-keygen
-    let pub_key_path = dir.path().join(".agent-commits/keys/agent_ed25519.pub");
+    let pub_key_path = dir.path().join(".agent-sign/keys/agent_ed25519.pub");
     assert!(
         pub_key_path.exists(),
         "Public key must exist after daemon setup"
@@ -303,7 +277,7 @@ fn scenario_multi_commit_headless_session_flow(bins: &Bins) {
     }
 
     // Verify all 3 commits exist and are cryptographically verified
-    let pub_key_path = dir.path().join(".agent-commits/keys/agent_ed25519.pub");
+    let pub_key_path = dir.path().join(".agent-sign/keys/agent_ed25519.pub");
     let pub_key = fs::read_to_string(&pub_key_path).unwrap();
 
     let allowed_signers = dir.path().join("allowed_signers");
@@ -360,7 +334,7 @@ fn scenario_allow_main_branch_when_configured(bins: &Bins) {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .expect("Failed to spawn test agent-commitsd");
+        .expect("Failed to spawn test agent-signd");
 
     let start = std::time::Instant::now();
     while !socket_path.exists() {
@@ -579,7 +553,7 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
             .success()
     );
 
-    // Write repo-level config (.agent-commits.toml, or the old .agent-sign.toml) setting mode = "trailers"
+    // Write repo-level config (.agent-sign.toml, or the old .agent-sign.toml) setting mode = "trailers"
     let repo_config = test_repo.join(bins.repo_config);
     fs::write(&repo_config, "[attribution]\nmode = \"trailers\"\n").unwrap();
 
@@ -626,7 +600,7 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
     println!("Commit message with trailers:\n{}", full_message);
 
     assert!(full_message.contains("Co-Authored-By: Agent <agent@local.internal>"));
-    assert!(full_message.contains("X-Agent-Signer: agent-commits/v0.1"));
+    assert!(full_message.contains("X-Agent-Signer: agent-sign/v0.1"));
     assert!(full_message.contains("X-Agent-Lease:"));
 }
 
@@ -636,18 +610,8 @@ fn test_e2e_agent_git_commit_and_verification() {
 }
 
 #[test]
-fn test_e2e_agent_git_commit_and_verification_old_names() {
-    scenario_agent_git_commit_and_verification(&Bins::old_names());
-}
-
-#[test]
 fn test_e2e_multi_commit_headless_session_flow() {
     scenario_multi_commit_headless_session_flow(&Bins::new_names());
-}
-
-#[test]
-fn test_e2e_multi_commit_headless_session_flow_old_names() {
-    scenario_multi_commit_headless_session_flow(&Bins::old_names());
 }
 
 #[test]
@@ -656,26 +620,11 @@ fn test_e2e_allow_main_branch_when_configured() {
 }
 
 #[test]
-fn test_e2e_allow_main_branch_when_configured_old_names() {
-    scenario_allow_main_branch_when_configured(&Bins::old_names());
-}
-
-#[test]
 fn test_e2e_branch_switching_in_active_session() {
     scenario_branch_switching_in_active_session(&Bins::new_names());
 }
 
 #[test]
-fn test_e2e_branch_switching_in_active_session_old_names() {
-    scenario_branch_switching_in_active_session(&Bins::old_names());
-}
-
-#[test]
 fn test_e2e_trailers_mode_attribution() {
     scenario_trailers_mode_attribution(&Bins::new_names());
-}
-
-#[test]
-fn test_e2e_trailers_mode_attribution_old_names() {
-    scenario_trailers_mode_attribution(&Bins::old_names());
 }

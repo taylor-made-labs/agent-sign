@@ -2,7 +2,7 @@
 //! approved v0.1 scope ("commits name the agent where detectable").
 //!
 //! Detection reads marks agents set on the commands they run (see
-//! `KNOWN_AGENTS`), or an explicit `AGENT_COMMITS_AGENT_NAME`. A name the
+//! `KNOWN_AGENTS`), or an explicit `AGENT_SIGN_AGENT_NAME`. A name the
 //! person configured is never replaced by a detected one. This is
 //! attribution, not identity: any program can set these variables, which
 //! the README states as a limit.
@@ -12,7 +12,7 @@ use std::fs;
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 
-use agent_commits::attribution::{KNOWN_AGENTS, detect_agent_with, effective_agent_name};
+use agent_sign::attribution::{KNOWN_AGENTS, detect_agent_with, effective_agent_name};
 use tempfile::tempdir;
 
 fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
@@ -48,7 +48,7 @@ fn no_mark_or_an_empty_or_zero_mark_names_nobody() {
 
 #[test]
 fn an_explicit_name_beats_any_mark() {
-    let get = env_of(&[("CLAUDECODE", "1"), ("AGENT_COMMITS_AGENT_NAME", "Cursor")]);
+    let get = env_of(&[("CLAUDECODE", "1"), ("AGENT_SIGN_AGENT_NAME", "Cursor")]);
     assert_eq!(detect_agent_with(get).as_deref(), Some("Cursor"));
     let old = env_of(&[("AGENT_SIGN_AGENT_NAME", "Aider")]);
     assert_eq!(detect_agent_with(old).as_deref(), Some("Aider"));
@@ -107,7 +107,7 @@ fn author_of_agent_commit(marks: &[(&str, &str)], config_name: Option<&str>) -> 
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
     if let Some(name) = config_name {
-        let state = home.join(".agent-commits");
+        let state = home.join(".agent-sign");
         fs::create_dir_all(&state).unwrap();
         fs::write(
             state.join("config.toml"),
@@ -118,7 +118,7 @@ fn author_of_agent_commit(marks: &[(&str, &str)], config_name: Option<&str>) -> 
 
     let socket = home.join("s.sock");
     let _svc = Service(
-        Command::new(env!("CARGO_BIN_EXE_agent-commitsd"))
+        Command::new(env!("CARGO_BIN_EXE_agent-signd"))
             .arg("--socket")
             .arg(&socket)
             .arg("--auto-approve")
@@ -135,17 +135,14 @@ fn author_of_agent_commit(marks: &[(&str, &str)], config_name: Option<&str>) -> 
     fs::write(repo.join("a.txt"), "a\n").unwrap();
     git(&repo, &["add", "a.txt"]);
 
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-commits-git"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-git"));
     cmd.args(["commit", "-q", "-m", "feat: a"])
         .current_dir(&repo)
         .env("HOME", home)
         .env("GIT_CONFIG_NOSYSTEM", "1")
-        .env("AGENT_COMMITS_SOCKET", &socket)
-        .env(
-            "AGENT_COMMITS_BIN",
-            env!("CARGO_BIN_EXE_agent-commits-ssh-sign"),
-        )
-        .env_remove("AGENT_COMMITS_AGENT_NAME")
+        .env("AGENT_SIGN_SOCKET", &socket)
+        .env("AGENT_SIGN_BIN", env!("CARGO_BIN_EXE_agent-ssh-sign"))
+        .env_remove("AGENT_SIGN_AGENT_NAME")
         .env_remove("AGENT_SIGN_AGENT_NAME")
         .stdin(Stdio::null());
     for (var, _) in KNOWN_AGENTS {
@@ -194,14 +191,14 @@ fn a_name_the_person_configured_is_kept() {
 #[test]
 fn an_agent_started_with_a_name_gets_that_name() {
     assert_eq!(
-        author_of_agent_commit(&[("AGENT_COMMITS_AGENT_NAME", "Cursor")], None),
+        author_of_agent_commit(&[("AGENT_SIGN_AGENT_NAME", "Cursor")], None),
         "Cursor"
     );
 }
 
 // --- Who is committing: the person, or an agent ---------------------------
 
-use agent_commits::attribution::{agent_mark_present_with, is_persons_own_commit};
+use agent_sign::attribution::{agent_mark_present_with, is_persons_own_commit};
 
 #[test]
 fn a_terminal_commit_with_no_mark_is_the_persons() {
@@ -225,7 +222,7 @@ fn only_known_marks_count_not_an_explicit_name() {
     assert!(agent_mark_present_with(env_of(&[("CLAUDECODE", "1")])));
     assert!(agent_mark_present_with(env_of(&[("CODEX_THREAD_ID", "x")])));
     assert!(!agent_mark_present_with(env_of(&[(
-        "AGENT_COMMITS_AGENT_NAME",
+        "AGENT_SIGN_AGENT_NAME",
         "Cursor"
     )])));
     assert!(!agent_mark_present_with(env_of(&[("CLAUDECODE", "0")])));

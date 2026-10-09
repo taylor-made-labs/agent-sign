@@ -1,4 +1,4 @@
-use agent_commits::lease::{LeaseEngine, LeasePolicy};
+use agent_sign::lease::{LeaseEngine, LeasePolicy};
 use std::time::Duration;
 
 #[test]

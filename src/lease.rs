@@ -1,7 +1,7 @@
 //! Leases: the person's approval, given once, for the agent key to sign
 //! commits without asking again, in the repositories the person chose.
 //!
-//! agent-commits' lease model: a lease's terms are fixed when the person approves it,
+//! agent-sign's lease model: a lease's terms are fixed when the person approves it,
 //! and they never grow on their own. The terms are its coverage (one
 //! repository, every repository under a folder, or every repository: see
 //! [`Coverage`]), which branches it covers (in one repository, either one
@@ -48,8 +48,8 @@ pub enum Coverage {
     Everywhere,
 }
 
-/// The name `agent-commits leases` shows for a lease covering everywhere, and
-/// that `agent-commits revoke` takes to end it.
+/// The name `agent-sign leases` shows for a lease covering everywhere, and
+/// that `agent-sign revoke` takes to end it.
 pub const EVERYWHERE: &str = "everywhere";
 
 impl Coverage {
@@ -85,7 +85,7 @@ impl Coverage {
         }
     }
 
-    /// The coverage in plain words, for `agent-commits leases`.
+    /// The coverage in plain words, for `agent-sign leases`.
     pub fn describe(&self) -> String {
         match self {
             Coverage::Repository => "this repository".to_string(),
@@ -119,14 +119,14 @@ pub struct Lease {
     pub commit_count: u64,
     /// Whether the lease covers every unprotected branch of its repository,
     /// following the agent as it switches branches, as approved. `None` for
-    /// leases granted before agent-commits recorded this term: for those the current
+    /// leases granted before agent-sign recorded this term: for those the current
     /// config decides, which is how they behaved when they were granted.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub follows_branches: Option<bool>,
     /// What the approval covers, as the person chose it. For a folder or
     /// everywhere, `repo` holds the folder or [`EVERYWHERE`] instead of the
     /// repository asked from, since that's what the lease is for and what
-    /// `agent-commits revoke` takes.
+    /// `agent-sign revoke` takes.
     #[serde(default)]
     pub coverage: Coverage,
 }
@@ -237,7 +237,7 @@ impl LeasePolicy {
             format!("only branch '{}'", branch)
         };
         let ends = match (self.mode, self.max_ceiling) {
-            (LeaseMode::Identity, None) => "when you revoke it (agent-commits revoke)".to_string(),
+            (LeaseMode::Identity, None) => "when you revoke it (agent-sign revoke)".to_string(),
             (LeaseMode::Identity, Some(cap)) => format!(
                 "{} after approval, or sooner if you revoke it",
                 describe_duration(cap)
@@ -320,14 +320,14 @@ impl LeaseEngine {
                         path.with_extension(format!("json.unreadable-{}", current_epoch_secs()));
                     match fs::rename(&path, &aside) {
                         Ok(()) => eprintln!(
-                            "[agent-commits] {} is not a valid lease file ({}). Moved it to {} and started with no leases: each repository will ask for approval again.",
+                            "[agent-sign] {} is not a valid lease file ({}). Moved it to {} and started with no leases: each repository will ask for approval again.",
                             path.display(),
                             e,
                             aside.display()
                         ),
                         Err(re) => {
                             eprintln!(
-                                "[agent-commits] {} is not a valid lease file ({}) and could not be moved aside ({}). Leaving it untouched; leases granted now last until the service stops.",
+                                "[agent-sign] {} is not a valid lease file ({}) and could not be moved aside ({}). Leaving it untouched; leases granted now last until the service stops.",
                                 path.display(),
                                 e,
                                 re
@@ -340,7 +340,7 @@ impl LeaseEngine {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
             Err(e) => {
                 eprintln!(
-                    "[agent-commits] Could not read {} ({}). Leaving it untouched and starting with no leases; leases granted now last until the service stops.",
+                    "[agent-sign] Could not read {} ({}). Leaving it untouched and starting with no leases; leases granted now last until the service stops.",
                     path.display(),
                     e
                 );
@@ -361,7 +361,7 @@ impl LeaseEngine {
         };
         if let Err(e) = self.write_lease_file(path) {
             eprintln!(
-                "[agent-commits] Could not save leases to {} ({}). They still apply until the service stops.",
+                "[agent-sign] Could not save leases to {} ({}). They still apply until the service stops.",
                 path.display(),
                 e
             );

@@ -1,13 +1,13 @@
 //! What the person and the agent are told when a lease is refused or revoked,
-//! and what `agent-commits doctor` advises. Each case came from following
+//! and what `agent-sign doctor` advises. Each case came from following
 //! `docs/INSTALL.md` on a clean home on a Raspberry Pi (30 Sept 2026):
 //!
-//! - With no screen and no terminal, `agent-commitsd` couldn't ask anyone, but the
+//! - With no screen and no terminal, `agent-signd` couldn't ask anyone, but the
 //!   agent was told "Human rejected the signing lease request".
-//! - `agent-commits revoke project` and `agent-commits revoke .` printed "Lease revoked" while
+//! - `agent-sign revoke project` and `agent-sign revoke .` printed "Lease revoked" while
 //!   the lease stayed in force: the service answered success whether or not
 //!   anything matched, and the CLI passed the argument through unresolved.
-//! - `agent-commits doctor` warned that `gpg.format` wasn't `ssh` and advised setting it
+//! - `agent-sign doctor` warned that `gpg.format` wasn't `ssh` and advised setting it
 //!   globally, which would switch the person's own signing; agent commits
 //!   don't need it.
 //!
@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use agent_commits::protocol::{Request, Response, send_request};
+use agent_sign::protocol::{Request, Response, send_request};
 use tempfile::tempdir;
 
 struct Service {
@@ -35,18 +35,18 @@ impl Drop for Service {
     }
 }
 
-/// Starts `agent-commitsd` in `home` with `path` as its whole `PATH`, no display, and
+/// Starts `agent-signd` in `home` with `path` as its whole `PATH`, no display, and
 /// no terminal.
 fn start_service(home: &Path, path: &str, auto_approve: bool, display: bool) -> Service {
     let socket = home.join("svc.sock");
-    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-commitsd"));
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
     cmd.arg("--socket")
         .arg(&socket)
         .env("HOME", home)
         .env("PATH", path)
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
-        .env_remove("AGENT_COMMITS_AUTO_APPROVE")
+        .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -57,12 +57,12 @@ fn start_service(home: &Path, path: &str, auto_approve: bool, display: bool) -> 
     if display {
         cmd.env("DISPLAY", ":99");
     }
-    let child = cmd.spawn().expect("Failed to start agent-commitsd");
+    let child = cmd.spawn().expect("Failed to start agent-signd");
     let start = Instant::now();
     while !socket.exists() {
         assert!(
             start.elapsed() < Duration::from_secs(5),
-            "agent-commitsd did not create its socket"
+            "agent-signd did not create its socket"
         );
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -181,7 +181,7 @@ fn revoking_a_repository_with_no_lease_is_an_error_not_a_success() {
 }
 
 #[test]
-fn agent_commits_revoke_dot_names_the_repository_it_is_run_in() {
+fn agent_sign_revoke_dot_names_the_repository_it_is_run_in() {
     let dir = tempdir().unwrap();
     let path = path_with_only_git(dir.path());
     let svc = start_service(dir.path(), &path, true, false);
@@ -205,17 +205,17 @@ fn agent_commits_revoke_dot_names_the_repository_it_is_run_in() {
     ));
 
     let cli = |args: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_agent-commits"))
+        Command::new(env!("CARGO_BIN_EXE_agent-sign"))
             .args(args)
             .current_dir(&sub)
             .env("HOME", dir.path())
             .env("PATH", &path)
-            .env("AGENT_COMMITS_SOCKET", &svc.socket)
+            .env("AGENT_SIGN_SOCKET", &svc.socket)
             .output()
             .unwrap()
     };
 
-    // `agent-commits leases` shows the full path, the one `agent-commits revoke` takes.
+    // `agent-sign leases` shows the full path, the one `agent-sign revoke` takes.
     let listed = String::from_utf8_lossy(&cli(&["leases"]).stdout).to_string();
     assert!(listed.contains(&key), "{listed}");
 
@@ -239,12 +239,12 @@ fn agent_commits_revoke_dot_names_the_repository_it_is_run_in() {
 fn doctor_does_not_advise_changing_the_persons_own_signing_format() {
     let dir = tempdir().unwrap();
     let path = path_with_only_git(dir.path());
-    let out = Command::new(env!("CARGO_BIN_EXE_agent-commits"))
+    let out = Command::new(env!("CARGO_BIN_EXE_agent-sign"))
         .arg("doctor")
         .env("HOME", dir.path())
         .env("XDG_CONFIG_HOME", dir.path().join(".config"))
         .env("PATH", &path)
-        .env("AGENT_COMMITS_SOCKET", dir.path().join("no-service.sock"))
+        .env("AGENT_SIGN_SOCKET", dir.path().join("no-service.sock"))
         .output()
         .unwrap();
     let text = String::from_utf8_lossy(&out.stdout);

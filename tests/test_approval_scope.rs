@@ -15,8 +15,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use agent_commits::lease::{Coverage, LeaseEngine, LeasePolicy};
-use agent_commits::protocol::{Request, Response, send_request};
+use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy};
+use agent_sign::protocol::{Request, Response, send_request};
 use tempfile::tempdir;
 
 fn engine() -> LeaseEngine {
@@ -173,7 +173,7 @@ fn leases_saved_before_scopes_existed_load_as_repository_leases() {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    // The shape agent-sign and earlier agent-commits builds wrote.
+    // The shape agent-sign and earlier agent-sign builds wrote.
     let old = serde_json::json!({
         "/w/dev/app": {
             "id": "old-1", "repo": "/w/dev/app", "branch": "feat/a",
@@ -280,7 +280,7 @@ fn real_git_dir() -> &'static str {
 }
 
 fn start_service(home: &Path, fakebin: &Path) -> Service {
-    let state = home.join(".agent-commits");
+    let state = home.join(".agent-sign");
     fs::create_dir_all(&state).unwrap();
     fs::write(
         state.join("config.toml"),
@@ -288,27 +288,27 @@ fn start_service(home: &Path, fakebin: &Path) -> Service {
     )
     .unwrap();
     let socket = home.join("svc.sock");
-    let child = Command::new(env!("CARGO_BIN_EXE_agent-commitsd"))
+    let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
         .arg("--socket")
         .arg(&socket)
         .env("HOME", home)
         .env("PATH", format!("{}:{}", fakebin.display(), real_git_dir()))
         .env("DISPLAY", ":99")
         .env_remove("WAYLAND_DISPLAY")
-        .env_remove("AGENT_COMMITS_AUTO_APPROVE")
+        .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("Failed to start agent-commitsd");
+        .expect("Failed to start agent-signd");
     // Wait until the service answers, not just until its socket file
     // exists: there is a moment between the two when connecting is refused.
     let start = Instant::now();
     while !matches!(send_request(&socket, &Request::Ping), Ok(Response::Pong)) {
         assert!(
             start.elapsed() < Duration::from_secs(5),
-            "agent-commitsd did not start answering"
+            "agent-signd did not start answering"
         );
         std::thread::sleep(Duration::from_millis(20));
     }
@@ -436,12 +436,12 @@ fn leases_shows_what_a_wide_lease_covers_and_revoke_takes_the_folder_or_everywhe
     commit_through_service(&svc.socket, "/w/dev/app", "feat/a").unwrap();
 
     let cli = |args: &[&str]| {
-        Command::new(env!("CARGO_BIN_EXE_agent-commits"))
+        Command::new(env!("CARGO_BIN_EXE_agent-sign"))
             .args(args)
             .current_dir(dir.path())
             .env("HOME", dir.path())
             .env("PATH", real_git_dir())
-            .env("AGENT_COMMITS_SOCKET", &svc.socket)
+            .env("AGENT_SIGN_SOCKET", &svc.socket)
             .output()
             .unwrap()
     };

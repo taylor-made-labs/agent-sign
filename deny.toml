@@ -1,6 +1,6 @@
-# `cargo deny check`: what agent-commits' dependencies may be.
+# `cargo deny check`: what agent-sign's dependencies may be.
 #
-# Licenses: permissive only, so agent-commits stays usable under
+# Licenses: permissive only, so agent-sign stays usable under
 # MIT OR Apache-2.0 with nothing new for an organization to review. A
 # dependency offered under several licenses passes if one of them is here.
 # Advisories: no dependency with a known vulnerability (RustSec).

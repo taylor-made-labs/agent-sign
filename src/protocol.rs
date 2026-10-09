@@ -1,4 +1,4 @@
-//! The newline-delimited JSON protocol between agent-commits' programs and its service,
+//! The newline-delimited JSON protocol between agent-sign's programs and its service,
 //! unchanged from agent-sign so old and new programs can talk to each other.
 
 use serde::{Deserialize, Serialize};
@@ -84,15 +84,13 @@ pub enum Response {
 }
 
 /// The service's socket when none is given: `daemon.sock` in the state
-/// directory (`~/.agent-commits`, or `~/.agent-sign` before migration). After migration
-/// `~/.agent-sign` is a link to `~/.agent-commits`, so older clients using the old path
-/// reach the same socket.
+/// directory (`~/.agent-sign`).
 pub fn default_socket_path() -> PathBuf {
     crate::paths::state_dir().join("daemon.sock")
 }
 
 /// The socket a client (CLI, git wrapper, signing program) connects to:
-/// `AGENT_COMMITS_SOCKET`, else `AGENT_SIGN_SOCKET`, else [`default_socket_path`].
+/// `AGENT_SIGN_SOCKET`, else `AGENT_SIGN_SOCKET`, else [`default_socket_path`].
 /// The service itself ignores these variables and uses `--socket` or the default.
 pub fn client_socket_path() -> PathBuf {
     crate::paths::env_var("SOCKET")
@@ -103,12 +101,11 @@ pub fn client_socket_path() -> PathBuf {
 /// How long a client waits for the service to start answering, by default:
 /// about twenty times the ~85 ms it takes to start on an Intel Mac (Core i9, 2019), so a
 /// restart (an upgrade, launchd or systemd bringing it back) doesn't fail a
-/// commit an agent makes at that moment. `AGENT_COMMITS_CONNECT_WAIT_MS`
+/// commit an agent makes at that moment. `AGENT_SIGN_CONNECT_WAIT_MS`
 /// changes it; 0 turns the wait off.
 pub const DEFAULT_CONNECT_WAIT: Duration = Duration::from_secs(2);
 
-/// The wait from `AGENT_COMMITS_CONNECT_WAIT_MS` (or the old
-/// `AGENT_SIGN_CONNECT_WAIT_MS`), or [`DEFAULT_CONNECT_WAIT`].
+/// The wait from `AGENT_SIGN_CONNECT_WAIT_MS`, or [`DEFAULT_CONNECT_WAIT`].
 pub fn connect_wait() -> Duration {
     crate::paths::env_var("CONNECT_WAIT_MS")
         .and_then(|v| v.trim().parse::<u64>().ok())

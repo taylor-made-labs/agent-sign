@@ -1,4 +1,4 @@
-//! `agent-commits-ssh-sign` signs exactly as agent-sign's `agent-sign` did.
+//! `agent-ssh-sign` signs exactly as agent-sign's `agent-sign` did.
 //!
 //! Ed25519 signatures are deterministic, so the same key and the same bytes
 //! must give the same signature, byte for byte. `GOLDEN_AGENT_SIGN_SIG` was
@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use agent_commits::crypto::AgentKeyPair;
-use agent_commits::protocol::{Request, Response, send_request};
+use agent_sign::crypto::AgentKeyPair;
+use agent_sign::protocol::{Request, Response, send_request};
 use tempfile::tempdir;
 
 /// A fixed test seed; never a real key.
@@ -42,9 +42,9 @@ impl Drop for Service {
     }
 }
 
-/// Writes the test key into `<home>/.agent-commits/keys` and starts `agent-commitsd` on `socket`.
+/// Writes the test key into `<home>/.agent-sign/keys` and starts `agent-signd` on `socket`.
 fn start_service(home: &Path, socket: &Path) -> Service {
-    let keys = home.join(".agent-commits/keys");
+    let keys = home.join(".agent-sign/keys");
     fs::create_dir_all(&keys).unwrap();
     fs::write(keys.join("agent_ed25519"), TEST_SEED).unwrap();
     fs::set_permissions(
@@ -53,7 +53,7 @@ fn start_service(home: &Path, socket: &Path) -> Service {
     )
     .unwrap();
 
-    let child = Command::new(env!("CARGO_BIN_EXE_agent-commitsd"))
+    let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
         .arg("--socket")
         .arg(socket)
         .arg("--auto-approve")
@@ -62,12 +62,12 @@ fn start_service(home: &Path, socket: &Path) -> Service {
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .expect("Failed to spawn agent-commitsd");
+        .expect("Failed to spawn agent-signd");
     let start = Instant::now();
     while !socket.exists() {
         assert!(
             start.elapsed() < Duration::from_secs(5),
-            "agent-commitsd did not start"
+            "agent-signd did not start"
         );
         std::thread::sleep(Duration::from_millis(50));
     }
@@ -101,7 +101,7 @@ fn sign_with(
     fs::write(file, BUFFER).unwrap();
     let out = Command::new(program)
         .args(["-Y", "sign", "-n", "git", "-f"])
-        .arg(home.join(".agent-commits/keys/agent_ed25519.pub"))
+        .arg(home.join(".agent-sign/keys/agent_ed25519.pub"))
         .arg(file)
         .env("HOME", home)
         .env("AGENT_EVENT_TOKEN", token)
@@ -141,16 +141,16 @@ fn every_signing_name_reproduces_agent_sign_signature_byte_for_byte() {
 
     let links = tempdir().unwrap();
     let old_name = links.path().join("agent-sign");
-    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agent-commits"), &old_name).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agent-sign"), &old_name).unwrap();
 
     let programs: [(PathBuf, &str); 3] = [
         (
-            PathBuf::from(env!("CARGO_BIN_EXE_agent-commits-ssh-sign")),
-            "AGENT_COMMITS_",
+            PathBuf::from(env!("CARGO_BIN_EXE_agent-ssh-sign")),
+            "AGENT_SIGN_",
         ),
         (
-            PathBuf::from(env!("CARGO_BIN_EXE_agent-commits")),
-            "AGENT_COMMITS_",
+            PathBuf::from(env!("CARGO_BIN_EXE_agent-sign")),
+            "AGENT_SIGN_",
         ),
         (old_name, "AGENT_SIGN_"),
     ];
@@ -222,20 +222,20 @@ fn without_a_token_every_signing_name_forwards_to_the_fallback_unchanged() {
     )
     .unwrap();
     fs::set_permissions(&fallback, fs::Permissions::from_mode(0o755)).unwrap();
-    fs::create_dir_all(home.join(".agent-commits")).unwrap();
+    fs::create_dir_all(home.join(".agent-sign")).unwrap();
     fs::write(
-        home.join(".agent-commits/config.toml"),
+        home.join(".agent-sign/config.toml"),
         format!("[ssh]\nfallback_program = \"{}\"\n", fallback.display()),
     )
     .unwrap();
 
     let links = tempdir().unwrap();
     let old_name = links.path().join("agent-sign");
-    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agent-commits"), &old_name).unwrap();
+    std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agent-sign"), &old_name).unwrap();
 
     for program in [
-        PathBuf::from(env!("CARGO_BIN_EXE_agent-commits-ssh-sign")),
-        PathBuf::from(env!("CARGO_BIN_EXE_agent-commits")),
+        PathBuf::from(env!("CARGO_BIN_EXE_agent-ssh-sign")),
+        PathBuf::from(env!("CARGO_BIN_EXE_agent-sign")),
         old_name,
     ] {
         let _ = fs::remove_file(&record);

@@ -1,5 +1,5 @@
-use agent_commits::config::{LeaseMode, LeaseScope};
-use agent_commits::lease::{LeaseEngine, LeasePolicy};
+use agent_sign::config::{LeaseMode, LeaseScope};
+use agent_sign::lease::{LeaseEngine, LeasePolicy};
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::thread::sleep;

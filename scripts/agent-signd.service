@@ -1,12 +1,12 @@
-# The systemd user unit that keeps agent-commitsd running while you're logged
+# The systemd user unit that keeps agent-signd running while you're logged
 # in. scripts/install.sh installs and enables it; scripts/uninstall.sh removes it.
 [Unit]
-Description=agent-commits service: the agent signing key and leases
+Description=agent-sign service: the agent signing key and leases
 After=network.target
 
 [Service]
 Type=simple
-ExecStart=%h/.agent-commits/bin/agent-commitsd
+ExecStart=%h/.agent-sign/bin/agent-signd
 Restart=always
 RestartSec=2
 StandardOutput=journal

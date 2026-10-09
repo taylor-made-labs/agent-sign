@@ -1,11 +1,11 @@
 diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
-index 922b5b6..9eb3795 100644
+index 922b5b6..343ae59 100644
 --- a/.github/workflows/ci.yml
 +++ b/.github/workflows/ci.yml
 @@ -1,10 +1,13 @@
  name: CI
  
-+# Every push and pull request, on the three platforms agent-commits ships for:
++# Every push and pull request, on the three platforms agent-sign ships for:
 +# macOS (arm64), Linux x86_64, and Linux ARM64 (the Raspberry Pi's
 +# architecture). Plus a scan of the whole history for secrets, since the
 +# history becomes public at release.
@@ -59,7 +59,7 @@ index 922b5b6..9eb3795 100644
 +        env:
 +          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 +
-+      - name: agent-commits' own scan (every blob on every ref; prints no values)
++      - name: agent-sign's own scan (every blob on every ref; prints no values)
 +        run: python3 scripts/release/scan-history-secrets.py . --all
 +
 +  licenses:
@@ -97,32 +97,28 @@ index 922b5b6..9eb3795 100644
 +      - name: Fresh install, upgrade from agent-sign, linked state, uninstall
 +        run: scripts/release/install-test.sh
 diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
-index a93941a..629057d 100644
+index a93941a..277664b 100644
 --- a/.github/workflows/release.yml
 +++ b/.github/workflows/release.yml
-@@ -18,13 +18,21 @@ jobs:
-         include:
+@@ -19,12 +19,20 @@ jobs:
            - os: macos-latest
              target: aarch64-apple-darwin
--            archive_name: agent-sign-aarch64-apple-darwin
+             archive_name: agent-sign-aarch64-apple-darwin
 -          - os: macos-13
-+            archive_name: agent-commits-aarch64-apple-darwin
 +          # Built on the arm64 runner for the Intel target: the macos-13
 +          # Intel runner this used is retired, and the only release run
 +          # (agent-sign v0.1.0) waited 24 hours for one and was cancelled.
 +          - os: macos-latest
              target: x86_64-apple-darwin
--            archive_name: agent-sign-x86_64-apple-darwin
-+            archive_name: agent-commits-x86_64-apple-darwin
+             archive_name: agent-sign-x86_64-apple-darwin
            - os: ubuntu-latest
              target: x86_64-unknown-linux-gnu
--            archive_name: agent-sign-x86_64-unknown-linux-gnu
-+            archive_name: agent-commits-x86_64-unknown-linux-gnu
+             archive_name: agent-sign-x86_64-unknown-linux-gnu
 +          # Linux ARM64, for the Raspberry Pi (build-order: "a Linux ARM
 +          # build"). Built natively on GitHub's ARM runner.
 +          - os: ubuntu-24.04-arm
 +            target: aarch64-unknown-linux-gnu
-+            archive_name: agent-commits-aarch64-unknown-linux-gnu
++            archive_name: agent-sign-aarch64-unknown-linux-gnu
  
      steps:
        - name: Checkout code
@@ -135,7 +131,7 @@ index a93941a..629057d 100644
  
        - name: Package release archive
          shell: bash
-@@ -45,15 +53,19 @@ jobs:
+@@ -45,15 +53,15 @@ jobs:
            mkdir -p "$STAGING_DIR/bin"
            mkdir -p "$STAGING_DIR/scripts"
  
@@ -144,15 +140,11 @@ index a93941a..629057d 100644
 -          cp "target/${{ matrix.target }}/release/agent-sign"  "$STAGING_DIR/bin/"
 -          cp "target/${{ matrix.target }}/release/agent-git"   "$STAGING_DIR/bin/"
 -          cp "target/${{ matrix.target }}/release/agent-git"   "$STAGING_DIR/bin/git"
-+          # agent-commits' programs, `git` as a copy of the wrapper, and
-+          # agent-sign's old names as links (see docs/MIGRATION.md)
-+          for n in agent-commitsd agent-commits agent-commits-ssh-sign agent-commits-git; do
++          # agent-sign's programs, and `git` as a copy of the wrapper
++          for n in agent-signd agent-sign agent-ssh-sign agent-git; do
 +            cp "target/${{ matrix.target }}/release/$n" "$STAGING_DIR/bin/"
 +          done
-+          cp "target/${{ matrix.target }}/release/agent-commits-git" "$STAGING_DIR/bin/git"
-+          ln -s agent-commitsd    "$STAGING_DIR/bin/agent-signd"
-+          ln -s agent-commits     "$STAGING_DIR/bin/agent-sign"
-+          ln -s agent-commits-git "$STAGING_DIR/bin/agent-git"
++          cp "target/${{ matrix.target }}/release/agent-git" "$STAGING_DIR/bin/git"
  
            # Copy scripts and metadata
            cp -r scripts/* "$STAGING_DIR/scripts/"

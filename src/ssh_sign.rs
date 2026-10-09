@@ -1,4 +1,4 @@
-//! The signing program git calls as `gpg.ssh.program` (`agent-commits-ssh-sign`).
+//! The signing program git calls as `gpg.ssh.program` (`agent-ssh-sign`).
 //!
 //! Git runs it with ssh-keygen's arguments (`-Y sign -n git -f <key> <file>`)
 //! and expects `<file>.sig` to be written. When the git wrapper has set an
@@ -6,11 +6,9 @@
 //! the agent key. Without a token the arguments are passed unchanged to the
 //! configured `fallback_program` (the person's own signer).
 //!
-//! This was the default behaviour of the `agent-sign` binary. It lives in the
-//! library so that `agent-commits-ssh-sign` and `agent-commits` (which `agent-sign` now points
-//! to) run exactly the same code. The token variable keeps its old name,
-//! `AGENT_EVENT_TOKEN`, so an old wrapper and a new signing program (or the
-//! reverse) still work together during an upgrade.
+//! It lives in the library so that `agent-ssh-sign` and `agent-sign` (which
+//! also accepts git's signing arguments, as it always has) run exactly the
+//! same code.
 
 use std::env;
 use std::fs;
@@ -45,10 +43,7 @@ pub fn run(args: &[String]) -> ExitCode {
         SigningAction::SignWithAgentKey(token) => {
             // Validate token format fails closed
             if let Err(e) = multiplexer.validate_event_token(Some(&token)) {
-                eprintln!(
-                    "[agent-commits-ssh-sign] Event token validation failed: {}",
-                    e
-                );
+                eprintln!("[agent-ssh-sign] Event token validation failed: {}", e);
                 return ExitCode::from(1);
             }
             sign_with_agent_daemon(args, &token)
@@ -63,7 +58,7 @@ fn delegate_to_system_ssh_keygen(args: &[String], fallback_program: &str) -> Exi
         Ok(s) => ExitCode::from(s.code().unwrap_or(1) as u8),
         Err(e) => {
             eprintln!(
-                "[agent-commits-ssh-sign] Failed to execute fallback signing program '{}': {}",
+                "[agent-ssh-sign] Failed to execute fallback signing program '{}': {}",
                 fallback_program, e
             );
             ExitCode::from(1)
@@ -94,7 +89,7 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
         Some(p) => p,
         None => {
             eprintln!(
-                "[agent-commits-ssh-sign] Error: No file to sign provided in git arguments: {:?}",
+                "[agent-ssh-sign] Error: No file to sign provided in git arguments: {:?}",
                 args
             );
             return ExitCode::from(1);
@@ -105,7 +100,7 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
         Ok(b) => b,
         Err(e) => {
             eprintln!(
-                "[agent-commits-ssh-sign] Error reading buffer file {}: {}",
+                "[agent-ssh-sign] Error reading buffer file {}: {}",
                 file_path.display(),
                 e
             );
@@ -125,13 +120,11 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
         Ok(r) => r,
         Err(e) => {
             eprintln!(
-                "[agent-commits-ssh-sign] Failed to communicate with the agent-commits service at {}: {}",
+                "[agent-ssh-sign] Failed to communicate with the agent-sign service at {}: {}",
                 socket_path.display(),
                 e
             );
-            eprintln!(
-                "[agent-commits-ssh-sign] Ensure `agent-commitsd` (formerly `agent-signd`) is running."
-            );
+            eprintln!("[agent-ssh-sign] Ensure `agent-signd` is running.");
             return ExitCode::from(1);
         }
     };
@@ -142,7 +135,7 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
             let sig_file_path = PathBuf::from(format!("{}.sig", file_path.display()));
             if let Err(e) = fs::write(&sig_file_path, signature_pem) {
                 eprintln!(
-                    "[agent-commits-ssh-sign] Failed to write signature to {}: {}",
+                    "[agent-ssh-sign] Failed to write signature to {}: {}",
                     sig_file_path.display(),
                     e
                 );
@@ -152,14 +145,14 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
         }
         Response::Error { message } => {
             eprintln!(
-                "[agent-commits-ssh-sign] Signing rejected by the agent-commits service: {}",
+                "[agent-ssh-sign] Signing rejected by the agent-sign service: {}",
                 message
             );
             ExitCode::from(1)
         }
         other => {
             eprintln!(
-                "[agent-commits-ssh-sign] Unexpected response from the agent-commits service: {:?}",
+                "[agent-ssh-sign] Unexpected response from the agent-sign service: {:?}",
                 other
             );
             ExitCode::from(1)

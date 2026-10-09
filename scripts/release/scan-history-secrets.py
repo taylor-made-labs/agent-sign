@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scan every file version in a git repository's history for secrets.
 
-A release check for agent-commits, whose history (inherited from agent-sign) becomes
+A release check for agent-sign, whose history (inherited from agent-sign) becomes
 public at release. gitleaks is the standard tool and is preferred when it is
 installed (`gitleaks git --log-opts=--all`); this script is the fallback that
 needs only Python and git, so the check can always be run.

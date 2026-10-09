@@ -1,27 +1,27 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  The LaunchAgent that keeps agent-commitsd running while you're logged in.
+  The LaunchAgent that keeps agent-signd running while you're logged in.
   scripts/install.sh copies it to ~/Library/LaunchAgents and loads it;
   scripts/uninstall.sh removes it.
 -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.agentcommits.agent-commitsd</string>
+    <string>com.agentsign.agent-signd</string>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>
         <string>-c</string>
-        <string>exec "$HOME/.agent-commits/bin/agent-commitsd"</string>
+        <string>exec "$HOME/.agent-sign/bin/agent-signd"</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/agent-commitsd.stdout.log</string>
+    <string>/tmp/agent-signd.stdout.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/agent-commitsd.stderr.log</string>
+    <string>/tmp/agent-signd.stderr.log</string>
 </dict>
 </plist>

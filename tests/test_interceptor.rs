@@ -1,6 +1,6 @@
-use agent_commits::attribution::{AttributionEngine, AttributionMode};
-use agent_commits::config::{AgentConfig, AttributionConfig, HumanConfig};
-use agent_commits::interceptor::CommandInterceptor;
+use agent_sign::attribution::{AttributionEngine, AttributionMode};
+use agent_sign::config::{AgentConfig, AttributionConfig, HumanConfig};
+use agent_sign::interceptor::CommandInterceptor;
 
 #[test]
 fn test_agent_git_passes_non_commit_commands_untouched() {
@@ -95,6 +95,6 @@ fn test_attribution_trailers_mode() {
     let transformed = engine.transform_commit_message(original_message, "lease-1234");
 
     assert!(transformed.contains("Co-Authored-By: Antigravity Agent <agent@local.internal>"));
-    assert!(transformed.contains("X-Agent-Signer: agent-commits"));
+    assert!(transformed.contains("X-Agent-Signer: agent-sign"));
     assert!(transformed.contains("X-Agent-Lease: lease-1234"));
 }

@@ -12,7 +12,7 @@ pub enum AttributionMode {
 }
 
 /// Agents that mark the commands they run with an environment variable,
-/// and the name agent-commits gives their commits. Only marks seen in
+/// and the name agent-sign gives their commits. Only marks seen in
 /// practice or documented by the agent are listed, checked in this order:
 ///
 /// - Claude Code sets `CLAUDECODE=1` in the shell it runs commands in
@@ -23,20 +23,20 @@ pub enum AttributionMode {
 ///   in a running session).
 ///
 /// An agent with no mark (Cursor, Aider) can be started with
-/// `AGENT_COMMITS_AGENT_NAME` set instead.
+/// `AGENT_SIGN_AGENT_NAME` set instead.
 pub const KNOWN_AGENTS: &[(&str, &str)] = &[
     ("CLAUDECODE", "Claude Code"),
     ("GEMINI_CLI", "Gemini CLI"),
     ("CODEX_THREAD_ID", "Codex"),
 ];
 
-/// The default agent names agent-commits and agent-sign have used. A
+/// The default agent names agent-sign and agent-sign have used. A
 /// configured name other than these is the person's own choice, so a
 /// detected agent never replaces it.
 const DEFAULT_AGENT_NAMES: &[&str] = &["Agent", "Antigravity Agent"];
 
 /// Which agent is running the command, from the environment `get` reads:
-/// `AGENT_COMMITS_AGENT_NAME` if set, otherwise the first agent in
+/// `AGENT_SIGN_AGENT_NAME` if set, otherwise the first agent in
 /// [`KNOWN_AGENTS`] whose mark is set (and isn't empty or `0`).
 pub fn detect_agent_with(get: impl Fn(&str) -> Option<String>) -> Option<String> {
     if let Some(name) = crate::paths::env_var_with("AGENT_NAME", &get)
@@ -52,7 +52,7 @@ pub fn detect_agent_with(get: impl Fn(&str) -> Option<String>) -> Option<String>
 }
 
 /// Whether one of the [`KNOWN_AGENTS`] marks is set (and isn't empty or
-/// `0`). Unlike [`detect_agent_with`], `AGENT_COMMITS_AGENT_NAME` doesn't
+/// `0`). Unlike [`detect_agent_with`], `AGENT_SIGN_AGENT_NAME` doesn't
 /// count: it names an agent's commits, and may be set in a terminal the
 /// person also types in (an editor's terminal settings, say).
 pub fn agent_mark_present_with(get: impl Fn(&str) -> Option<String>) -> bool {
@@ -63,7 +63,7 @@ pub fn agent_mark_present_with(get: impl Fn(&str) -> Option<String>) -> bool {
 
 /// Whether a commit is the person's own, to be passed to their normal git
 /// and signing untouched: standard input and output are both terminals,
-/// nothing forces agent handling (`AGENT_COMMITS_FORCE`, `_SESSION`), and no
+/// nothing forces agent handling (`AGENT_SIGN_FORCE`, `_SESSION`), and no
 /// agent has marked the command as its own. The mark matters for agents
 /// that run commands in a real terminal (a terminal pane, say), which the
 /// terminal test alone would take for the person.
@@ -83,7 +83,7 @@ pub fn detect_agent() -> Option<String> {
 
 /// The author name for an agent commit: the agent detected, when the
 /// configured name is still a default; otherwise the configured name.
-/// `AGENT_COMMITS_AGENT_NAME` is an explicit choice and always wins.
+/// `AGENT_SIGN_AGENT_NAME` is an explicit choice and always wins.
 pub fn effective_agent_name(configured: &str, explicit: bool, detected: Option<String>) -> String {
     match detected {
         Some(name) if explicit || DEFAULT_AGENT_NAMES.contains(&configured) => name,
@@ -141,7 +141,7 @@ impl AttributionEngine {
                     "Co-Authored-By: {} <{}>\n",
                     self.agent.name, self.agent.email
                 ));
-                msg.push_str("X-Agent-Signer: agent-commits/v0.1\n");
+                msg.push_str("X-Agent-Signer: agent-sign/v0.1\n");
                 msg.push_str(&format!("X-Agent-Lease: {}\n", lease_id));
                 msg
             }

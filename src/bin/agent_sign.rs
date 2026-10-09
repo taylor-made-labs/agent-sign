@@ -1,17 +1,17 @@
-//! `agent-commits`: the command line for agent-commits (formerly `agent-sign`).
+//! `agent-sign`: the command line for agent-sign.
 //!
-//! `agent-commits leases`, `status`, `revoke`, `doctor`, `--version`, `--help`. Any other
+//! `agent-sign leases`, `status`, `revoke`, `doctor`, `--version`, `--help`. Any other
 //! arguments are treated as git calling it as `gpg.ssh.program`, exactly as
 //! `agent-sign` did, so `agent-sign` can be a link to this program. New setups
-//! point git at `agent-commits-ssh-sign` instead.
+//! point git at `agent-ssh-sign` instead.
 
 use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 
-use agent_commits::config::Config;
-use agent_commits::protocol::{Request, Response, client_socket_path, send_request};
+use agent_sign::config::Config;
+use agent_sign::protocol::{Request, Response, client_socket_path, send_request};
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -32,7 +32,7 @@ fn main() -> ExitCode {
             return run_revoke(&args[2..]);
         }
         if first_arg == "--version" || first_arg == "-v" || first_arg == "-V" {
-            println!("agent-commits {}", env!("CARGO_PKG_VERSION"));
+            println!("agent-sign {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
         }
         if first_arg == "--help" || first_arg == "-h" {
@@ -42,35 +42,32 @@ fn main() -> ExitCode {
     }
 
     // Anything else is git calling us as its signing program, as `agent-sign`
-    // was. `agent-commits-ssh-sign` runs the same code.
-    agent_commits::ssh_sign::run(&args[1..])
+    // was. `agent-ssh-sign` runs the same code.
+    agent_sign::ssh_sign::run(&args[1..])
 }
 
 fn print_help() {
-    println!("agent-commits: git commit signing and leases for AI agents (formerly agent-sign)");
+    println!("agent-sign: git commit signing and leases for AI agents");
     println!();
     println!("USAGE:");
+    println!("  agent-ssh-sign <git-ssh-args...>    (Used internally by Git as gpg.ssh.program)");
     println!(
-        "  agent-commits-ssh-sign <git-ssh-args...>    (Used internally by Git as gpg.ssh.program)"
+        "  agent-sign <git-ssh-args...>             (Same as agent-ssh-sign; how agent-sign was used)"
+    );
+    println!("  agent-sign leases                        (List active leases and their terms)");
+    println!(
+        "  agent-sign status                        (Check service health and list active leases)"
     );
     println!(
-        "  agent-commits <git-ssh-args...>             (Same as agent-commits-ssh-sign; how agent-sign was used)"
+        "  agent-sign revoke <repo|folder|everywhere> (End the lease covering it, as `leases` shows it)"
     );
-    println!("  agent-commits leases                        (List active leases and their terms)");
+    println!("  agent-sign revoke --all                  (Revoke all active agent leases)");
     println!(
-        "  agent-commits status                        (Check service health and list active leases)"
+        "  agent-sign doctor                        (Run full system diagnostics and check health)"
     );
-    println!(
-        "  agent-commits revoke <repo|folder|everywhere> (End the lease covering it, as `leases` shows it)"
-    );
-    println!("  agent-commits revoke --all                  (Revoke all active agent leases)");
-    println!(
-        "  agent-commits doctor                        (Run full system diagnostics and check health)"
-    );
-    println!("  agent-commits --version                     (Show version)");
-    println!("  agent-commits --help                        (Show this message)");
+    println!("  agent-sign --version                     (Show version)");
+    println!("  agent-sign --help                        (Show this message)");
     println!();
-    println!("The old names agent-sign, agent-signd, and agent-git still work.");
 }
 
 fn run_leases() -> ExitCode {
@@ -83,7 +80,7 @@ fn run_leases() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
 
-            // The repository comes last and in full: it's what `agent-commits revoke`
+            // The repository comes last and in full: it's what `agent-sign revoke`
             // takes, so it mustn't be cut short.
             println!(
                 "\x1b[1m{:<20} {:<10} {:<14} {:<18} {:<8} REPOSITORY\x1b[0m",
@@ -130,22 +127,20 @@ fn run_leases() -> ExitCode {
             ExitCode::SUCCESS
         }
         Ok(Response::Error { message }) => {
-            eprintln!("[agent-commits] Daemon error: {}", message);
+            eprintln!("[agent-sign] Daemon error: {}", message);
             ExitCode::from(1)
         }
         Ok(other) => {
-            eprintln!("[agent-commits] Unexpected daemon response: {:?}", other);
+            eprintln!("[agent-sign] Unexpected daemon response: {:?}", other);
             ExitCode::from(1)
         }
         Err(e) => {
             eprintln!(
-                "[agent-commits] Failed to communicate with daemon at {}: {}",
+                "[agent-sign] Failed to communicate with daemon at {}: {}",
                 socket_path.display(),
                 e
             );
-            eprintln!(
-                "[agent-commits] Ensure `agent-commitsd` (formerly `agent-signd`) is running."
-            );
+            eprintln!("[agent-sign] Ensure `agent-signd` is running.");
             ExitCode::from(1)
         }
     }
@@ -208,8 +203,8 @@ fn run_revoke(args: &[String]) -> ExitCode {
     }
 
     if !all && targets.is_empty() {
-        eprintln!("Usage: agent-commits revoke <repository, folder, or everywhere>");
-        eprintln!("       agent-commits revoke --all");
+        eprintln!("Usage: agent-sign revoke <repository, folder, or everywhere>");
+        eprintln!("       agent-sign revoke --all");
         return ExitCode::from(1);
     }
 
@@ -246,24 +241,22 @@ fn run_revoke(args: &[String]) -> ExitCode {
             ExitCode::from(1)
         }
         Ok(other) => {
-            eprintln!("[agent-commits] Unexpected daemon response: {:?}", other);
+            eprintln!("[agent-sign] Unexpected daemon response: {:?}", other);
             ExitCode::from(1)
         }
         Err(e) => {
             eprintln!(
-                "[agent-commits] Failed to communicate with daemon at {}: {}",
+                "[agent-sign] Failed to communicate with daemon at {}: {}",
                 socket_path.display(),
                 e
             );
-            eprintln!(
-                "[agent-commits] Ensure `agent-commitsd` (formerly `agent-signd`) is running."
-            );
+            eprintln!("[agent-sign] Ensure `agent-signd` is running.");
             ExitCode::from(1)
         }
     }
 }
 
-/// What the argument to `agent-commits revoke` may name, most likely first:
+/// What the argument to `agent-sign revoke` may name, most likely first:
 /// the repository it's in (see [`resolve_repo_arg`]), then the path itself,
 /// canonical, for a folder lease on a folder that sits inside a repository.
 /// `everywhere`, or anything that isn't a path, is passed on unchanged.
@@ -278,10 +271,10 @@ fn revoke_targets(arg: &str) -> Vec<String> {
     targets
 }
 
-/// Turns what the person typed after `agent-commits revoke` into the key the service
+/// Turns what the person typed after `agent-sign revoke` into the key the service
 /// files leases under: the canonical path of the repository's top level, as
-/// the git wrapper computes it. So `agent-commits revoke .` inside a repository, or a
-/// path through a symlink, names the same lease `agent-commits leases` shows. Anything
+/// the git wrapper computes it. So `agent-sign revoke .` inside a repository, or a
+/// path through a symlink, names the same lease `agent-sign leases` shows. Anything
 /// that isn't an existing path is passed on unchanged.
 fn resolve_repo_arg(arg: &str) -> String {
     let path = std::path::Path::new(arg);
@@ -340,7 +333,7 @@ fn truncate_str(s: &str, max_len: usize) -> String {
 
 fn run_doctor() -> ExitCode {
     println!("\x1b[1m══════════════════════════════════════════════════\x1b[0m");
-    println!("\x1b[1m            agent-commits Diagnostic Health Check          \x1b[0m");
+    println!("\x1b[1m            agent-sign Diagnostic Health Check          \x1b[0m");
     println!("\x1b[1m══════════════════════════════════════════════════\x1b[0m\n");
 
     let mut passes = 0;
@@ -390,9 +383,7 @@ fn run_doctor() -> ExitCode {
         );
         println!(
             "    Hint: Check `fallback_program` in {}",
-            agent_commits::paths::state_dir()
-                .join("config.toml")
-                .display()
+            agent_sign::paths::state_dir().join("config.toml").display()
         );
         failures += 1;
     }
@@ -410,7 +401,7 @@ fn run_doctor() -> ExitCode {
             "  \x1b[31m✗\x1b[0m Agent keypair missing at {}",
             config.ssh.agent_key_path.display()
         );
-        println!("    Hint: Run `agent-commitsd setup` to generate keys");
+        println!("    Hint: Run `agent-signd setup` to generate keys");
         failures += 1;
     }
 
@@ -464,7 +455,7 @@ fn run_doctor() -> ExitCode {
         }
         Err(e) => {
             println!("  \x1b[31m✗\x1b[0m Daemon connection failed: {}", e);
-            println!("    Hint: Start the service with `agent-commitsd`");
+            println!("    Hint: Start the service with `agent-signd`");
             failures += 1;
         }
     }
@@ -501,7 +492,7 @@ fn run_doctor() -> ExitCode {
     }
 
     // 7. Check Directory Permissions & Lease Persistence Storage
-    let agent_dir = agent_commits::paths::state_dir();
+    let agent_dir = agent_sign::paths::state_dir();
     if agent_dir.exists() {
         #[cfg(unix)]
         {
@@ -582,7 +573,7 @@ fn run_doctor() -> ExitCode {
         ExitCode::SUCCESS
     } else if failures == 0 {
         println!(
-            "\x1b[1;33m{} passed, {} warning(s). agent-commits is usable.\x1b[0m\n",
+            "\x1b[1;33m{} passed, {} warning(s). agent-sign is usable.\x1b[0m\n",
             passes, warnings
         );
         ExitCode::SUCCESS

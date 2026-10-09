@@ -1,9 +1,9 @@
-//! `agent-commits-git`: agent-commits' git wrapper (formerly `agent-git`), installed first on
+//! `agent-git`: agent-sign's git wrapper, installed first on
 //! agents' `PATH` as `git`.
 //!
 //! Every command except `commit` goes straight to the real git. A commit from
 //! an agent is checked against the local rules, gets a lease and a single-use
-//! token from the service, and runs the real git with agent-commits' signing program
+//! token from the service, and runs the real git with agent-sign's signing program
 //! and the configured author and committer.
 
 use std::env;
@@ -11,12 +11,12 @@ use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use agent_commits::attribution::{AttributionEngine, AttributionMode};
-use agent_commits::config::Config;
-use agent_commits::interceptor::CommandInterceptor;
-use agent_commits::paths;
-use agent_commits::protocol::{Request, Response, client_socket_path, send_request};
-use agent_commits::ssh_sign::EVENT_TOKEN_VAR;
+use agent_sign::attribution::{AttributionEngine, AttributionMode};
+use agent_sign::config::Config;
+use agent_sign::interceptor::CommandInterceptor;
+use agent_sign::paths;
+use agent_sign::protocol::{Request, Response, client_socket_path, send_request};
+use agent_sign::ssh_sign::EVENT_TOKEN_VAR;
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
@@ -31,13 +31,13 @@ fn main() -> ExitCode {
 
     // Human isolation [INV-1]: a commit typed in an interactive terminal
     // (stdin and stdout both terminals) goes to the person's own git and
-    // signing, unless AGENT_COMMITS_FORCE / _SESSION is set or an agent has
+    // signing, unless AGENT_SIGN_FORCE / _SESSION is set or an agent has
     // marked the command as its own (see attribution::KNOWN_AGENTS).
-    let is_interactive_human = agent_commits::attribution::is_persons_own_commit(
+    let is_interactive_human = agent_sign::attribution::is_persons_own_commit(
         std::io::stdin().is_terminal(),
         std::io::stdout().is_terminal(),
         paths::env_var_os("FORCE").is_some() || paths::env_var_os("SESSION").is_some(),
-        agent_commits::attribution::agent_mark_present_with(|k| env::var(k).ok()),
+        agent_sign::attribution::agent_mark_present_with(|k| env::var(k).ok()),
     );
 
     if is_interactive_human {
@@ -60,8 +60,8 @@ fn find_system_git() -> PathBuf {
 
     if let Ok(paths) = env::var("PATH") {
         for dir in env::split_paths(&paths) {
-            // Skip agent-commits' own bin directories (old and new names)
-            if is_agent_commits_bin_dir(&dir) {
+            // Skip agent-sign's own bin directories (old and new names)
+            if is_agent_sign_bin_dir(&dir) {
                 continue;
             }
             let candidate = dir.join("git");
@@ -95,14 +95,11 @@ fn find_system_git() -> PathBuf {
     PathBuf::from("git")
 }
 
-/// Whether a `PATH` entry is one of agent-commits' bin directories, which hold the
-/// wrapper itself: anything under `.agent-sign` (the check agent-git made) or
-/// with a `.agent-commits` path component.
-fn is_agent_commits_bin_dir(dir: &Path) -> bool {
-    dir.to_string_lossy().contains(paths::LEGACY_STATE_DIR_NAME)
-        || dir
-            .components()
-            .any(|c| c.as_os_str() == paths::STATE_DIR_NAME)
+/// Whether a `PATH` entry is agent-sign's bin directory, which holds the
+/// wrapper itself: any path with a `.agent-sign` component.
+fn is_agent_sign_bin_dir(dir: &Path) -> bool {
+    dir.components()
+        .any(|c| c.as_os_str() == paths::STATE_DIR_NAME)
 }
 
 fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]) -> ExitCode {
@@ -116,7 +113,7 @@ fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]
         Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
         Err(e) => {
             eprintln!(
-                "[agent-commits-git] Failed to execute git at {}: {}",
+                "[agent-git] Failed to execute git at {}: {}",
                 real_git.display(),
                 e
             );
@@ -159,18 +156,18 @@ fn get_repo_and_branch(real_git: &Path) -> (String, String) {
 }
 
 /// The signing program to hand git as `gpg.ssh.program`:
-/// 1. `AGENT_COMMITS_BIN` (or the old `AGENT_SIGN_BIN`), if set;
-/// 2. `agent-commits-ssh-sign` next to this program, else `agent-sign` next to it (an
-///    install that still has only the old names);
-/// 3. `agent-commits-ssh-sign`, else `agent-sign`, in the state directory's `bin`;
-/// 4. otherwise `<state dir>/bin/agent-commits-ssh-sign`.
+/// 1. `AGENT_SIGN_BIN`, if set;
+/// 2. `agent-ssh-sign` next to this program, else `agent-sign` next to it (an
+///    install from before `agent-ssh-sign` existed);
+/// 3. `agent-ssh-sign`, else `agent-sign`, in the state directory's `bin`;
+/// 4. otherwise `<state dir>/bin/agent-ssh-sign`.
 fn find_ssh_sign_bin() -> PathBuf {
     if let Some(path) = paths::env_var("BIN") {
         return PathBuf::from(path);
     }
 
     if let Ok(current_exe) = env::current_exe() {
-        for name in ["agent-commits-ssh-sign", "agent-sign"] {
+        for name in ["agent-ssh-sign", "agent-sign"] {
             let sibling = current_exe.with_file_name(name);
             if sibling.exists() {
                 return sibling;
@@ -179,13 +176,13 @@ fn find_ssh_sign_bin() -> PathBuf {
     }
 
     let bin_dir = paths::state_dir().join("bin");
-    for name in ["agent-commits-ssh-sign", "agent-sign"] {
+    for name in ["agent-ssh-sign", "agent-sign"] {
         let candidate = bin_dir.join(name);
         if candidate.exists() {
             return candidate;
         }
     }
-    bin_dir.join("agent-commits-ssh-sign")
+    bin_dir.join("agent-ssh-sign")
 }
 
 fn apply_trailers_to_args(
@@ -228,7 +225,7 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
 
     // 0. Enterprise Guardrails: Validate staged paths, diff size, and commit message
     if let Err(err_msg) = validate_guardrails(real_git, repo_path, &config, original_args) {
-        eprintln!("[agent-commits-git] Security Policy Violation: {}", err_msg);
+        eprintln!("[agent-git] Security Policy Violation: {}", err_msg);
         return ExitCode::from(1);
     }
 
@@ -243,23 +240,21 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
     let lease_id = match send_request(&socket_path, &lease_req) {
         Ok(Response::LeaseGranted { lease_id, .. }) => lease_id,
         Ok(Response::Error { message }) => {
-            eprintln!("[agent-commits-git] No signing lease: {}", message);
+            eprintln!("[agent-git] No signing lease: {}", message);
             return ExitCode::from(1);
         }
         Err(e) => {
             eprintln!(
-                "[agent-commits-git] Unable to connect to the agent-commits service at {}: {}",
+                "[agent-git] Unable to connect to the agent-sign service at {}: {}",
                 socket_path.display(),
                 e
             );
-            eprintln!(
-                "[agent-commits-git] Hint: Start the service with `agent-commitsd` (formerly `agent-signd`)"
-            );
+            eprintln!("[agent-git] Hint: Start the service with `agent-signd`");
             return ExitCode::from(1);
         }
         other => {
             eprintln!(
-                "[agent-commits-git] Unexpected lease response from daemon: {:?}",
+                "[agent-git] Unexpected lease response from daemon: {:?}",
                 other
             );
             return ExitCode::from(1);
@@ -275,15 +270,15 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
     let token = match send_request(&socket_path, &token_req) {
         Ok(Response::TokenIssued { token }) => token,
         Ok(Response::Error { message }) => {
-            eprintln!("[agent-commits-git] Token issuance failed: {}", message);
+            eprintln!("[agent-git] Token issuance failed: {}", message);
             return ExitCode::from(1);
         }
         Err(e) => {
-            eprintln!("[agent-commits-git] Token request failed: {}", e);
+            eprintln!("[agent-git] Token request failed: {}", e);
             return ExitCode::from(1);
         }
         other => {
-            eprintln!("[agent-commits-git] Unexpected token response: {:?}", other);
+            eprintln!("[agent-git] Unexpected token response: {:?}", other);
             return ExitCode::from(1);
         }
     };
@@ -292,17 +287,17 @@ fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
     let ssh_sign_bin = find_ssh_sign_bin();
     // Name the agent in its commits when it can be told (see KNOWN_AGENTS).
     let mut agent = config.agent;
-    let explicit = agent_commits::paths::env_var("AGENT_NAME").is_some();
-    agent.name = agent_commits::attribution::effective_agent_name(
+    let explicit = agent_sign::paths::env_var("AGENT_NAME").is_some();
+    agent.name = agent_sign::attribution::effective_agent_name(
         &agent.name,
         explicit,
-        agent_commits::attribution::detect_agent(),
+        agent_sign::attribution::detect_agent(),
     );
     let attr_engine = AttributionEngine::new(config.attribution, agent, config.human);
     let attr_envs = attr_engine.compute_env_vars("commit");
 
     let mut git_args: Vec<String> = Vec::new();
-    // Configure Git to use agent-commits' signing program
+    // Configure Git to use agent-sign's signing program
     git_args.push("-c".to_string());
     git_args.push("commit.gpgsign=true".to_string());
     git_args.push("-c".to_string());
@@ -410,7 +405,7 @@ fn validate_guardrails(
 
             if total_lines > config.security.max_diff_lines {
                 return Err(format!(
-                    "Agent commit diff exceeds safety circuit breaker (changed {} lines, max allowed is {}). Set AGENT_COMMITS_ALLOW_LARGE_DIFF=1 (or AGENT_SIGN_ALLOW_LARGE_DIFF=1) or adjust max_diff_lines to override.",
+                    "Agent commit diff exceeds safety circuit breaker (changed {} lines, max allowed is {}). Set AGENT_SIGN_ALLOW_LARGE_DIFF=1 (or AGENT_SIGN_ALLOW_LARGE_DIFF=1) or adjust max_diff_lines to override.",
                     total_lines, config.security.max_diff_lines
                 ));
             }

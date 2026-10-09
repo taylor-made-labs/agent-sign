@@ -1,9 +1,6 @@
-//! agent-commits' settings: built-in defaults, then the person's config file in the
-//! state directory, then the repository's file, then environment variables.
-//!
-//! The file format is agent-sign's, unchanged, so an existing
-//! `~/.agent-sign/config.toml` keeps its meaning after it moves to
-//! `~/.agent-commits/config.toml`.
+//! agent-sign's settings: built-in defaults, then the person's config file in
+//! the state directory (`~/.agent-sign/config.toml`), then the repository's
+//! `.agent-sign.toml`, then environment variables.
 
 use crate::attribution::AttributionMode;
 use crate::paths;
@@ -318,15 +315,14 @@ impl Config {
     /// Hierarchical config loading for the current `HOME`:
     /// 1. Default built-in configs
     /// 2. Deep-merged with `<state dir>/config.toml` (if present), where the
-    ///    state dir is `~/.agent-commits`, or `~/.agent-sign` before migration
-    /// 3. Deep-merged with `<repo_root>/.agent-sign.toml`, then
-    ///    `<repo_root>/.agent-commits.toml` (each if present)
-    /// 4. Overlaid with environment variables (`AGENT_COMMITS_*`, or the old `AGENT_SIGN_*`)
+    ///    state dir is `~/.agent-sign`
+    /// 3. Deep-merged with `<repo_root>/.agent-sign.toml` (if present)
+    /// 4. Overlaid with environment variables (`AGENT_SIGN_*`)
     pub fn load(repo_path: Option<&Path>) -> Self {
         Self::load_in_home(&paths::home_dir(), repo_path)
     }
 
-    /// [`Config::load`] for an explicit home directory, so the migration can be
+    /// [`Config::load`] for an explicit home directory, so loading can be
     /// tested against temporary homes without changing the process's `HOME`.
     pub fn load_in_home(home: &Path, repo_path: Option<&Path>) -> Self {
         let mut defaults = Config::default();
@@ -343,7 +339,7 @@ impl Config {
             merge_toml(&mut base_val, overlay);
         }
 
-        // 2. Overlay repo-level config (.agent-sign.toml, then .agent-commits.toml)
+        // 2. Overlay repo-level config (.agent-sign.toml, then .agent-sign.toml)
         if let Some(repo) = repo_path {
             for name in paths::REPO_CONFIG_FILES {
                 let repo_config = repo.join(name);
@@ -356,10 +352,6 @@ impl Config {
         }
 
         let mut config: Config = base_val.try_into().unwrap_or_default();
-
-        // A key path written by agent-sign as ~/.agent-sign/... keeps pointing
-        // at the same file after the migration.
-        config.ssh.agent_key_path = paths::rebase_legacy_path(&config.ssh.agent_key_path, home);
 
         // 3. Environment overrides
         if let Some(val) = paths::env_var("ALLOW_MAIN") {
