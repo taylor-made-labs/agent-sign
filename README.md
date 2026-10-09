@@ -13,7 +13,7 @@ your own key is never handed to an agent.
 
 What it is, plainly: it removes the interruption, and adds local guardrails
 for agents that cooperate (no agent commits on `main`, no changes to CI
-workflows or key files, size and rate limits). It is **not** a separate
+workflows or key files, a rate limit). It is **not** a separate
 identity for agents on GitHub: the agent key is registered on your account,
 so agent commits show as Verified for you, with the agent's name as author.
 See [what it protects against, and what it doesn't](#what-it-protects-against-and-what-it-doesnt).
@@ -37,9 +37,9 @@ use. There are no downloadable releases yet: you build it from source.
    get that `PATH`: check with `command -v git` from the agent.)
 2. When an agent runs `git commit`, the wrapper checks the local rules: no
    changes to CI workflows (`.github/workflows/`, `.circleci/`) or key files
-   (`*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`), and at most 2,000 changed
-   lines in one commit. Then it asks the service (`agent-signd`) for a
-   lease covering this repository.
+   (`*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`). There's no limit on a
+   commit's size unless you set one (`max_diff_lines`). Then it asks the
+   service (`agent-signd`) for a lease covering this repository.
 3. If there's no lease, you get one dialog showing the repository, the
    branch, which branches the lease would cover, when it ends, and the reason
    the agent gave. You approve or deny.
@@ -68,7 +68,7 @@ It does:
   default), checked on every commit
 - ask you before the first signed commit that no lease covers, showing the
   lease's terms and letting you choose how far it reaches
-- stop runaway commit loops and oversized diffs, and block edits to CI
+- stop runaway commit loops (and oversized diffs, if you set a size limit), and block edits to CI
   workflows and key files
 - fail closed: for a commit through the wrapper, if the service is down,
   there's no lease, or you can't be asked, the commit is refused, never

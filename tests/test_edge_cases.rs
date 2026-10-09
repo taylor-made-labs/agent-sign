@@ -404,13 +404,13 @@ fn ci_workflows_and_key_files_are_refused() {
 }
 
 #[test]
-fn a_diff_over_the_limit_is_refused() {
+fn a_diff_over_a_limit_the_person_set_is_refused() {
     let s = Setup::new("[security]\nmax_diff_lines = 5\n", true);
     let repo = s.repo("r", "feat/a");
     fs::write(repo.join("big.txt"), "x\n".repeat(50)).unwrap();
     git_ok(&repo, &["add", "big.txt"]);
     let out = s.agent_git(&repo, &["commit", "-q", "-m", "big"], &[]);
-    assert_refused(&out, &repo, 1, "exceeds");
+    assert_refused(&out, &repo, 1, "more than the limit you set");
 }
 
 #[test]
@@ -672,4 +672,23 @@ fn an_unreadable_backstop_stops_the_service_instead_of_dropping_it() {
         .unwrap();
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("end_after_idle"));
+}
+
+// --- No size limit unless the person sets one ------------------------------
+
+#[test]
+fn by_default_a_commit_of_any_size_is_signed() {
+    // A generated lockfile is often thousands of lines; nothing about signing
+    // limits a commit's size, so by default nothing here does either.
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    fs::write(
+        repo.join("package-lock.json"),
+        "  \"x\": 1,\n".repeat(20_000),
+    )
+    .unwrap();
+    git_ok(&repo, &["add", "package-lock.json"]);
+    let out = s.agent_git(&repo, &["commit", "-q", "-m", "lockfile"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert!(s.head_verifies(&repo));
 }

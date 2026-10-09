@@ -405,7 +405,7 @@ fn validate_guardrails(
 
             if total_lines > config.security.max_diff_lines {
                 return Err(format!(
-                    "Agent commit diff exceeds safety circuit breaker (changed {} lines, max allowed is {}). Set AGENT_SIGN_ALLOW_LARGE_DIFF=1 (or AGENT_SIGN_ALLOW_LARGE_DIFF=1) or adjust max_diff_lines to override.",
+                    "Agent commit changes {} lines, more than the limit you set (max_diff_lines = {}). Raise or remove max_diff_lines, or set AGENT_SIGN_ALLOW_LARGE_DIFF=1 for this commit.",
                     total_lines, config.security.max_diff_lines
                 ));
             }

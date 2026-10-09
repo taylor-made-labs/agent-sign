@@ -200,8 +200,11 @@ fn default_forbidden_paths() -> Vec<String> {
     ]
 }
 
+/// No limit (0). Nothing about signing limits a commit's size, and a fixed
+/// limit refused ordinary work such as a generated lockfile. A person who
+/// wants a guard against runaway commits can set one.
 fn default_max_diff_lines() -> usize {
-    2000
+    0
 }
 
 impl Default for SecurityConfig {

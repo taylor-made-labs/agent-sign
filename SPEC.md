@@ -75,7 +75,7 @@ Each invariant says whether it holds today, and how that's checked.
             |                                 are terminals -> real git,
             | not a terminal (or AGENT_SIGN_FORCE)  unchanged (person's own signing)
             v
-  local rules: forbidden paths, diff size, (optional) message format
+  local rules: forbidden paths, (optional) diff size and message format
             |
             v
   agent-signd: lease for this repository? --no--> ask the person once (dialog)
@@ -247,7 +247,7 @@ auto_approve = false              # true grants every lease without asking
 
 [security]                        # read by the wrapper (repository files and environment apply)
 forbidden_paths = [".github/workflows/*", ".circleci/*", "*.pem", "*.key", "id_rsa*", "id_ed25519*"]
-max_diff_lines = 2000
+max_diff_lines = 0                # 0 = no limit (the default); set a number to refuse bigger agent commits
 enforce_conventional_commits = false
 
 [attribution]

@@ -41,7 +41,7 @@ The wrapper prints why, starting `[agent-git]`.
 | `No signing lease: agent-sign couldn't ask you to approve a lease` | No dialog could be shown and the service has no terminal: a server, a container, an SSH session, or a Linux desktop without `zenity` or `kdialog`. | See "No dialog appears" and "Machines with no screen" below. |
 | `Token issuance failed: Rate limit exceeded` | More than `max_commits_per_minute` agent commits in a minute in this repository. | Wait a minute, or raise the limit in `~/.agent-sign/config.toml` and restart the service. |
 | `Security Policy Violation: ... forbidden path` | The commit changes a path in `forbidden_paths` (CI workflows, key files). | Commit that change yourself from your terminal. |
-| `Security Policy Violation: ... exceeds safety circuit breaker` | More than `max_diff_lines` (2,000) lines changed. | Split the commit, or commit with `AGENT_SIGN_ALLOW_LARGE_DIFF=1`. |
+| `Agent commit changes N lines, more than the limit you set` | You set `max_diff_lines`, and the commit changes more lines than that. (There's no limit by default.) | Split the commit, or commit with `AGENT_SIGN_ALLOW_LARGE_DIFF=1`. |
 
 ## Your fingerprint (or 1Password) is asked for on every agent commit
 
