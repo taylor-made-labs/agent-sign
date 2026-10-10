@@ -13,7 +13,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
 use base64::Engine;
@@ -22,7 +23,7 @@ use clap::{Parser, Subcommand};
 use agent_sign::config::Config;
 use agent_sign::crypto::AgentKeyPair;
 use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy};
-use agent_sign::protocol::{Request, Response, default_socket_path, send_response};
+use agent_sign::protocol::{PendingInfo, Request, Response, default_socket_path, send_response};
 
 #[derive(Parser)]
 #[command(
@@ -66,6 +67,98 @@ struct DaemonState {
     _config: Config,
     valid_tokens: HashMap<String, Instant>,
     auto_approve: bool,
+    /// Approval requests waiting for the person, one per repository and
+    /// branch, keyed by `pending_key`.
+    pending: HashMap<String, Arc<PendingAsk>>,
+}
+
+/// One approval request waiting for the person. Every commit asking for the
+/// same repository and branch while it's open waits on this one answer, so
+/// retries and parallel commits never open a second dialog.
+struct PendingAsk {
+    id: String,
+    repo: String,
+    branch: String,
+    asked_at: Instant,
+    /// Commits waiting on the answer. When the last one goes away (its
+    /// program timed out or was stopped), the dialog is withdrawn.
+    waiters: AtomicUsize,
+    /// Set to close the dialog without an answer from it.
+    cancel: AtomicBool,
+    /// Set by `agent-sign deny`: the request is answered as denied.
+    denied_by_command: AtomicBool,
+    /// The response every waiting commit gets, once there is one.
+    outcome: Mutex<Option<Response>>,
+    done: Condvar,
+}
+
+fn pending_key(repo: &str, branch: &str) -> String {
+    format!("{repo}\n{branch}")
+}
+
+/// Whether the client on `stream` has gone away (closed its end) while
+/// waiting. A connection carries one request, already read, so a
+/// non-blocking read finds either nothing yet ("would block": still there)
+/// or the end of the stream (gone).
+fn client_gone(stream: &UnixStream) -> bool {
+    use std::io::Read;
+    if stream.set_nonblocking(true).is_err() {
+        return false;
+    }
+    let mut byte = [0u8; 1];
+    let gone = match (&*stream).read(&mut byte) {
+        Ok(0) => true,
+        Ok(_) => false,
+        Err(e) => e.kind() != std::io::ErrorKind::WouldBlock,
+    };
+    let _ = stream.set_nonblocking(false);
+    gone
+}
+
+/// Waits for `ask`'s answer while checking that this commit's program is
+/// still there. `None` when it has gone: if it was the last one waiting, the
+/// dialog is withdrawn.
+fn wait_for_answer(ask: &PendingAsk, stream: &UnixStream) -> Option<Response> {
+    let mut outcome = ask.outcome.lock().unwrap();
+    loop {
+        if let Some(response) = outcome.as_ref() {
+            return Some(response.clone());
+        }
+        let (guard, _) = ask
+            .done
+            .wait_timeout(outcome, Duration::from_millis(200))
+            .unwrap();
+        outcome = guard;
+        if outcome.is_none() && client_gone(stream) {
+            if ask.waiters.fetch_sub(1, Ordering::SeqCst) == 1 {
+                ask.cancel.store(true, Ordering::SeqCst);
+            }
+            return None;
+        }
+    }
+}
+
+/// Runs a dialog program and waits for it, unless `cancel` is set first, in
+/// which case the program (and so its dialog) is stopped and `None` returned.
+fn run_cancellable(mut cmd: Command, cancel: &AtomicBool) -> Option<std::process::Output> {
+    let mut child = cmd
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .ok()?;
+    loop {
+        if cancel.load(Ordering::SeqCst) {
+            let _ = child.kill();
+            let _ = child.wait();
+            return None;
+        }
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+            Err(_) => return None,
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -250,6 +343,7 @@ fn run_daemon(
         _config: config,
         valid_tokens: HashMap::new(),
         auto_approve: effective_auto_approve,
+        pending: HashMap::new(),
     }));
 
     let listener = UnixListener::bind(&socket_path)?;
@@ -362,32 +456,29 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             } else {
                 // Nothing covers this commit: ask the person, outside the lock.
                 // Unattended approval only ever grants this repository.
-                let approval = if auto_approve_val {
-                    Approval::Approved(Coverage::Repository)
-                } else {
-                    request_human_approval(&repo, &branch, &intent, &terms, &choices)
-                };
-
-                match approval {
-                    Approval::Approved(coverage) => {
-                        let mut st = state.lock().unwrap();
-                        match st.lease_engine.try_grant_for_work(
-                            &repo,
-                            &branch,
-                            &intent,
-                            coverage,
-                            work_at(&repo, &branch),
-                        ) {
-                            Ok(lease) => Response::LeaseGranted {
-                                lease_id: lease.id,
-                                expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
-                            },
-                            Err(e) => Response::Error { message: e },
-                        }
+                if !auto_approve_val {
+                    let ask =
+                        join_or_open_request(&state, &repo, &branch, &intent, &terms, &choices);
+                    // `None`: the commit's program is gone, so there's no one
+                    // to answer.
+                    if let Some(response) = wait_for_answer(&ask, stream) {
+                        let _ = send_response(stream, &response);
                     }
-                    refused => Response::Error {
-                        message: refused.refusal().unwrap_or_default(),
+                    return;
+                }
+                let mut st = state.lock().unwrap();
+                match st.lease_engine.try_grant_for_work(
+                    &repo,
+                    &branch,
+                    &intent,
+                    Coverage::Repository,
+                    work_at(&repo, &branch),
+                ) {
+                    Ok(lease) => Response::LeaseGranted {
+                        lease_id: lease.id,
+                        expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
                     },
+                    Err(e) => Response::Error { message: e },
                 }
             }
         }
@@ -446,6 +537,48 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             end_finished_work(&mut st);
             let leases = st.lease_engine.list_leases();
             Response::LeaseList { leases }
+        }
+        Request::ListPending => {
+            let st = state.lock().unwrap();
+            let mut pending: Vec<PendingInfo> = st
+                .pending
+                .values()
+                .map(|ask| PendingInfo {
+                    id: ask.id.clone(),
+                    repo: ask.repo.clone(),
+                    branch: ask.branch.clone(),
+                    waiting_secs: ask.asked_at.elapsed().as_secs(),
+                    waiters: ask.waiters.load(Ordering::SeqCst),
+                })
+                .collect();
+            pending.sort_by_key(|p| std::cmp::Reverse(p.waiting_secs));
+            Response::PendingList { pending }
+        }
+        Request::DenyPending { id, all } => {
+            let st = state.lock().unwrap();
+            let matched: Vec<&Arc<PendingAsk>> = st
+                .pending
+                .values()
+                .filter(|ask| all || id.as_deref() == Some(ask.id.as_str()))
+                .collect();
+            if matched.is_empty() {
+                Response::Error {
+                    message: if all {
+                        "no approval requests are waiting".to_string()
+                    } else {
+                        format!(
+                            "no waiting request with id '{}': `agent-sign pending` lists them",
+                            id.unwrap_or_default()
+                        )
+                    },
+                }
+            } else {
+                for ask in matched {
+                    ask.denied_by_command.store(true, Ordering::SeqCst);
+                    ask.cancel.store(true, Ordering::SeqCst);
+                }
+                Response::Success
+            }
         }
         Request::RevokeLease {
             repo,
@@ -506,6 +639,79 @@ fn end_finished_work(st: &mut DaemonState) {
     }
 }
 
+/// Joins the open request for this repository and branch, or opens one: a
+/// dialog in its own thread, whose answer every waiting commit receives. The
+/// lease, if approved, is granted once, by that thread.
+fn join_or_open_request(
+    state: &Arc<Mutex<DaemonState>>,
+    repo: &str,
+    branch: &str,
+    intent: &str,
+    terms: &agent_sign::lease::TermsText,
+    choices: &[(Coverage, String)],
+) -> Arc<PendingAsk> {
+    let key = pending_key(repo, branch);
+    let mut st = state.lock().unwrap();
+    if let Some(ask) = st.pending.get(&key) {
+        ask.waiters.fetch_add(1, Ordering::SeqCst);
+        return Arc::clone(ask);
+    }
+    let ask = Arc::new(PendingAsk {
+        id: uuid::Uuid::new_v4().simple().to_string()[..8].to_string(),
+        repo: repo.to_string(),
+        branch: branch.to_string(),
+        asked_at: Instant::now(),
+        waiters: AtomicUsize::new(1),
+        cancel: AtomicBool::new(false),
+        denied_by_command: AtomicBool::new(false),
+        outcome: Mutex::new(None),
+        done: Condvar::new(),
+    });
+    st.pending.insert(key.clone(), Arc::clone(&ask));
+    drop(st);
+
+    let state = Arc::clone(state);
+    let asking = Arc::clone(&ask);
+    let (repo, branch, intent) = (repo.to_string(), branch.to_string(), intent.to_string());
+    let (terms, choices) = (terms.clone(), choices.to_vec());
+    std::thread::spawn(move || {
+        let approval =
+            request_human_approval(&repo, &branch, &intent, &terms, &choices, &asking.cancel);
+        let approval = if asking.denied_by_command.load(Ordering::SeqCst) {
+            Approval::Denied
+        } else {
+            approval
+        };
+        let response = match approval {
+            Approval::Approved(coverage) => {
+                let mut st = state.lock().unwrap();
+                match st.lease_engine.try_grant_for_work(
+                    &repo,
+                    &branch,
+                    &intent,
+                    coverage,
+                    work_at(&repo, &branch),
+                ) {
+                    Ok(lease) => Response::LeaseGranted {
+                        lease_id: lease.id,
+                        expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
+                    },
+                    Err(e) => Response::Error { message: e },
+                }
+            }
+            refused => Response::Error {
+                message: refused.refusal().unwrap_or_default(),
+            },
+        };
+        // Out of the list first, so a commit arriving now opens a new request
+        // rather than joining one that's answered.
+        state.lock().unwrap().pending.remove(&key);
+        *asking.outcome.lock().unwrap() = Some(response);
+        asking.done.notify_all();
+    });
+    ask
+}
+
 /// The person's answer to a lease request, or that there was no way to ask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Approval {
@@ -515,6 +721,8 @@ enum Approval {
     /// No dialog could be shown and the service has no terminal: nobody was
     /// asked, so the lease is refused (failing closed).
     NoWayToAsk,
+    /// The dialog was closed because every commit waiting on it had gone.
+    Withdrawn,
 }
 
 impl Approval {
@@ -526,6 +734,10 @@ impl Approval {
             Approval::Approved(_) => None,
             Approval::Denied => Some("the person denied the signing lease".to_string()),
             Approval::NoWayToAsk => Some(NO_WAY_TO_ASK.to_string()),
+            Approval::Withdrawn => Some(
+                "the approval request was withdrawn: every commit waiting on it had gone"
+                    .to_string(),
+            ),
         }
     }
 
@@ -564,6 +776,7 @@ fn request_human_approval(
     intent: &str,
     terms: &agent_sign::lease::TermsText,
     choices: &[(Coverage, String)],
+    cancel: &AtomicBool,
 ) -> Approval {
     let prompt_text = format!(
         "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nBranches: {}\nEnds: {}\nReason given by the agent: {}\n\nChoose what this approval covers. These terms are fixed when you approve. They never grow.",
@@ -583,13 +796,19 @@ fn request_human_approval(
             items[0]
         );
 
-        if let Ok(output) = Command::new("osascript").arg("-e").arg(&script).output() {
-            let res = String::from_utf8_lossy(&output.stdout);
-            // Any answer is the person's; an empty one with a failure means
-            // no dialog could be shown, so try the next way to ask.
-            if !res.trim().is_empty() || output.status.success() {
-                return Approval::from_answer(&res, choices);
+        let mut osascript = Command::new("osascript");
+        osascript.arg("-e").arg(&script);
+        match run_cancellable(osascript, cancel) {
+            Some(output) => {
+                let res = String::from_utf8_lossy(&output.stdout);
+                // Any answer is the person's; an empty one with a failure
+                // means no dialog could be shown, so try the next way to ask.
+                if !res.trim().is_empty() || output.status.success() {
+                    return Approval::from_answer(&res, choices);
+                }
             }
+            None if cancel.load(Ordering::SeqCst) => return Approval::Withdrawn,
+            None => {}
         }
     }
 
@@ -613,7 +832,13 @@ fn request_human_approval(
                 zenity_args.push(if i == 0 { "TRUE" } else { "FALSE" }.to_string());
                 zenity_args.push(label.to_string());
             }
-            if let Ok(output) = Command::new("zenity").args(&zenity_args).output() {
+            let mut zenity = Command::new("zenity");
+            zenity.args(&zenity_args);
+            let zenity_output = run_cancellable(zenity, cancel);
+            if zenity_output.is_none() && cancel.load(Ordering::SeqCst) {
+                return Approval::Withdrawn;
+            }
+            if let Some(output) = zenity_output {
                 // zenity exits 0 with the chosen label, and 1 for Deny or a
                 // closed window; any other failure (no display, say) falls
                 // through to the terminal, as before.
@@ -639,7 +864,13 @@ fn request_human_approval(
                     kdialog_args.push(label.to_string());
                     kdialog_args.push(if i == 0 { "on" } else { "off" }.to_string());
                 }
-                if let Ok(output) = Command::new("kdialog").args(&kdialog_args).output() {
+                let mut kdialog = Command::new("kdialog");
+                kdialog.args(&kdialog_args);
+                let kdialog_output = run_cancellable(kdialog, cancel);
+                if kdialog_output.is_none() && cancel.load(Ordering::SeqCst) {
+                    return Approval::Withdrawn;
+                }
+                if let Some(output) = kdialog_output {
                     // kdialog prints the chosen tag (the choice's number).
                     let tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
                     let chosen = tag

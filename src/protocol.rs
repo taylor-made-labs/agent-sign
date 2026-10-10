@@ -57,6 +57,29 @@ pub enum Request {
         #[serde(default)]
         all: bool,
     },
+    /// The approval requests waiting for the person's answer.
+    ListPending,
+    /// Answers waiting requests with a denial and closes their dialogs:
+    /// the one with this `id`, or all of them.
+    DenyPending {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(default)]
+        all: bool,
+    },
+}
+
+/// One approval request waiting for the person, as `agent-sign pending`
+/// lists it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingInfo {
+    pub id: String,
+    pub repo: String,
+    pub branch: String,
+    /// How long the dialog has been open.
+    pub waiting_secs: u64,
+    /// How many commits are waiting on this one answer.
+    pub waiters: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,6 +104,9 @@ pub enum Response {
     },
     LeaseList {
         leases: Vec<LeaseInfo>,
+    },
+    PendingList {
+        pending: Vec<PendingInfo>,
     },
     Success,
     Error {

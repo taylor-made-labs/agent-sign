@@ -31,6 +31,12 @@ fn main() -> ExitCode {
         if first_arg == "revoke" {
             return run_revoke(&args[2..]);
         }
+        if first_arg == "pending" {
+            return run_pending();
+        }
+        if first_arg == "deny" {
+            return run_deny(&args[2..]);
+        }
         if first_arg == "--version" || first_arg == "-v" || first_arg == "-V" {
             println!("agent-sign {}", env!("CARGO_PKG_VERSION"));
             return ExitCode::SUCCESS;
@@ -62,6 +68,12 @@ fn print_help() {
         "  agent-sign revoke <repo|folder|everywhere> (End the lease covering it, as `leases` shows it)"
     );
     println!("  agent-sign revoke --all                  (Revoke all active agent leases)");
+    println!(
+        "  agent-sign pending                       (List approval requests waiting for an answer)"
+    );
+    println!(
+        "  agent-sign deny <id>|--all               (Deny waiting requests and close their dialogs)"
+    );
     println!(
         "  agent-sign doctor                        (Run full system diagnostics and check health)"
     );
@@ -184,6 +196,87 @@ fn run_status() -> ExitCode {
                 e
             );
             eprintln!("  Socket: {}", socket_path.display());
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// Lists the approval requests waiting for the person: one per repository
+/// and branch, with how many commits are waiting on each.
+fn run_pending() -> ExitCode {
+    let socket_path = client_socket_path();
+    match send_request(&socket_path, &Request::ListPending) {
+        Ok(Response::PendingList { pending }) if pending.is_empty() => {
+            println!("No approval requests are waiting.");
+            ExitCode::SUCCESS
+        }
+        Ok(Response::PendingList { pending }) => {
+            println!("ID        WAITING   COMMITS  REPOSITORY (BRANCH)");
+            for p in pending {
+                println!(
+                    "{:<9} {:<9} {:<8} {} ({})",
+                    p.id,
+                    format_relative_time(p.waiting_secs),
+                    p.waiters,
+                    p.repo,
+                    p.branch
+                );
+            }
+            println!();
+            println!(
+                "`agent-sign deny <id>` or `agent-sign deny --all` closes them, answering no."
+            );
+            ExitCode::SUCCESS
+        }
+        Ok(Response::Error { message }) => {
+            eprintln!("[agent-sign] {}", message);
+            ExitCode::from(1)
+        }
+        Ok(other) => {
+            eprintln!("[agent-sign] Unexpected service response: {:?}", other);
+            ExitCode::from(1)
+        }
+        Err(e) => {
+            eprintln!(
+                "[agent-sign] Couldn't reach the service at {}: {}",
+                socket_path.display(),
+                e
+            );
+            ExitCode::from(1)
+        }
+    }
+}
+
+/// Denies waiting approval requests (one by id, or all) and closes their
+/// dialogs, so an agent can clean up requests it caused.
+fn run_deny(args: &[String]) -> ExitCode {
+    let all = args.iter().any(|a| a == "--all" || a == "-a");
+    let id = args.iter().find(|a| !a.starts_with('-')).cloned();
+    if !all && id.is_none() {
+        eprintln!("Usage: agent-sign deny <id>      (an id from `agent-sign pending`)");
+        eprintln!("       agent-sign deny --all");
+        return ExitCode::from(1);
+    }
+    let socket_path = client_socket_path();
+    match send_request(&socket_path, &Request::DenyPending { id, all }) {
+        Ok(Response::Success) => {
+            println!("Denied, and the dialogs are closed.");
+            ExitCode::SUCCESS
+        }
+        Ok(Response::Error { message }) => {
+            eprintln!("[agent-sign] {}", message);
+            ExitCode::from(1)
+        }
+        Ok(other) => {
+            eprintln!("[agent-sign] Unexpected service response: {:?}", other);
+            ExitCode::from(1)
+        }
+        Err(e) => {
+            eprintln!(
+                "[agent-sign] Couldn't reach the service at {}: {}",
+                socket_path.display(),
+                e
+            );
             ExitCode::from(1)
         }
     }
