@@ -29,6 +29,14 @@ fn main() -> ExitCode {
         return exec_system_git(&real_git, &args[1..], &[]);
     }
 
+    // A commit that asks not to be signed (--no-gpg-sign, or commit.gpgsign
+    // set to false for this command or this repository, as test fixtures
+    // do for throwaway commits) goes to the real git unchanged: there's
+    // nothing to sign, so nothing to ask the person about.
+    if signing_declined(&real_git, &args[1..], decision.commit_index) {
+        return exec_system_git(&real_git, &args[1..], &[]);
+    }
+
     // Human isolation [INV-1]: a commit typed in an interactive terminal
     // (stdin and stdout both terminals) goes to the person's own git and
     // signing, unless AGENT_SIGN_FORCE / _SESSION is set or an agent has
@@ -46,6 +54,34 @@ fn main() -> ExitCode {
 
     // Commit command detected: prepare autonomous signing context
     handle_agent_commit(&real_git, &args[1..])
+}
+
+/// Whether this commit asks not to be signed: by its own options, or else by
+/// `commit.gpgsign = false` in this command's or this repository's config.
+fn signing_declined(real_git: &Path, args: &[String], commit_index: Option<usize>) -> bool {
+    let Some(at) = commit_index else {
+        return false;
+    };
+    if let Some(sign) = agent_sign::interceptor::signing_flag(&args[at + 1..]) {
+        return !sign;
+    }
+    // The global options before `commit` (such as `-c commit.gpgsign=false`
+    // or `-C dir`) apply to the config lookup too.
+    Command::new(real_git)
+        .args(&args[..at])
+        .args([
+            "config",
+            "--show-scope",
+            "--type=bool",
+            "--get",
+            "commit.gpgsign",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .is_some_and(|o| {
+            agent_sign::interceptor::config_declines_signing(&String::from_utf8_lossy(&o.stdout))
+        })
 }
 
 fn find_system_git() -> PathBuf {

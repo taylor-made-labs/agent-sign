@@ -52,3 +52,33 @@ impl CommandInterceptor {
         }
     }
 }
+
+/// What a commit's own options say about signing, if anything: `Some(false)`
+/// for `--no-gpg-sign`, `Some(true)` for `-S`/`--gpg-sign[=key]`, the last
+/// one winning as in git; `None` when neither is given. Options after `--`
+/// are paths, not options.
+pub fn signing_flag(commit_args: &[String]) -> Option<bool> {
+    let mut decided = None;
+    for arg in commit_args {
+        if arg == "--" {
+            break;
+        }
+        if arg == "--no-gpg-sign" {
+            decided = Some(false);
+        } else if arg.starts_with("-S") || arg.starts_with("--gpg-sign") {
+            decided = Some(true);
+        }
+    }
+    decided
+}
+
+/// Whether `git config --show-scope --type=bool --get commit.gpgsign` output
+/// says signing was turned off for this command or this repository
+/// (`command`, `local` or `worktree` scope). A global or system setting
+/// doesn't count: agent commits are signed whatever the person's own default.
+pub fn config_declines_signing(show_scope_output: &str) -> bool {
+    let mut parts = show_scope_output.trim().splitn(2, '\t');
+    let scope = parts.next().unwrap_or_default();
+    let value = parts.next().unwrap_or_default().trim();
+    value == "false" && matches!(scope, "command" | "local" | "worktree")
+}

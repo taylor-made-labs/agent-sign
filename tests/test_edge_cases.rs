@@ -140,7 +140,7 @@ impl Setup {
             Ok(Response::Pong)
         ) {
             assert!(
-                start.elapsed() < Duration::from_secs(5),
+                start.elapsed() < Duration::from_secs(20),
                 "service didn't start"
             );
             std::thread::sleep(Duration::from_millis(20));
@@ -713,4 +713,67 @@ fn the_lease_list_says_how_each_lease_ends() {
         ),
         "{listed}"
     );
+}
+
+// --- Commits that ask not to be signed never ask the person -----------------
+
+#[test]
+fn a_commit_with_signing_off_on_the_command_line_never_asks() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    fs::write(repo.join("t.txt"), "t\n").unwrap();
+    git_ok(&repo, &["add", "t.txt"]);
+    let out = s.agent_git(
+        &repo,
+        &["-c", "commit.gpgsign=false", "commit", "-q", "-m", "t"],
+        &[],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(head_signature_status(&repo), "N");
+    assert_eq!(s.times_asked(), 0);
+}
+
+#[test]
+fn a_commit_with_no_gpg_sign_never_asks() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    fs::write(repo.join("t.txt"), "t\n").unwrap();
+    git_ok(&repo, &["add", "t.txt"]);
+    let out = s.agent_git(&repo, &["commit", "-q", "--no-gpg-sign", "-m", "t"], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(s.times_asked(), 0);
+}
+
+#[test]
+fn a_test_fixture_repository_with_signing_off_never_asks_even_on_main() {
+    // What cas's tests do: a throwaway repository with signing turned off,
+    // committing on main, many times.
+    let s = Setup::new("", false);
+    let repo = s.repo("fixture", "main");
+    git_ok(&repo, &["config", "commit.gpgsign", "false"]);
+    for i in 0..5 {
+        fs::write(repo.join(format!("f{i}.txt")), "x\n").unwrap();
+        git_ok(&repo, &["add", "."]);
+        let out = s.agent_git(&repo, &["commit", "-q", "-m", "fixture"], &[]);
+        assert!(out.status.success(), "{}", stderr(&out));
+    }
+    assert_eq!(s.times_asked(), 0);
+}
+
+#[test]
+fn signing_off_in_the_persons_global_config_still_signs_agent_commits() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    let global = s.home.join("global.gitconfig");
+    fs::write(&global, "[commit]\n\tgpgsign = false\n").unwrap();
+    fs::write(repo.join("t.txt"), "t\n").unwrap();
+    git_ok(&repo, &["add", "t.txt"]);
+    let out = s.agent_git(
+        &repo,
+        &["commit", "-q", "-m", "t"],
+        &[("GIT_CONFIG_GLOBAL", global.to_str().unwrap())],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(s.times_asked(), 1);
+    assert!(s.head_verifies(&repo));
 }

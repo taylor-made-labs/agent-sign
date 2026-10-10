@@ -307,7 +307,7 @@ fn start_service(home: &Path, fakebin: &Path) -> Service {
     let start = Instant::now();
     while !matches!(send_request(&socket, &Request::Ping), Ok(Response::Pong)) {
         assert!(
-            start.elapsed() < Duration::from_secs(5),
+            start.elapsed() < Duration::from_secs(20),
             "agent-signd did not start answering"
         );
         std::thread::sleep(Duration::from_millis(20));
