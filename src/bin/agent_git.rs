@@ -99,18 +99,42 @@ fn signing_declined(real_git: &Path, args: &[String], commit_index: Option<usize
 }
 
 /// Whether `name` is a git alias that runs `commit`, as git would expand it
-/// with these global options. Shell aliases (`!...`) run git again, which
-/// finds this wrapper, so they need nothing here.
+/// with these global options, following aliases of aliases (as git does, up
+/// to a depth). A shell alias (`!...`) isn't followed: git runs its own copy
+/// of itself inside it, not this wrapper, which is an open gap noted in the
+/// README's limits.
 fn alias_is_commit(real_git: &Path, global: &[String], name: &str) -> bool {
-    Command::new(real_git)
-        .args(global)
-        .args(["config", "--get", &format!("alias.{name}")])
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .is_some_and(|o| {
-            String::from_utf8_lossy(&o.stdout).split_whitespace().next() == Some("commit")
-        })
+    let interceptor = CommandInterceptor::new();
+    let mut name = name.to_string();
+    for _ in 0..16 {
+        let Some(expansion) = Command::new(real_git)
+            .args(global)
+            .args(["config", "--get", &format!("alias.{name}")])
+            // GIT_CONFIG is read by `git config` but not when git expands an
+            // alias, so it mustn't hide one.
+            .env_remove("GIT_CONFIG")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+        else {
+            return false;
+        };
+        let words: Vec<String> = expansion.split_whitespace().map(str::to_string).collect();
+        if words.first().is_some_and(|w| w.starts_with('!')) {
+            return false;
+        }
+        // The expansion may begin with global options (such as `-p`).
+        let inner = interceptor.inspect_command(&words);
+        if inner.is_commit {
+            return true;
+        }
+        match inner.subcommand_index.and_then(|i| words.get(i)) {
+            Some(next) => name = next.clone(),
+            None => return false,
+        }
+    }
+    false
 }
 
 /// Runs a commit that asked not to be signed, with signing made impossible:
@@ -469,31 +493,111 @@ fn git_lines(real_git: &Path, global: &[String], args: &[&str]) -> Option<String
         .then(|| String::from_utf8_lossy(&out.stdout).to_string())
 }
 
-/// What a commit could contain, compared with HEAD: staged changes, and also
-/// tracked files changed but not staged, which `commit -a` or a commit
-/// naming paths would include. Over-counting only means a rule may refuse a
-/// change that wasn't going in; under-counting would let one through.
-fn changes_the_commit_could_contain(
+/// Options that make git list exactly what changed, whatever the person's
+/// config says: raw paths separated by NUL (not quoted), the old and new
+/// path of a rename both listed, paths from the repository's top (not just
+/// the current folder), and no external diff or text conversion.
+const EXACT_DIFF: [&str; 5] = [
+    "-z",
+    "--no-renames",
+    "--no-relative",
+    "--no-ext-diff",
+    "--no-textconv",
+];
+
+fn unreadable() -> String {
+    "agent-sign couldn't read the changes in this commit, so it can't check its rules; refused"
+        .to_string()
+}
+
+/// What the new commit will be compared with: HEAD, or for `--amend` (and
+/// git's abbreviations of it) HEAD's parent, since the amended commit
+/// replaces HEAD and so contains HEAD's changes too; the empty tree when
+/// there's no such commit (a repository's first commit).
+fn comparison_base(
     real_git: &Path,
     global: &[String],
-    form: &str,
+    commit_args: &[String],
 ) -> Result<String, String> {
-    let unreadable = || {
-        "agent-sign couldn't read the changes in this commit, so it can't check its rules; refused"
-            .to_string()
+    let amend = commit_args
+        .iter()
+        .any(|a| a.len() >= 4 && "--amend".starts_with(a.as_str()));
+    let target = if amend {
+        "HEAD^{commit}^"
+    } else {
+        "HEAD^{commit}"
     };
-    let staged = git_lines(real_git, global, &["diff", "--cached", form]).ok_or_else(unreadable)?;
-    let has_head = git_lines(
+    if let Some(sha) = git_lines(
         real_git,
         global,
-        &["rev-parse", "--verify", "--quiet", "HEAD"],
-    )
-    .is_some();
-    if !has_head {
-        return Ok(staged);
+        &["rev-parse", "--verify", "--quiet", target],
+    ) {
+        return Ok(sha.trim().to_string());
     }
-    let since_head = git_lines(real_git, global, &["diff", "HEAD", form]).ok_or_else(unreadable)?;
-    Ok(format!("{staged}{since_head}"))
+    git_lines(
+        real_git,
+        global,
+        &["hash-object", "-t", "tree", "/dev/null"],
+    )
+    .map(|t| t.trim().to_string())
+    .ok_or_else(unreadable)
+}
+
+/// Every path the commit could contain: what's staged, and also tracked
+/// files changed but not staged, which `commit -a` or a commit naming paths
+/// would include. Over-counting only means a rule may refuse a change that
+/// wasn't going in; under-counting would let one through.
+fn paths_the_commit_could_contain(
+    real_git: &Path,
+    global: &[String],
+    base: &str,
+) -> Result<Vec<String>, String> {
+    let mut paths = Vec::new();
+    for staged in [true, false] {
+        let mut args = vec!["diff"];
+        if staged {
+            args.push("--cached");
+        }
+        args.extend([base, "--name-only"]);
+        args.extend(EXACT_DIFF);
+        let out = git_lines(real_git, global, &args).ok_or_else(unreadable)?;
+        paths.extend(
+            out.split('\0')
+                .filter(|p| !p.is_empty())
+                .map(str::to_string),
+        );
+    }
+    Ok(paths)
+}
+
+/// Lines added plus deleted, staged or in the working tree, whichever is
+/// more. (Binary files count as none: git gives no line count for them.)
+fn lines_the_commit_could_change(
+    real_git: &Path,
+    global: &[String],
+    base: &str,
+) -> Result<usize, String> {
+    let mut most = 0;
+    for staged in [true, false] {
+        let mut args = vec!["diff"];
+        if staged {
+            args.push("--cached");
+        }
+        args.extend([base, "--numstat"]);
+        args.extend(EXACT_DIFF);
+        let out = git_lines(real_git, global, &args).ok_or_else(unreadable)?;
+        let total: usize = out
+            .split('\0')
+            .filter_map(|record| {
+                let mut fields = record.split('\t');
+                let added: usize = fields.next()?.parse().ok()?;
+                let deleted: usize = fields.next()?.parse().ok()?;
+                Some(added + deleted)
+            })
+            .sum();
+        most = most.max(total);
+    }
+    Ok(most)
 }
 
 fn validate_guardrails(
@@ -502,15 +606,12 @@ fn validate_guardrails(
     config: &Config,
     commit_args: &[String],
 ) -> Result<(), String> {
+    let base = comparison_base(real_git, global, commit_args)?;
+
     // 1. Path-based blast radius check: every path the commit could contain
-    let names = changes_the_commit_could_contain(real_git, global, "--name-only")?;
-    for line in names.lines() {
-        let path_str = line.trim();
-        if path_str.is_empty() {
-            continue;
-        }
+    for path_str in paths_the_commit_could_contain(real_git, global, &base)? {
         for pattern in &config.security.forbidden_paths {
-            if matches_glob(path_str, pattern) {
+            if matches_glob(&path_str, pattern) {
                 return Err(format!(
                     "Agent commit touches forbidden path '{}' matching security policy rule '{}'. Bypassing requires human terminal commit or policy adjustment.",
                     path_str, pattern
@@ -521,29 +622,7 @@ fn validate_guardrails(
 
     // 2. Diff size circuit breaker, when the person has set one
     if config.security.max_diff_lines > 0 && paths::env_var_os("ALLOW_LARGE_DIFF").is_none() {
-        let has_head = git_lines(
-            real_git,
-            global,
-            &["rev-parse", "--verify", "--quiet", "HEAD"],
-        )
-        .is_some();
-        let numstat = if has_head {
-            git_lines(real_git, global, &["diff", "HEAD", "--numstat"])
-        } else {
-            git_lines(real_git, global, &["diff", "--cached", "--numstat"])
-        }
-        .ok_or_else(|| {
-            "agent-sign couldn't read the changes in this commit, so it can't check its size limit; refused".to_string()
-        })?;
-        let mut total_lines = 0usize;
-        for line in numstat.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 2 {
-                let added: usize = parts[0].parse().unwrap_or(0);
-                let deleted: usize = parts[1].parse().unwrap_or(0);
-                total_lines += added + deleted;
-            }
-        }
+        let total_lines = lines_the_commit_could_change(real_git, global, &base)?;
         if total_lines > config.security.max_diff_lines {
             return Err(format!(
                 "Agent commit changes {} lines, more than the limit you set (max_diff_lines = {}). Raise or remove max_diff_lines, or set AGENT_SIGN_ALLOW_LARGE_DIFF=1 for this commit.",

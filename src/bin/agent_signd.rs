@@ -782,8 +782,8 @@ impl Approval {
 /// person reading its output) learns why and what to do.
 const NO_WAY_TO_ASK: &str = "agent-sign couldn't ask you to approve a lease: there is no desktop session for a dialog, and the service has no terminal. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
 
-/// Text for a dialog that reads markup (zenity's Pango, kdialog's rich
-/// text): `&`, `<`, `>` and quotes become entities, so they show as written.
+/// Text for a dialog that reads markup (zenity's Pango): `&`, `<`, `>` and
+/// quotes become entities, so they show as written.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn escape_markup(text: &str) -> String {
     text.replace('&', "&amp;")
@@ -894,8 +894,11 @@ fn request_human_approval(
                     "--title".to_string(),
                     "agent-sign".to_string(),
                     "--radiolist".to_string(),
-                    // kdialog may read it as rich text (HTML): escaped too.
-                    escape_markup(&prompt_text),
+                    // Not escaped: kdialog (Qt) treats text as rich only if
+                    // a tag comes before the first line break, and the first
+                    // line here is always the same plain sentence, so the
+                    // text shows as written.
+                    prompt_text.clone(),
                 ];
                 for (i, label) in labels.iter().enumerate() {
                     kdialog_args.push((i + 1).to_string());

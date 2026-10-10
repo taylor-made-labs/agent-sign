@@ -1146,3 +1146,130 @@ fn a_path_with_markup_characters_is_shown_as_written() {
         assert!(shown.contains("R&D <lab>"), "{shown}");
     }
 }
+
+// --- From the second security review (10 Oct) -------------------------------
+
+#[test]
+fn a_chained_alias_and_shallow_file_are_still_agent_commits() {
+    let s = Setup::new("", true);
+    let (persons, log) = s.persons_signing();
+    let persons = persons.to_str().unwrap();
+    let repo = s.repo("r", "feat/a");
+    git_ok(&repo, &["config", "alias.c2", "commit -q"]);
+    git_ok(&repo, &["config", "alias.c1", "c2"]);
+    stage(&repo, "a.txt");
+    let out = s.agent_git(
+        &repo,
+        &["c1", "-m", "chained"],
+        &[("GIT_CONFIG_GLOBAL", persons)],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    stage(&repo, "b.txt");
+    let shallow = repo.join(".git/shallow-none");
+    let out = s.agent_git(
+        &repo,
+        &[
+            "--shallow-file",
+            shallow.to_str().unwrap(),
+            "commit",
+            "-q",
+            "-m",
+            "x",
+        ],
+        &[("GIT_CONFIG_GLOBAL", persons)],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(&log).unwrap_or_default(), "");
+    assert!(s.head_verifies(&repo));
+}
+
+#[test]
+fn amending_a_commit_that_touches_a_workflow_is_refused() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    fs::create_dir_all(repo.join(".github/workflows")).unwrap();
+    fs::write(repo.join(".github/workflows/evil.yml"), "on: push\n").unwrap();
+    git_ok(&repo, &["add", "."]);
+    git_ok(
+        &repo,
+        &["commit", "-q", "--no-gpg-sign", "-m", "unsigned workflow"],
+    );
+    stage(&repo, "a.txt");
+    for amend in ["--amend", "--am"] {
+        let out = s.agent_git(&repo, &["commit", "-q", amend, "-m", "amended"], &[]);
+        assert!(
+            !out.status.success(),
+            "{amend} signed a commit containing a workflow"
+        );
+        assert!(stderr(&out).contains("forbidden path"), "{}", stderr(&out));
+    }
+}
+
+#[test]
+fn quoted_and_renamed_paths_are_still_seen() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    // A non-ASCII name, which git would print quoted.
+    fs::write(repo.join("clé.pem"), "key\n").unwrap();
+    git_ok(&repo, &["add", "clé.pem"]);
+    let out = s.agent_git(&repo, &["commit", "-q", "-m", "x"], &[]);
+    assert!(
+        stderr(&out).contains("forbidden path"),
+        "quoted path missed: {}",
+        stderr(&out)
+    );
+    git_ok(&repo, &["reset", "-q"]);
+    fs::remove_file(repo.join("clé.pem")).unwrap();
+
+    // Moving a workflow out of .github/workflows.
+    git_ok(&repo, &["checkout", "-q", "main"]);
+    fs::create_dir_all(repo.join(".github/workflows")).unwrap();
+    fs::write(repo.join(".github/workflows/ci.yml"), "on: push\n").unwrap();
+    git_ok(&repo, &["add", "."]);
+    git_ok(&repo, &["commit", "-q", "-m", "ci"]);
+    git_ok(&repo, &["checkout", "-q", "-b", "feat/b"]);
+    git_ok(&repo, &["mv", ".github/workflows/ci.yml", "docs-ci.yml"]);
+    let out = s.agent_git(&repo, &["commit", "-q", "-m", "move"], &[]);
+    assert!(!out.status.success(), "a workflow moved away got through");
+    assert!(stderr(&out).contains("forbidden path"), "{}", stderr(&out));
+}
+
+#[test]
+fn diff_relative_doesnt_hide_paths_outside_the_current_folder() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    git_ok(&repo, &["config", "diff.relative", "true"]);
+    fs::create_dir_all(repo.join("sub")).unwrap();
+    fs::write(repo.join("sub/a.txt"), "a\n").unwrap();
+    fs::write(repo.join("deploy.pem"), "key\n").unwrap();
+    git_ok(&repo, &["add", "."]);
+    let out = s.agent_git(&repo.join("sub"), &["commit", "-q", "-m", "x"], &[]);
+    assert!(
+        !out.status.success(),
+        "a key file outside the current folder got through"
+    );
+    assert!(stderr(&out).contains("forbidden path"), "{}", stderr(&out));
+}
+
+#[test]
+fn a_size_limit_counts_a_first_commit_made_with_dash_a() {
+    let s = Setup::new(
+        "[security]\nmax_diff_lines = 100\nallow_main_branch = true\n",
+        true,
+    );
+    let repo = s.home.join("fresh");
+    fs::create_dir_all(&repo).unwrap();
+    git_ok(&repo, &["init", "-q", "-b", "feat/a"]);
+    git_ok(&repo, &["config", "user.name", "Person"]);
+    git_ok(&repo, &["config", "user.email", "person@example.com"]);
+    // Staged small, then changed big without staging: -a commits the big one.
+    fs::write(repo.join("big.txt"), "x\n").unwrap();
+    git_ok(&repo, &["add", "big.txt"]);
+    fs::write(repo.join("big.txt"), "x\n".repeat(500)).unwrap();
+    let out = s.agent_git(&repo, &["commit", "-q", "-a", "-m", "first"], &[]);
+    assert!(
+        stderr(&out).contains("more than the limit"),
+        "{}",
+        stderr(&out)
+    );
+}

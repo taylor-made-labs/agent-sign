@@ -8,7 +8,7 @@ pub struct InterceptorDecision {
 /// git's global options that take their value as the next argument. Missing
 /// one here makes its value look like the subcommand, so a commit after it
 /// would skip the wrapper: the list follows `git --help` (git 2.50).
-const GLOBAL_OPTIONS_WITH_VALUES: [&str; 8] = [
+const GLOBAL_OPTIONS_WITH_VALUES: [&str; 9] = [
     "-C",
     "-c",
     "--git-dir",
@@ -17,6 +17,8 @@ const GLOBAL_OPTIONS_WITH_VALUES: [&str; 8] = [
     "--config-env",
     "--attr-source",
     "--super-prefix",
+    // Undocumented, but git accepts it.
+    "--shallow-file",
 ];
 
 pub struct CommandInterceptor;
@@ -80,7 +82,7 @@ impl CommandInterceptor {
 /// It errs towards "wants signing", which sends the commit through the
 /// agent path (asking, and signing with the agent key): any bundle of short
 /// options containing `S` (such as `-qS` or `-aS`), and any abbreviation git
-/// accepts for `--gpg-sign` (`--gpg`, `--gp`). Reading it wrong the other way
+/// accepts for `--gpg-sign` (down to `--g`). Reading it wrong the other way
 /// is harmless too, since a commit taken for "signing off" runs with signing
 /// disabled (see the wrapper's `exec_unsigned`).
 pub fn signing_flag(commit_args: &[String]) -> Option<bool> {
@@ -91,7 +93,7 @@ pub fn signing_flag(commit_args: &[String]) -> Option<bool> {
         }
         if arg == "--no-gpg-sign" {
             decided = Some(false);
-        } else if arg.len() > 4 && "--gpg-sign".starts_with(arg.split('=').next().unwrap_or(""))
+        } else if arg.len() >= 3 && "--gpg-sign".starts_with(arg.split('=').next().unwrap_or(""))
             || arg.starts_with("--gpg-sign")
             || (arg.starts_with('-') && !arg.starts_with("--") && arg.contains('S'))
         {

@@ -89,8 +89,11 @@ It does not, yet:
 - apply its rules to a commit that turns signing off (`--no-gpg-sign`, or
   `commit.gpgsign = false` for that command or repository): it goes to
   plain git unsigned, as calling the real git directly would
-- intercept `merge`, `rebase`, `cherry-pick`, `revert` or `pull`: those go to
-  your normal signing
+- intercept `merge`, `rebase`, `cherry-pick`, `revert` or `pull`, or a
+  commit run from inside one of your git shell aliases (`alias.x = "!git
+  commit ..."`): git runs its own copy of itself there, not the wrapper, so
+  those go to your normal signing. If that's set up to sign, you'll see your
+  own signer's prompt (Touch ID, for example)
 - tell agents apart for security: there is one agent key per machine, and a
   lease belongs to the machine, not to a particular agent. Commits do name
   the agent when it can be told (Claude Code, Gemini CLI and Codex mark the
