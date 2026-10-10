@@ -21,8 +21,19 @@ use agent_sign::ssh_sign::EVENT_TOKEN_VAR;
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     let interceptor = CommandInterceptor::new();
-    let decision = interceptor.inspect_command(&args[1..]);
+    let mut decision = interceptor.inspect_command(&args[1..]);
     let real_git = find_system_git();
+
+    // An alias for commit (`git ci`, with alias.ci = "commit ...") is a
+    // commit too: it gets the same handling, with the alias's name where
+    // `commit` would be.
+    if !decision.is_commit
+        && let Some(at) = decision.subcommand_index
+        && alias_is_commit(&real_git, &args[1..1 + at], &args[1 + at])
+    {
+        decision.is_commit = true;
+        decision.commit_index = Some(at);
+    }
 
     if !decision.is_commit {
         // Non-commit command: execute real git immediately
@@ -34,7 +45,7 @@ fn main() -> ExitCode {
     // do for throwaway commits) goes to the real git unchanged: there's
     // nothing to sign, so nothing to ask the person about.
     if signing_declined(&real_git, &args[1..], decision.commit_index) {
-        return exec_system_git(&real_git, &args[1..], &[]);
+        return exec_unsigned(&real_git, &args[1..]);
     }
 
     // Human isolation [INV-1]: a commit typed in an interactive terminal
@@ -67,6 +78,8 @@ fn signing_declined(real_git: &Path, args: &[String], commit_index: Option<usize
     }
     // The global options before `commit` (such as `-c commit.gpgsign=false`
     // or `-C dir`) apply to the config lookup too.
+    // GIT_CONFIG is read by `git config` but not by `git commit`, so it
+    // mustn't decide what the commit will do.
     Command::new(real_git)
         .args(&args[..at])
         .args([
@@ -76,12 +89,54 @@ fn signing_declined(real_git: &Path, args: &[String], commit_index: Option<usize
             "--get",
             "commit.gpgsign",
         ])
+        .env_remove("GIT_CONFIG")
         .output()
         .ok()
         .filter(|o| o.status.success())
         .is_some_and(|o| {
             agent_sign::interceptor::config_declines_signing(&String::from_utf8_lossy(&o.stdout))
         })
+}
+
+/// Whether `name` is a git alias that runs `commit`, as git would expand it
+/// with these global options. Shell aliases (`!...`) run git again, which
+/// finds this wrapper, so they need nothing here.
+fn alias_is_commit(real_git: &Path, global: &[String], name: &str) -> bool {
+    Command::new(real_git)
+        .args(global)
+        .args(["config", "--get", &format!("alias.{name}")])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .is_some_and(|o| {
+            String::from_utf8_lossy(&o.stdout).split_whitespace().next() == Some("commit")
+        })
+}
+
+/// Runs a commit that asked not to be signed, with signing made impossible:
+/// every signing program git could call is set to one that always fails.
+/// If the wrapper ever reads a commit's options differently from git, the
+/// commit fails, rather than git signing it with the person's own key. (Global
+/// options the commit itself gives come after these and can override them:
+/// an agent setting its own signing program is going around agent-sign on
+/// purpose, which it could also do by calling git directly.)
+fn exec_unsigned(real_git: &Path, args: &[String]) -> ExitCode {
+    let fails = ["/usr/bin/false", "/bin/false"]
+        .into_iter()
+        .find(|p| Path::new(p).exists())
+        .unwrap_or("false");
+    let mut unsigned: Vec<String> = Vec::new();
+    for key in [
+        "gpg.program",
+        "gpg.openpgp.program",
+        "gpg.ssh.program",
+        "gpg.x509.program",
+    ] {
+        unsigned.push("-c".to_string());
+        unsigned.push(format!("{key}={fails}"));
+    }
+    unsigned.extend(args.iter().cloned());
+    exec_system_git(real_git, &unsigned, &[])
 }
 
 fn find_system_git() -> PathBuf {
@@ -271,7 +326,7 @@ fn handle_agent_commit(
     let config = Config::load(Some(repo_path));
 
     // 0. Enterprise Guardrails: Validate staged paths, diff size, and commit message
-    if let Err(err_msg) = validate_guardrails(real_git, repo_path, &config, original_args) {
+    if let Err(err_msg) = validate_guardrails(real_git, global, &config, original_args) {
         eprintln!("[agent-git] Security Policy Violation: {}", err_msg);
         return ExitCode::from(1);
     }
@@ -400,62 +455,100 @@ fn handle_agent_commit(
     exec_system_git(real_git, &git_args, &env_pairs)
 }
 
+/// Runs git with the commit's own global options, from the same folder, so
+/// it sees the same repository the commit will. `None` if git fails: the
+/// rules can't be checked, so the commit is refused rather than let through.
+fn git_lines(real_git: &Path, global: &[String], args: &[&str]) -> Option<String> {
+    let out = Command::new(real_git)
+        .args(global)
+        .args(args)
+        .output()
+        .ok()?;
+    out.status
+        .success()
+        .then(|| String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+/// What a commit could contain, compared with HEAD: staged changes, and also
+/// tracked files changed but not staged, which `commit -a` or a commit
+/// naming paths would include. Over-counting only means a rule may refuse a
+/// change that wasn't going in; under-counting would let one through.
+fn changes_the_commit_could_contain(
+    real_git: &Path,
+    global: &[String],
+    form: &str,
+) -> Result<String, String> {
+    let unreadable = || {
+        "agent-sign couldn't read the changes in this commit, so it can't check its rules; refused"
+            .to_string()
+    };
+    let staged = git_lines(real_git, global, &["diff", "--cached", form]).ok_or_else(unreadable)?;
+    let has_head = git_lines(
+        real_git,
+        global,
+        &["rev-parse", "--verify", "--quiet", "HEAD"],
+    )
+    .is_some();
+    if !has_head {
+        return Ok(staged);
+    }
+    let since_head = git_lines(real_git, global, &["diff", "HEAD", form]).ok_or_else(unreadable)?;
+    Ok(format!("{staged}{since_head}"))
+}
+
 fn validate_guardrails(
     real_git: &Path,
-    repo_path: &Path,
+    global: &[String],
     config: &Config,
     commit_args: &[String],
 ) -> Result<(), String> {
-    // 1. Path-based blast radius check: inspect staged files
-    let staged_files_out = Command::new(real_git)
-        .current_dir(repo_path)
-        .args(["diff", "--cached", "--name-only"])
-        .output();
-
-    if let Ok(out) = staged_files_out {
-        let stdout = String::from_utf8_lossy(&out.stdout);
-        for line in stdout.lines() {
-            let path_str = line.trim();
-            if path_str.is_empty() {
-                continue;
-            }
-
-            for pattern in &config.security.forbidden_paths {
-                if matches_glob(path_str, pattern) {
-                    return Err(format!(
-                        "Agent commit touches forbidden path '{}' matching security policy rule '{}'. Bypassing requires human terminal commit or policy adjustment.",
-                        path_str, pattern
-                    ));
-                }
+    // 1. Path-based blast radius check: every path the commit could contain
+    let names = changes_the_commit_could_contain(real_git, global, "--name-only")?;
+    for line in names.lines() {
+        let path_str = line.trim();
+        if path_str.is_empty() {
+            continue;
+        }
+        for pattern in &config.security.forbidden_paths {
+            if matches_glob(path_str, pattern) {
+                return Err(format!(
+                    "Agent commit touches forbidden path '{}' matching security policy rule '{}'. Bypassing requires human terminal commit or policy adjustment.",
+                    path_str, pattern
+                ));
             }
         }
     }
 
-    // 2. Diff size circuit breaker: check total lines changed in staged commit
+    // 2. Diff size circuit breaker, when the person has set one
     if config.security.max_diff_lines > 0 && paths::env_var_os("ALLOW_LARGE_DIFF").is_none() {
-        let diff_numstat_out = Command::new(real_git)
-            .current_dir(repo_path)
-            .args(["diff", "--cached", "--numstat"])
-            .output();
-
-        if let Ok(out) = diff_numstat_out {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let mut total_lines = 0usize;
-            for line in stdout.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    let added: usize = parts[0].parse().unwrap_or(0);
-                    let deleted: usize = parts[1].parse().unwrap_or(0);
-                    total_lines += added + deleted;
-                }
+        let has_head = git_lines(
+            real_git,
+            global,
+            &["rev-parse", "--verify", "--quiet", "HEAD"],
+        )
+        .is_some();
+        let numstat = if has_head {
+            git_lines(real_git, global, &["diff", "HEAD", "--numstat"])
+        } else {
+            git_lines(real_git, global, &["diff", "--cached", "--numstat"])
+        }
+        .ok_or_else(|| {
+            "agent-sign couldn't read the changes in this commit, so it can't check its size limit; refused".to_string()
+        })?;
+        let mut total_lines = 0usize;
+        for line in numstat.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let added: usize = parts[0].parse().unwrap_or(0);
+                let deleted: usize = parts[1].parse().unwrap_or(0);
+                total_lines += added + deleted;
             }
-
-            if total_lines > config.security.max_diff_lines {
-                return Err(format!(
-                    "Agent commit changes {} lines, more than the limit you set (max_diff_lines = {}). Raise or remove max_diff_lines, or set AGENT_SIGN_ALLOW_LARGE_DIFF=1 for this commit.",
-                    total_lines, config.security.max_diff_lines
-                ));
-            }
+        }
+        if total_lines > config.security.max_diff_lines {
+            return Err(format!(
+                "Agent commit changes {} lines, more than the limit you set (max_diff_lines = {}). Raise or remove max_diff_lines, or set AGENT_SIGN_ALLOW_LARGE_DIFF=1 for this commit.",
+                total_lines, config.security.max_diff_lines
+            ));
         }
     }
 

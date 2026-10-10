@@ -1,7 +1,23 @@
 pub struct InterceptorDecision {
     pub is_commit: bool,
     pub commit_index: Option<usize>,
+    /// Where the git subcommand (or alias) is, whatever it is.
+    pub subcommand_index: Option<usize>,
 }
+
+/// git's global options that take their value as the next argument. Missing
+/// one here makes its value look like the subcommand, so a commit after it
+/// would skip the wrapper: the list follows `git --help` (git 2.50).
+const GLOBAL_OPTIONS_WITH_VALUES: [&str; 8] = [
+    "-C",
+    "-c",
+    "--git-dir",
+    "--work-tree",
+    "--namespace",
+    "--config-env",
+    "--attr-source",
+    "--super-prefix",
+];
 
 pub struct CommandInterceptor;
 
@@ -22,12 +38,13 @@ impl CommandInterceptor {
         let mut idx = 0;
         let mut is_commit = false;
         let mut commit_index = None;
+        let mut subcommand_index = None;
 
         while idx < args.len() {
             let arg = &args[idx];
 
             // If we encounter standard git options taking 1 argument
-            if arg == "-C" || arg == "-c" || arg == "--git-dir" || arg == "--work-tree" {
+            if GLOBAL_OPTIONS_WITH_VALUES.contains(&arg.as_str()) {
                 idx += 2;
                 continue;
             }
@@ -39,6 +56,7 @@ impl CommandInterceptor {
             }
 
             // First non-flag is the git subcommand
+            subcommand_index = Some(idx);
             if arg == "commit" {
                 is_commit = true;
                 commit_index = Some(idx);
@@ -49,14 +67,22 @@ impl CommandInterceptor {
         InterceptorDecision {
             is_commit,
             commit_index,
+            subcommand_index,
         }
     }
 }
 
 /// What a commit's own options say about signing, if anything: `Some(false)`
-/// for `--no-gpg-sign`, `Some(true)` for `-S`/`--gpg-sign[=key]`, the last
-/// one winning as in git; `None` when neither is given. Options after `--`
-/// are paths, not options.
+/// for `--no-gpg-sign`, `Some(true)` for a request to sign, the last one
+/// winning as in git; `None` when neither is given. Options after `--` are
+/// paths, not options.
+///
+/// It errs towards "wants signing", which sends the commit through the
+/// agent path (asking, and signing with the agent key): any bundle of short
+/// options containing `S` (such as `-qS` or `-aS`), and any abbreviation git
+/// accepts for `--gpg-sign` (`--gpg`, `--gp`). Reading it wrong the other way
+/// is harmless too, since a commit taken for "signing off" runs with signing
+/// disabled (see the wrapper's `exec_unsigned`).
 pub fn signing_flag(commit_args: &[String]) -> Option<bool> {
     let mut decided = None;
     for arg in commit_args {
@@ -65,7 +91,10 @@ pub fn signing_flag(commit_args: &[String]) -> Option<bool> {
         }
         if arg == "--no-gpg-sign" {
             decided = Some(false);
-        } else if arg.starts_with("-S") || arg.starts_with("--gpg-sign") {
+        } else if arg.len() > 4 && "--gpg-sign".starts_with(arg.split('=').next().unwrap_or(""))
+            || arg.starts_with("--gpg-sign")
+            || (arg.starts_with('-') && !arg.starts_with("--") && arg.contains('S'))
+        {
             decided = Some(true);
         }
     }

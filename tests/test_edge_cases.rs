@@ -295,14 +295,16 @@ fn an_ended_lease_asks_again() {
         false,
     );
     let repo = s.repo("r", "feat/a");
+    // (A second commit inside the 2 seconds isn't checked here: on a busy
+    // machine it can land after them. Commits inside a lease asking nothing
+    // is covered by the approval-scope tests.)
     assert!(s.agent_commit(&repo, "a.txt").status.success());
-    assert!(s.agent_commit(&repo, "b.txt").status.success());
     assert_eq!(s.times_asked(), 1);
 
     std::thread::sleep(Duration::from_millis(3100));
     s.answer(DENY);
     let out = s.agent_commit(&repo, "c.txt");
-    assert_refused(&out, &repo, 3, "denied");
+    assert_refused(&out, &repo, 2, "denied");
     assert_eq!(s.times_asked(), 2);
 }
 
@@ -906,4 +908,241 @@ fn the_dialog_shows_no_placeholder_reason() {
     let shown = s.dialog_text();
     assert!(!shown.contains("Autonomous coding agent commit"), "{shown}");
     assert!(!shown.contains("Reason given by the agent"), "{shown}");
+}
+
+// --- The person's own key is never used for an agent's commit ---------------
+//
+// From the 10 Oct security review: commits the wrapper took for "signing
+// off" could still be signed by git with the person's own signer, through
+// option forms the wrapper parsed differently from git.
+
+impl Setup {
+    /// A global git config for "the person": signs every commit by default,
+    /// with a stand-in signer that records each call. Returns (config, log).
+    fn persons_signing(&self) -> (PathBuf, PathBuf) {
+        let log = self.home.join("persons-signer.log");
+        let signer = self.home.join("persons-signer");
+        fs::write(
+            &signer,
+            format!("#!/bin/sh\necho called >> '{}'\nexit 1\n", log.display()),
+        )
+        .unwrap();
+        fs::set_permissions(&signer, fs::Permissions::from_mode(0o755)).unwrap();
+        let config = self.home.join("persons.gitconfig");
+        fs::write(
+            &config,
+            format!(
+                "[user]\n\tsigningkey = ~/.ssh/persons_key.pub\n[gpg]\n\tformat = ssh\n[gpg \"ssh\"]\n\tprogram = {}\n[commit]\n\tgpgsign = true\n",
+                signer.display()
+            ),
+        )
+        .unwrap();
+        (config, log)
+    }
+}
+
+#[test]
+fn no_option_form_reaches_the_persons_signer() {
+    let s = Setup::new("", false);
+    s.answer(DENY);
+    let (persons, log) = s.persons_signing();
+    let repo = s.repo("r", "feat/a");
+    let off_file = s.home.join("off.gitconfig");
+    fs::write(&off_file, "[commit]\n\tgpgsign = false\n").unwrap();
+    let persons = persons.to_str().unwrap();
+
+    // (args, set commit.gpgsign=false in the repository first, extra env)
+    type Case<'a> = (Vec<&'a str>, bool, Vec<(&'a str, &'a str)>);
+    let cases: Vec<Case> = vec![
+        (
+            vec!["commit", "-a", "--no-gpg-sign", "-qS", "-m", "x"],
+            false,
+            vec![],
+        ),
+        (vec!["commit", "-aS", "-m", "x"], true, vec![]),
+        (vec!["commit", "-a", "--gpg", "-m", "x"], true, vec![]),
+        (
+            vec!["commit", "-a", "-m", "x"],
+            false,
+            vec![("GIT_CONFIG", off_file.to_str().unwrap())],
+        ),
+        (vec!["commit", "-a", "-m", "--no-gpg-sign"], false, vec![]),
+        (
+            vec![
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-a",
+                "-S",
+                "-m",
+                "x",
+            ],
+            false,
+            vec![],
+        ),
+    ];
+    for (i, (args, local_off, env)) in cases.into_iter().enumerate() {
+        let _ = git(&repo, &["config", "--unset-all", "commit.gpgsign"]);
+        if local_off {
+            git_ok(&repo, &["config", "commit.gpgsign", "false"]);
+        }
+        fs::write(repo.join("t.txt"), format!("{i}\n")).unwrap();
+        git_ok(&repo, &["add", "t.txt"]);
+        let mut extra: Vec<(&str, &str)> = vec![("GIT_CONFIG_GLOBAL", persons)];
+        extra.extend(env);
+        let _ = s.agent_git(&repo, &args, &extra);
+        assert_eq!(
+            fs::read_to_string(&log).unwrap_or_default(),
+            "",
+            "case {i} {args:?} called the person's signer"
+        );
+    }
+}
+
+#[test]
+fn a_lease_for_one_repository_never_signs_a_dash_c_commit_to_anothers_main() {
+    // An agent approved in repository A commits with -C into repository B,
+    // which is on main. Before 10 Oct the wrapper read the branch from A
+    // (the working folder) and signed B's main with A's lease.
+    let s = Setup::new("", true);
+    let a = s.repo("a", "feat/a");
+    assert!(s.agent_commit(&a, "a.txt").status.success());
+    let b = s.repo("b", "main");
+    stage(&b, "b.txt");
+    let out = s.agent_commit_from(&a, &["-C", b.to_str().unwrap()], &[]);
+    assert!(
+        !out.status.success(),
+        "a -C commit to another repository's main was signed"
+    );
+    assert!(stderr(&out).contains("protected"), "{}", stderr(&out));
+    assert_eq!(commits(&b), 1);
+}
+
+#[test]
+fn a_dash_c_commit_asks_for_the_other_repository_not_the_working_one() {
+    let s = Setup::new("", false);
+    let a = s.repo("a", "feat/a");
+    assert!(s.agent_commit(&a, "a.txt").status.success());
+    assert_eq!(s.times_asked(), 1);
+    let b = s.repo("b", "feat/b");
+    stage(&b, "b.txt");
+    let out = s.agent_commit_from(&a, &["-C", b.to_str().unwrap()], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(s.times_asked(), 2, "B needs its own approval");
+}
+
+// --- The rules see what the commit will actually contain --------------------
+
+#[test]
+fn a_ci_workflow_changed_and_committed_with_dash_a_is_refused() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "main");
+    fs::create_dir_all(repo.join(".github/workflows")).unwrap();
+    fs::write(repo.join(".github/workflows/ci.yml"), "on: push\n").unwrap();
+    git_ok(&repo, &["add", "."]);
+    git_ok(&repo, &["commit", "-q", "-m", "the person adds CI"]);
+    git_ok(&repo, &["checkout", "-q", "-b", "feat/a"]);
+    // The agent changes the workflow but doesn't stage it; -a commits it.
+    fs::write(
+        repo.join(".github/workflows/ci.yml"),
+        "on: [push, pull_request]\n",
+    )
+    .unwrap();
+    let out = s.agent_git(&repo, &["commit", "-q", "-a", "-m", "tweak"], &[]);
+    assert!(
+        !out.status.success(),
+        "a workflow change committed with -a got through"
+    );
+    assert!(stderr(&out).contains("forbidden path"), "{}", stderr(&out));
+}
+
+#[test]
+fn the_rules_apply_with_a_separate_git_dir_and_work_tree() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    // The repository's git folder kept apart from its files, as with
+    // GIT_DIR setups: the work tree has no .git at all.
+    let git_dir_path = s.home.join("r.git");
+    fs::rename(repo.join(".git"), &git_dir_path).unwrap();
+    let git_dir = format!("--git-dir={}", git_dir_path.display());
+    let work_tree = format!("--work-tree={}", repo.display());
+    fs::write(repo.join("deploy.pem"), "key\n").unwrap();
+    let staged = Command::new(real_git())
+        .args([&git_dir, &work_tree, "add", "deploy.pem"])
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .status()
+        .unwrap();
+    assert!(staged.success());
+    let elsewhere = s.home.join("not-a-repo");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let out = s.agent_commit_from(&elsewhere, &[&git_dir, &work_tree], &[]);
+    assert!(
+        !out.status.success(),
+        "a key file got through with --git-dir"
+    );
+    assert!(stderr(&out).contains("forbidden path"), "{}", stderr(&out));
+}
+
+// --- Every way of running `commit` goes through the wrapper -----------------
+
+#[test]
+fn a_commit_after_global_options_with_values_is_still_an_agent_commit() {
+    let s = Setup::new("", true);
+    let (persons, log) = s.persons_signing();
+    let repo = s.repo("r", "feat/a");
+    let persons = persons.to_str().unwrap();
+    for (i, global) in [
+        vec!["--namespace", "ns"],
+        vec!["--config-env", "user.name=HOME"],
+        vec!["--attr-source", "HEAD"],
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        stage(&repo, &format!("g{i}.txt"));
+        let mut args: Vec<&str> = global.clone();
+        args.extend(["commit", "-q", "-m", "x"]);
+        let out = s.agent_git(&repo, &args, &[("GIT_CONFIG_GLOBAL", persons)]);
+        assert!(out.status.success(), "{global:?}: {}", stderr(&out));
+        assert_eq!(
+            fs::read_to_string(&log).unwrap_or_default(),
+            "",
+            "{global:?} used the person's signer"
+        );
+        assert!(
+            s.head_verifies(&repo),
+            "{global:?} wasn't signed with the agent key"
+        );
+    }
+}
+
+#[test]
+fn a_commit_through_an_alias_is_still_an_agent_commit() {
+    let s = Setup::new("", true);
+    let (persons, log) = s.persons_signing();
+    let repo = s.repo("r", "feat/a");
+    git_ok(&repo, &["config", "alias.ci", "commit -q"]);
+    stage(&repo, "a.txt");
+    let out = s.agent_git(
+        &repo,
+        &["ci", "-m", "via alias"],
+        &[("GIT_CONFIG_GLOBAL", persons.to_str().unwrap())],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    assert_eq!(fs::read_to_string(&log).unwrap_or_default(), "");
+    assert!(s.head_verifies(&repo));
+}
+
+#[test]
+fn a_path_with_markup_characters_is_shown_as_written() {
+    // zenity (Linux) reads its text as markup; an unescaped "&" blanks it.
+    let s = Setup::new("", false);
+    let repo = s.repo("R&D <lab>", "feat/a");
+    assert!(s.agent_commit(&repo, "a.txt").status.success());
+    let shown = s.dialog_text();
+    if cfg!(target_os = "linux") {
+        assert!(shown.contains("R&amp;D &lt;lab&gt;"), "{shown}");
+    } else {
+        assert!(shown.contains("R&D <lab>"), "{shown}");
+    }
 }
