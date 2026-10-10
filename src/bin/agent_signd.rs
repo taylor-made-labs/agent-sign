@@ -691,35 +691,44 @@ fn join_or_open_request(
     let (terms, choices) = (terms.clone(), choices.to_vec());
     std::thread::spawn(move || {
         let approval = request_human_approval(&repo, &branch, &terms, &choices, &asking.cancel);
-        let approval = if asking.denied_by_command.load(Ordering::SeqCst) {
-            Approval::Denied
-        } else {
-            approval
+        // Read the branch's tip before taking the lock: git runs in a
+        // repository the agent controls, and mustn't stall the service.
+        let work = match approval {
+            Approval::Approved(_) => work_at(&repo, &branch),
+            _ => None,
         };
-        let response = match approval {
-            Approval::Approved(coverage) => {
-                let mut st = state.lock().unwrap();
-                match st.lease_engine.try_grant_for_work(
-                    &repo,
-                    &branch,
-                    &intent,
-                    coverage,
-                    work_at(&repo, &branch),
-                ) {
-                    Ok(lease) => Response::LeaseGranted {
-                        lease_id: lease.id,
-                        expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
-                    },
-                    Err(e) => Response::Error { message: e },
+        // The deny check, the grant and leaving the list happen under the one
+        // lock `agent-sign deny` also takes, so a deny that reports success
+        // can never be followed by a grant.
+        let response = {
+            let mut st = state.lock().unwrap();
+            let approval = if asking.denied_by_command.load(Ordering::SeqCst) {
+                Approval::Denied
+            } else {
+                approval
+            };
+            let response = match approval {
+                Approval::Approved(coverage) => {
+                    match st
+                        .lease_engine
+                        .try_grant_for_work(&repo, &branch, &intent, coverage, work)
+                    {
+                        Ok(lease) => Response::LeaseGranted {
+                            lease_id: lease.id,
+                            expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
+                        },
+                        Err(e) => Response::Error { message: e },
+                    }
                 }
-            }
-            refused => Response::Error {
-                message: refused.refusal().unwrap_or_default(),
-            },
+                refused => Response::Error {
+                    message: refused.refusal().unwrap_or_default(),
+                },
+            };
+            // Out of the list in the same step, so a commit arriving now opens
+            // a new request rather than joining one that's answered.
+            st.pending.remove(&key);
+            response
         };
-        // Out of the list first, so a commit arriving now opens a new request
-        // rather than joining one that's answered.
-        state.lock().unwrap().pending.remove(&key);
         *asking.outcome.lock().unwrap() = Some(response);
         asking.done.notify_all();
     });
@@ -772,6 +781,17 @@ impl Approval {
 /// Sent back when the service couldn't ask the person, so the agent (and the
 /// person reading its output) learns why and what to do.
 const NO_WAY_TO_ASK: &str = "agent-sign couldn't ask you to approve a lease: there is no desktop session for a dialog, and the service has no terminal. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
+
+/// Text for a dialog that reads markup (zenity's Pango, kdialog's rich
+/// text): `&`, `<`, `>` and quotes become entities, so they show as written.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn escape_markup(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
 
 /// A string as an AppleScript string literal.
 #[cfg(target_os = "macos")]
@@ -835,7 +855,9 @@ fn request_human_approval(
                 "--list".to_string(),
                 "--radiolist".to_string(),
                 "--title=agent-sign".to_string(),
-                format!("--text={}", prompt_text),
+                // zenity reads --text as Pango markup: escaped, so a path or
+                // branch with & or < can't blank or reshape the dialog.
+                format!("--text={}", escape_markup(&prompt_text)),
                 "--column= ".to_string(),
                 "--column=Covers".to_string(),
                 "--ok-label=Approve".to_string(),
@@ -872,7 +894,8 @@ fn request_human_approval(
                     "--title".to_string(),
                     "agent-sign".to_string(),
                     "--radiolist".to_string(),
-                    prompt_text.clone(),
+                    // kdialog may read it as rich text (HTML): escaped too.
+                    escape_markup(&prompt_text),
                 ];
                 for (i, label) in labels.iter().enumerate() {
                     kdialog_args.push((i + 1).to_string());
@@ -902,8 +925,12 @@ fn request_human_approval(
         }
     }
 
-    // 3. Fallback to interactive terminal prompt if stdin is a TTY
+    // 3. Fallback to interactive terminal prompt if stdin is a TTY. One
+    // prompt at a time: two at once would each take the next line typed,
+    // so an answer meant for one request could approve another.
     if std::io::stdin().is_terminal() {
+        static TERMINAL_PROMPT: Mutex<()> = Mutex::new(());
+        let _one_at_a_time = TERMINAL_PROMPT.lock().unwrap_or_else(|e| e.into_inner());
         eprintln!("\n========================================================");
         eprintln!(" 🔏 agent-sign approval request");
         eprintln!("========================================================");
