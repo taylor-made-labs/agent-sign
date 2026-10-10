@@ -53,7 +53,7 @@ fn main() -> ExitCode {
     }
 
     // Commit command detected: prepare autonomous signing context
-    handle_agent_commit(&real_git, &args[1..])
+    handle_agent_commit(&real_git, &args[1..], decision.commit_index)
 }
 
 /// Whether this commit asks not to be signed: by its own options, or else by
@@ -158,37 +158,37 @@ fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]
     }
 }
 
-fn get_repo_and_branch(real_git: &Path) -> (String, String) {
-    let repo_output = Command::new(real_git)
-        .args(["rev-parse", "--show-toplevel"])
-        .output();
-
-    let repo = if let Ok(out) = repo_output {
-        let path_str = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if path_str.is_empty() {
-            "default-repo".to_string()
-        } else {
-            // Use canonical absolute path to prevent folder name collisions
-            std::fs::canonicalize(&path_str)
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or(path_str)
+/// The repository and branch a commit is for, asked of git with the same
+/// global options (`-C`, `--git-dir`, `--work-tree`, `-c`) the commit itself
+/// gets, and the same environment (`GIT_DIR`, `GIT_WORK_TREE`), so a commit
+/// run with `git -C <repo>` from another folder is identified as that
+/// repository. `None` when git can't say: the caller refuses rather than
+/// asking about a placeholder, since a dialog that names no repository
+/// invites approving everything.
+fn get_repo_and_branch(real_git: &Path, global: &[String]) -> Option<(String, String)> {
+    let ask = |args: &[&str]| -> Option<String> {
+        let out = Command::new(real_git)
+            .args(global)
+            .args(args)
+            .output()
+            .ok()?;
+        if !out.status.success() {
+            return None;
         }
-    } else {
-        "default-repo".to_string()
+        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
     };
-
-    let branch_output = Command::new(real_git)
-        .args(["branch", "--show-current"])
-        .output();
-
-    let branch = if let Ok(out) = branch_output {
-        let b = String::from_utf8_lossy(&out.stdout).trim().to_string();
-        if b.is_empty() { "HEAD".to_string() } else { b }
-    } else {
-        "HEAD".to_string()
-    };
-
-    (repo, branch)
+    let top = ask(&["rev-parse", "--show-toplevel"]).filter(|t| !t.is_empty())?;
+    // The canonical absolute path, so a link or relative path names the same
+    // repository (and the same lease) as its real location.
+    let repo = std::fs::canonicalize(&top)
+        .ok()?
+        .to_string_lossy()
+        .to_string();
+    // Detached HEAD has no branch; "HEAD" is what git itself calls it.
+    let branch = ask(&["branch", "--show-current"])
+        .filter(|b| !b.is_empty())
+        .unwrap_or_else(|| "HEAD".to_string());
+    Some((repo, branch))
 }
 
 /// The signing program to hand git as `gpg.ssh.program`:
@@ -252,8 +252,19 @@ fn apply_trailers_to_args(
     modified
 }
 
-fn handle_agent_commit(real_git: &Path, original_args: &[String]) -> ExitCode {
-    let (repo, branch) = get_repo_and_branch(real_git);
+fn handle_agent_commit(
+    real_git: &Path,
+    original_args: &[String],
+    commit_index: Option<usize>,
+) -> ExitCode {
+    let global = &original_args[..commit_index.unwrap_or(0)];
+    let Some((repo, branch)) = get_repo_and_branch(real_git, global) else {
+        eprintln!(
+            "[agent-git] agent-sign couldn't identify the repository for this commit, so it didn't ask you and didn't sign. \
+             Run the commit from inside the repository, or check its -C, --git-dir or GIT_DIR."
+        );
+        return ExitCode::from(1);
+    };
     let socket_path = client_socket_path();
 
     let repo_path = Path::new(&repo);

@@ -96,13 +96,13 @@ impl Setup {
         write_script(
             &fakebin.join("osascript"),
             &format!(
-                "echo shown >> '{l}'\nread -r A < '{a}'\n[ \"$A\" = {DENY} ] && echo false || echo \"$A\""
+                "echo shown >> '{l}'\necho \"$@\" >> '{l}.text'\nread -r A < '{a}'\n[ \"$A\" = {DENY} ] && echo false || echo \"$A\""
             ),
         );
         write_script(
             &fakebin.join("zenity"),
             &format!(
-                "echo shown >> '{l}'\nread -r A < '{a}'\n[ \"$A\" = {DENY} ] && exit 1\necho \"$A\""
+                "echo shown >> '{l}'\necho \"$@\" >> '{l}.text'\nread -r A < '{a}'\n[ \"$A\" = {DENY} ] && exit 1\necho \"$A\""
             ),
         );
 
@@ -776,4 +776,134 @@ fn signing_off_in_the_persons_global_config_still_signs_agent_commits() {
     assert!(out.status.success(), "{}", stderr(&out));
     assert_eq!(s.times_asked(), 1);
     assert!(s.head_verifies(&repo));
+}
+
+// --- The repository a commit is for, however git is pointed at it -----------
+
+impl Setup {
+    /// Everything the dialogs were shown, as one string.
+    fn dialog_text(&self) -> String {
+        fs::read_to_string(self.home.join("dialog.log.text")).unwrap_or_default()
+    }
+
+    /// The wrapper's `commit` run from `cwd` with `args` before `commit`.
+    fn agent_commit_from(&self, cwd: &Path, global: &[&str], extra_env: &[(&str, &str)]) -> Output {
+        let mut args: Vec<&str> = global.to_vec();
+        args.extend(["commit", "-q", "-m", "from elsewhere"]);
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-git"));
+        cmd.args(&args)
+            .current_dir(cwd)
+            .env("HOME", &self.home)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("AGENT_SIGN_SOCKET", &self.socket)
+            .env("AGENT_SIGN_BIN", env!("CARGO_BIN_EXE_agent-ssh-sign"))
+            .stdin(Stdio::null());
+        for (var, _) in KNOWN_AGENTS {
+            cmd.env_remove(var);
+        }
+        for (k, v) in extra_env {
+            cmd.env(k, v);
+        }
+        cmd.output().unwrap()
+    }
+
+    fn lease_repos(&self) -> Vec<String> {
+        match send_request(&self.socket, &Request::ListLeases).unwrap() {
+            Response::LeaseList { leases } => leases.into_iter().map(|l| l.repo).collect(),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+}
+
+fn stage(repo: &Path, file: &str) {
+    fs::write(repo.join(file), "x\n").unwrap();
+    git_ok(repo, &["add", file]);
+}
+
+#[test]
+fn a_commit_pointed_at_a_repository_with_dash_c_names_that_repository() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    stage(&repo, "a.txt");
+    let elsewhere = s.home.join("not-a-repo");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let out = s.agent_commit_from(&elsewhere, &["-C", repo.to_str().unwrap()], &[]);
+    assert!(out.status.success(), "{}", stderr(&out));
+    let canonical = fs::canonicalize(&repo).unwrap().display().to_string();
+    assert_eq!(s.lease_repos(), vec![canonical.clone()]);
+    let shown = s.dialog_text();
+    assert!(shown.contains(&canonical), "{shown}");
+    assert!(shown.contains("feat/a"), "{shown}");
+    assert!(!shown.contains("default-repo"), "{shown}");
+    assert!(s.head_verifies(&repo));
+}
+
+#[test]
+fn a_commit_pointed_at_a_repository_with_git_dir_names_that_repository() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    stage(&repo, "a.txt");
+    let elsewhere = s.home.join("not-a-repo");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let git_dir = repo.join(".git");
+    let out = s.agent_commit_from(
+        &elsewhere,
+        &[],
+        &[
+            ("GIT_DIR", git_dir.to_str().unwrap()),
+            ("GIT_WORK_TREE", repo.to_str().unwrap()),
+        ],
+    );
+    assert!(out.status.success(), "{}", stderr(&out));
+    let canonical = fs::canonicalize(&repo).unwrap().display().to_string();
+    assert_eq!(s.lease_repos(), vec![canonical]);
+}
+
+#[test]
+fn a_commit_whose_repository_cant_be_identified_is_refused_without_asking() {
+    let s = Setup::new("", false);
+    let elsewhere = s.home.join("not-a-repo");
+    fs::create_dir_all(&elsewhere).unwrap();
+    let out = s.agent_commit_from(&elsewhere, &[], &[]);
+    assert!(!out.status.success());
+    assert!(
+        stderr(&out).contains("couldn't identify the repository"),
+        "{}",
+        stderr(&out)
+    );
+    assert_eq!(s.times_asked(), 0);
+    assert!(s.lease_repos().is_empty());
+}
+
+#[test]
+fn the_service_refuses_a_request_without_a_real_repository_path() {
+    let s = Setup::new("", false);
+    for repo in ["default-repo", "", "relative/path"] {
+        let resp = send_request(
+            &s.socket,
+            &Request::RequestLease {
+                repo: repo.into(),
+                branch: "feat/a".into(),
+                intent: "t".into(),
+                duration_secs: None,
+            },
+        )
+        .unwrap();
+        match resp {
+            Response::Error { message } => assert!(message.contains("repository"), "{message}"),
+            other => panic!("{repo:?} should be refused, got {other:?}"),
+        }
+    }
+    assert_eq!(s.times_asked(), 0);
+}
+
+#[test]
+fn the_dialog_shows_no_placeholder_reason() {
+    let s = Setup::new("", false);
+    let repo = s.repo("r", "feat/a");
+    assert!(s.agent_commit(&repo, "a.txt").status.success());
+    let shown = s.dialog_text();
+    assert!(!shown.contains("Autonomous coding agent commit"), "{shown}");
+    assert!(!shown.contains("Reason given by the agent"), "{shown}");
 }

@@ -404,6 +404,21 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             intent,
             duration_secs: _,
         } => {
+            // A lease is only ever for a real repository: an absolute path.
+            // Anything else (an old wrapper's "default-repo" placeholder, an
+            // empty or relative path) is refused before anyone is asked.
+            if !Path::new(&repo).is_absolute() {
+                let _ = send_response(
+                    stream,
+                    &Response::Error {
+                        message: format!(
+                            "couldn't identify the repository ('{}' isn't a full path), so no approval was asked for",
+                            repo
+                        ),
+                    },
+                );
+                return;
+            }
             // Check active lease state without holding lock across UI dialog
             let (blocked, covering, can_follow, auto_approve_val, terms, choices) = {
                 let mut st = state.lock().unwrap();
@@ -675,8 +690,7 @@ fn join_or_open_request(
     let (repo, branch, intent) = (repo.to_string(), branch.to_string(), intent.to_string());
     let (terms, choices) = (terms.clone(), choices.to_vec());
     std::thread::spawn(move || {
-        let approval =
-            request_human_approval(&repo, &branch, &intent, &terms, &choices, &asking.cancel);
+        let approval = request_human_approval(&repo, &branch, &terms, &choices, &asking.cancel);
         let approval = if asking.denied_by_command.load(Ordering::SeqCst) {
             Approval::Denied
         } else {
@@ -767,20 +781,21 @@ fn applescript_string(s: &str) -> String {
 
 /// Asks the person to approve a lease, showing its fixed terms and letting
 /// them choose what it covers (`choices`, the first being the default).
-/// The repository, branch, and reason come from the agent's request and are
-/// labelled as such. It's one dialog with the narrowest choice preselected,
+/// The repository and branch are the ones git reports for the commit; the
+/// agent's stated reason isn't shown, since until agents send a real one it
+/// was always the same placeholder. It's one dialog with the narrowest choice
+/// preselected,
 /// so approving takes one click, as before scopes existed.
 fn request_human_approval(
     repo: &str,
     branch: &str,
-    intent: &str,
     terms: &agent_sign::lease::TermsText,
     choices: &[(Coverage, String)],
     cancel: &AtomicBool,
 ) -> Approval {
     let prompt_text = format!(
-        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nBranches: {}\nEnds: {}\nReason given by the agent: {}\n\nChoose what this approval covers. These terms are fixed when you approve. They never grow.",
-        repo, branch, terms.covers, terms.ends, intent
+        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nBranches: {}\nEnds: {}\n\nChoose what this approval covers. These terms are fixed when you approve. They never grow.",
+        repo, branch, terms.covers, terms.ends
     );
     let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
 
@@ -896,7 +911,6 @@ fn request_human_approval(
         eprintln!("Branch now: {}", branch);
         eprintln!("Branches:   {}", terms.covers);
         eprintln!("Ends:       {}", terms.ends);
-        eprintln!("Reason given by the agent: {}", intent);
         eprintln!("========================================================");
         eprintln!("These terms are fixed when you approve. They never grow.");
         for (i, label) in labels.iter().enumerate() {
