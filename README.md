@@ -42,7 +42,13 @@ use. There are no downloadable releases yet: you build it from source.
    service (`agent-signd`) for a lease covering this repository.
 3. If there's no lease, you get one dialog showing the repository, the
    branch, which branches the lease would cover, when it ends, and the reason
-   the agent gave. You approve or deny.
+   the agent gave. You approve or deny. Commits that ask while it's open
+   (retries, or several agents at once) wait for the same answer instead of
+   opening more dialogs, and the dialog closes by itself if every commit
+   waiting on it has gone (a test that timed out, say).
+   A commit that turns signing off (`--no-gpg-sign`, or `commit.gpgsign`
+   set to false for that command or that repository, as test suites do for
+   throwaway commits) never asks: it goes to plain git, unsigned.
 4. With a lease, and if the branch isn't protected and the commit rate is
    under its limit, the commit is signed with the agent's key through git's
    own SSH signing (`agent-ssh-sign`). By default (`split` attribution) the
@@ -80,6 +86,9 @@ It does not, yet:
   agent-sign's config, starting its own service, or calling the real git directly.
   The key isn't encrypted, so anything that copies it can make commits that
   GitHub shows as Verified for you
+- apply its rules to a commit that turns signing off (`--no-gpg-sign`, or
+  `commit.gpgsign = false` for that command or repository): it goes to
+  plain git unsigned, as calling the real git directly would
 - intercept `merge`, `rebase`, `cherry-pick`, `revert` or `pull`: those go to
   your normal signing
 - tell agents apart for security: there is one agent key per machine, and a
@@ -193,6 +202,8 @@ agent-sign revoke <repo>     # end a repository's lease (its path, or . inside i
 agent-sign revoke <folder>   # end a lease covering every repository under a folder
 agent-sign revoke everywhere # end a lease covering every repository
 agent-sign revoke --all      # end every lease
+agent-sign pending           # approval requests waiting for your answer
+agent-sign deny --all        # answer no to all of them and close their dialogs
 agent-sign status            # is the service running
 agent-sign doctor            # check the whole setup, with fixes
 ```

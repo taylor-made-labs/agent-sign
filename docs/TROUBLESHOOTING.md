@@ -114,3 +114,16 @@ changed from a repository.
 `agent-sign revoke` takes the repository's full path, as `agent-sign leases` shows it,
 or a path inside the repository (such as `.`). `agent-sign revoke --all` ends every
 lease.
+
+## Approval dialogs keep appearing
+
+- **Many at once, from tests:** a test suite that makes throwaway commits
+  should turn signing off for them (`git config commit.gpgsign false` in the
+  test repository, or `git -c commit.gpgsign=false commit ...`). Commits
+  that do never ask for approval; they go to plain git, unsigned.
+- **To see and close what's waiting:** `agent-sign pending` lists the open
+  requests (one per repository and branch, however many commits are
+  waiting on it), and `agent-sign deny --all` (or `agent-sign deny <id>`)
+  answers no and closes their dialogs.
+- **Left open after a program stopped:** a dialog closes by itself within
+  about a second once every commit waiting on it has gone.

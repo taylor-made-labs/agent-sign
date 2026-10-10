@@ -108,6 +108,12 @@ Each invariant says whether it holds today, and how that's checked.
 - A commit with standard input and output both terminals, neither
   `AGENT_SIGN_FORCE` nor `AGENT_SIGN_SESSION` set, and no agent mark
   (see INV-1) is the person's: it runs the real git unchanged.
+- A commit that turns signing off goes to the real git unchanged, unsigned,
+  with no lease asked for and no rules applied: `--no-gpg-sign` (unless a
+  later `-S` turns it back on), or `commit.gpgsign = false` at command,
+  repository or worktree scope (`git config --show-scope`). A global or
+  system `false` doesn't count, so agent commits are signed whatever the
+  person's own default.
 - Otherwise it's an agent's. The repository is the canonical path of
   `git rev-parse --show-toplevel`; the branch is `git branch --show-current`,
   or `HEAD` when detached. It then:
@@ -211,10 +217,12 @@ Newline-delimited JSON, unchanged from agent-sign.
 
 | Request | What the service does |
 |---|---|
-| `RequestLease {repo, branch, intent, duration_secs}` | Refuses a protected branch without asking. Returns the lease if one covers the branch (moving a branch-following lease to it); otherwise asks the person and grants on approval. `duration_secs` is ignored. |
+| `RequestLease {repo, branch, intent, duration_secs}` | Refuses a protected branch without asking. Returns the lease if one covers the branch (moving a branch-following lease to it); otherwise asks the person and grants on approval. `duration_secs` is ignored. While a request for the same repository and branch is open, a new one waits for its answer instead of opening another dialog; when every commit waiting on a dialog has disconnected, the dialog is closed and the request withdrawn. |
 | `IssueToken {repo, branch}` | Checks branch rules, that the lease is in force and covers the branch, and the rate limit; counts the commit; returns a token. |
 | `SignCommit {token, buffer_b64}` | Burns the token and returns the signature. |
 | `ListLeases` | The leases, with commit counts and when each ends. |
+| `ListPending` | The approval requests waiting for the person: one per repository and branch, how long each has waited, and how many commits wait on it. |
+| `DenyPending {id, all}` | Answers the request with that id (or all of them) as denied, and closes its dialog. |
 | `RevokeLease {repo, branch, all}` | Ends the lease filed under `repo`: a repository's path, a folder's path, or `everywhere` (an error if none matches); or all of them; and saves. `branch` is ignored. |
 | `GetStatus {repo}`, `Ping` | Status and health. |
 
