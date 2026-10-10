@@ -35,6 +35,23 @@ hold, and the README says so), or **Person** (only the maintainer can do it).
 | R6 | CI on every push | macOS, Linux x86_64 and Linux ARM64: fmt, clippy, tests, secret scan. | **Pass** (8 Oct 2026): applied by the maintainer; all 7 jobs pass (tests on macOS, Linux x86_64 and ARM64; secret scan; cargo deny; install test on both Linux architectures) |
 | R7 | Release downloads and Homebrew | A tag builds archives for macOS arm64 and x86_64 and Linux x86_64 and ARM64, with `SHA256SUMS.txt`; the formula installs from them. The formula's setup step is `install.sh --from-homebrew <prefix>`. | **Open** |
 
+## Security reviews
+
+Two independent reviews (10 Oct 2026) of the changes since the build then
+installed. The first found that commits read as "signing off" could be
+signed with the person's own key (a regression, never installed); it and
+the other findings are fixed with tests (8e85354, 300ebf4). The second
+confirmed those fixes and found older gaps (aliases of aliases, `--amend`,
+quoted and renamed paths, `diff.relative`, first-commit size), fixed in
+da05c38. Open, and stated in the README: a commit inside one of the
+person's git shell aliases, like merges and rebases, runs git's own copy
+of itself and so goes to the person's own signing.
+
+Installed on the maintainer's Mac on 10 Oct (da05c38): 12 of 12 install
+checks, doctor clean, 17 approvals kept. cas's git tests (`live`,
+`git-env`), which left about ten approval dialogs per run before, ran with
+none, and all 10 passed.
+
 ## Only the maintainer
 
 | # | What | Why only them |
