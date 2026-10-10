@@ -102,14 +102,25 @@ Each invariant says whether it holds today, and how that's checked.
   in shell profiles.
 - Every command except `commit` (the first non-option argument, so
   `git -C dir commit` counts) runs the real git unchanged.
+- A commit is recognised after any of git's global options, including
+  those that take a value (`-C`, `-c`, `--git-dir`, `--work-tree`,
+  `--namespace`, `--config-env`, `--attr-source`, `--super-prefix`), and
+  through an alias whose expansion starts with `commit`. The repository,
+  branch and the rules' view of the changes all come from git run with the
+  commit's own global options.
+- The rules check everything the commit could contain compared with HEAD,
+  unstaged tracked changes included (`commit -a` and commits naming paths
+  include them). If git can't list the changes, the commit is refused.
 - The real git: `AGENT_SIGN_REAL_GIT` if set, else the first `git` on `PATH` that
   isn't in a agent-sign directory and isn't the wrapper, else `/opt/homebrew/bin`,
   `/usr/local/bin`, `/usr/bin`, `/bin`.
 - A commit with standard input and output both terminals, neither
   `AGENT_SIGN_FORCE` nor `AGENT_SIGN_SESSION` set, and no agent mark
   (see INV-1) is the person's: it runs the real git unchanged.
-- A commit that turns signing off goes to the real git unchanged, unsigned,
-  with no lease asked for and no rules applied: `--no-gpg-sign` (unless a
+- A commit that turns signing off goes to the real git unsigned, with no
+  lease asked for and no rules applied, and with every signing program set
+  to one that always fails, so it can't be signed with the person's key
+  however its options are read: `--no-gpg-sign` (unless a
   later `-S` turns it back on), or `commit.gpgsign = false` at command,
   repository or worktree scope (`git config --show-scope`). A global or
   system `false` doesn't count, so agent commits are signed whatever the
