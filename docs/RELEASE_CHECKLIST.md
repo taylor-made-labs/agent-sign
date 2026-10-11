@@ -19,7 +19,7 @@ hold, and the README says so), or **Person** (only the maintainer can do it).
 | F5 | The rules refuse with a reason | Automated: commits on `main`/`master`, touching CI workflows or key files, over a diff-size limit the person set, or over the rate limit are refused, each with its own message. | **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` (protected branch without asking, CI workflow and key files, diff size, rate limit) |
 | F10 | Commits name the agent | Automated: with each known agent mark, or `AGENT_SIGN_AGENT_NAME`, the commit's author is that agent; a configured name is kept (`tests/test_agent_name.rs`). | **Pass** (7 Oct 2026) |
 | F6 | Terms never grow after approval | Automated: `tests/test_lease_terms.rs` (config can only narrow; an unreadable ceiling stops the service). | **Pass** (7 Oct 2026) |
-| F7 | Real agents actually go through it | Manual, recorded: Claude Code, Codex and Cursor, each started the normal way, on macOS and on Linux, make a commit; the commit is signed with the agent key, or `agent-sign doctor` says plainly that this agent bypasses the wrapper. | Claude Code (desktop app) on macOS **Pass**: every commit of this release went through the wrapper and verifies (`%G?` = `G`), 7 Oct 2026. Codex **Open** (its account here is at its usage limit until 21 Oct). Cursor, and Linux, **Open**. |
+| F7 | Real agents actually go through it | Manual, recorded: Claude Code, Codex and Cursor, each started the normal way, on macOS and on Linux, make a commit; the commit is signed with the agent key, or `agent-sign doctor` says plainly that this agent bypasses the wrapper. | See "F7: coverage" below. |
 | F8 | Edge cases, repeated | Automated: two agents committing at once (same repository and different ones), the service restarted mid-work, hundreds of commits in a row, repository paths with spaces and non-ASCII characters, symlinked repositories, worktrees, detached HEAD, `--amend`, and each approval scope's boundaries (a folder doesn't cover a sibling whose name starts the same). Each case runs enough times to rule out flakes. | Mostly **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` covers paths with spaces and accents, a symlinked repository (one lease), a worktree, detached HEAD, `--amend`, 200 commits in a row, two agents committing at once in two repositories, and a restart between commits; `tests/test_service_restart.rs` covers a commit during a restart; the full suite (117 tests) passed 2 runs in 2. **Limit**: a home folder long enough to push the socket path past 104 bytes (macOS) stops the service. Not yet: two agents committing in the same repository at once (git itself locks the index). |
 | F9 | The approval scope is the person's choice | Automated: the dialog offers this repository, this folder and everything under it, or everywhere, and the lease covers exactly the scope chosen (`tests/test_approval_scope.rs`, with stand-in dialogs). Manual, once each: the real macOS and Linux dialogs show the three choices and return the one picked. | Automated **Pass** (7 Oct 2026). Real macOS dialog **Pass** (9 Oct 2026): installed on the maintainer's Mac, the list dialog showed the choices and granted "This repository only" for a scratch repository; the commit verified (`G`), authored by Claude Code. Linux dialogs **Open**. |
 
@@ -34,6 +34,32 @@ hold, and the README says so), or **Person** (only the maintainer can do it).
 | R5 | Clean install from a release | On a clean Mac and a clean Linux machine, following only the README with a downloaded release (no Rust), the install ends in a verified agent commit. Repeatable on Linux: `scripts/release/install-test.sh` (fresh install to a verified commit, upgrade from agent-sign's layout keeping key and lease, a state folder linked elsewhere, uninstall; 31 checks, in throwaway homes with a stand-in systemd). | Linux from source **Pass** on the Pi (ARM64), 7 Oct 2026: 31 of 31, and it catches planted flaws (2 of 2). From a release **Open** (no release yet). macOS **Person**: the installer replaces the live LaunchAgent, so it's run on the Mac by its owner. |
 | R6 | CI on every push | macOS, Linux x86_64 and Linux ARM64: fmt, clippy, tests, secret scan. | **Pass** (8 Oct 2026): applied by the maintainer; all 7 jobs pass (tests on macOS, Linux x86_64 and ARM64; secret scan; cargo deny; install test on both Linux architectures) |
 | R7 | Release downloads and Homebrew | A tag builds archives for macOS arm64 and x86_64 and Linux x86_64 and ARM64, with `SHA256SUMS.txt`; the formula installs from them. The formula's setup step is `install.sh --from-homebrew <prefix>`. | **Open** |
+
+## F7: coverage
+
+Run with `scripts/release/coverage-probe.sh` (11 Oct 2026, the maintainer's
+Mac, build da05c38). Each row has an agent, or a way of running git, make one
+commit in a throwaway repository on `main`: agent-sign refuses it as
+protected (CAUGHT), or the real git runs it (MISSED; the person's real
+signer is never called, a stand-in records that it would have been). The
+probe was calibrated first: plain `git` from an agent's shell is CAUGHT,
+`/usr/bin/git` is MISSED.
+
+| Where an agent commits | Result |
+|---|---|
+| Claude Code, desktop app | CAUGHT |
+| Claude Code, command line started from a terminal | CAUGHT |
+| Claude Code (or any agent) run as a background job: launchd, cron, a scheduled task, with the system's default PATH | **MISSED**: would have signed with the person's key |
+| Merge, cherry-pick, rebase, revert, pull | **MISSED**: would have signed with the person's key (stated limit) |
+| A commit inside one of the person's git shell aliases | **MISSED**: would have signed with the person's key (stated limit) |
+| hetzner and the Pi | **MISSED**: agent-sign isn't installed there |
+| Gemini CLI | not run: its sign-in failed (account tier error) |
+| Codex | not run: account at its usage limit until 21 Oct |
+| OpenCode | not run: its config file is invalid |
+| Cursor's agent | not run: needs the person (a desktop app) |
+
+Every MISSED row on the Mac has the same cause: agent-sign catches commits
+at the `git` on PATH, and these run git without it.
 
 ## Security reviews
 
