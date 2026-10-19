@@ -40,6 +40,9 @@ The wrapper prints why, starting `[agent-git]`.
 | You're asked again when the agent changes branch | The lease covers only the branch it was approved on (`allow_branch_switching = false`, or leases approved that way). | Approve, or set `allow_branch_switching = true` for future leases. |
 | `No signing lease: agent-sign couldn't ask you to approve a lease` | The service couldn't confirm it was you: no desktop session on macOS, or Linux (which has no approval dialog), or a server, container or SSH session with no terminal. | See "Linux has no approval dialog" and "Machines with no screen" below. |
 | `No signing lease: the signing lease was not approved: agent-sign could not confirm it was you (...)` | You picked a coverage but the Touch ID / password check was cancelled, failed, or timed out (five minutes). | Commit again and authenticate. If the Mac offers no check (no password set, no desktop session), the reason says so. |
+| `No signing lease: agent-sign is not asking again for N more seconds` | A recent approval prompt was refused (Deny, or Touch ID cancelled, failed or timed out), so new ones are held back, doubling with each refusal in a row. | Wait, or set `refusal_backoff` (default `"60s"`, `"none"` turns it off) and restart the service. |
+| `No signing lease: agent-sign already has 4 approval requests waiting` | Four requests are already waiting for an answer. | Answer them, or `agent-sign deny --all`. |
+| `No signing lease: ... isn't an existing git working tree` or `... control or invisible characters` | The repository the wrapper named doesn't exist or isn't a git working tree, or its path or the branch name has characters that could disguise the prompt. | Run git from inside a real repository; rename the branch or folder. |
 | `Token issuance failed: Rate limit exceeded` | More than `max_commits_per_minute` agent commits in a minute in this repository. | Wait a minute, or raise the limit in `~/.agent-sign/config.toml` and restart the service. |
 | `Security Policy Violation: ... forbidden path` | The commit changes a path in `forbidden_paths` (CI workflows, key files). | Commit that change yourself from your terminal. |
 | `Agent commit changes N lines, more than the limit you set` | You set `max_diff_lines`, and the commit changes more lines than that. (There's no limit by default.) | Split the commit, or commit with `AGENT_SIGN_ALLOW_LARGE_DIFF=1`. |
@@ -72,17 +75,16 @@ login password on the Mac.
 
 ## Linux has no approval dialog
 
-On Linux, agent-sign no longer shows a `zenity` or `kdialog` dialog: Linux has
-no platform authenticator in agent-sign yet, and a dialog any program can click
-would let an agent approve its own lease. The service asks only at its own
-terminal, and only when it really has one (you started `agent-signd run` by
-hand in a terminal). The systemd user service has none, so it refuses new
-leases; to grant them anyway see the next section. Approving from another
-device, such as a passkey on your phone, is planned, not built.
+Linux can't approve leases yet, so the service refuses every request there. agent-sign
+no longer shows a `zenity` or `kdialog` dialog or a terminal prompt: Linux has
+no platform authenticator in agent-sign, and a dialog any program can click, or
+a terminal an agent can drive, would let an agent approve its own lease. To
+grant leases anyway see the next section. Approving from another device, such
+as a passkey on your phone, is planned, not built.
 
 ## Machines with no screen (servers, containers, CI)
 
-With no screen and no terminal (or on Linux, which has no approval dialog),
+With no screen and no terminal (or on Linux, which can't approve leases),
 agent-sign can't ask you, so it refuses leases.
 To grant every lease without asking, set in `~/.agent-sign/config.toml`:
 

@@ -88,15 +88,15 @@ Two consequences worth knowing:
 With no screen, `agent-signd` can't ask you (it runs in the background, so a
 terminal you're logged in to over SSH doesn't help), so it refuses new
 leases (failing closed), and the agent sees "agent-sign couldn't ask you to
-approve a lease". **Linux desktops are in the same position**: Linux has no
-platform authenticator in agent-sign yet, and a dialog any program can click
-would let an agent approve its own lease, so there is no dialog and the
-systemd service refuses new leases. (Earlier builds showed a `zenity` or
-`kdialog` dialog; that was removed for this reason.) To use agent-sign anyway,
-turn on auto-approval, which grants every lease without asking. Use it only
-where every process that can reach the service is trusted. Or start
-`agent-signd run` by hand in a terminal you control: it asks there (weaker
-than Touch ID, since anything that can type into that terminal can approve).
+approve a lease". **Linux machines are in the same position**: Linux has no platform
+authenticator in agent-sign yet, and the two ways it could ask anyway both let
+an agent approve for itself (a dialog any program can click, and a terminal
+prompt an agent can drive through its own pseudo-terminal or by typing into
+yours). So the service refuses every new lease there. (Earlier builds showed a
+`zenity` or `kdialog` dialog or a terminal prompt; both were removed for this
+reason.) To use agent-sign anyway, turn on auto-approval, which grants every
+lease without asking. Use it only where every process that can reach the
+service is trusted.
 
 1. In `~/.agent-sign/config.toml`, under `[security]`, set `auto_approve = true`. A repository's `.agent-sign.toml`
    can't turn it on.

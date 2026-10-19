@@ -123,6 +123,8 @@ INSTALLED_FROM_RELEASE=false
 install_binaries() {
     local src="$1"
     local name
+    # Never install a test build: it stands in for the device owner.
+    sh "$SCRIPT_DIR/check-binary-clean.sh" "$src" || exit 1
     for name in agent-signd agent-sign agent-ssh-sign agent-git; do
         cp "$src/$name" "$INSTALL_DIR/.$name.new"
         mv -f "$INSTALL_DIR/.$name.new" "$INSTALL_DIR/$name"
@@ -136,6 +138,7 @@ install_binaries() {
 install_from_homebrew() {
     local prefix="$1"
     local name
+    sh "$SCRIPT_DIR/check-binary-clean.sh" "$prefix/bin" || exit 1
     for name in agent-signd agent-sign agent-ssh-sign; do
         ln -sfn "$prefix/bin/$name" "$INSTALL_DIR/$name"
     done

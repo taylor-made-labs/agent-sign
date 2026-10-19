@@ -74,11 +74,11 @@ fn start_service(home: &Path, socket: &Path) -> Service {
     Service { child }
 }
 
-fn token(socket: &Path) -> String {
+fn token(socket: &Path, repo: &str) -> String {
     match send_request(
         socket,
         &Request::IssueToken {
-            repo: "/golden/repo".into(),
+            repo: repo.into(),
             branch: "feat/golden".into(),
         },
     )
@@ -123,11 +123,15 @@ fn every_signing_name_reproduces_agent_sign_signature_byte_for_byte() {
     let home = tmp.path();
     let socket = home.join("s.sock");
     let _service = start_service(home, &socket);
+    // The service only takes a request about a real git working tree.
+    let golden = home.join("golden/repo");
+    fs::create_dir_all(golden.join(".git")).unwrap();
+    let golden = golden.display().to_string();
 
     match send_request(
         &socket,
         &Request::RequestLease {
-            repo: "/golden/repo".into(),
+            repo: golden.clone(),
             branch: "feat/golden".into(),
             intent: "golden".into(),
             duration_secs: None,
@@ -155,7 +159,7 @@ fn every_signing_name_reproduces_agent_sign_signature_byte_for_byte() {
         (old_name, "AGENT_SIGN_"),
     ];
     for (i, (program, prefix)) in programs.iter().enumerate() {
-        let tok = token(&socket);
+        let tok = token(&socket, &golden);
         let sig = sign_with(
             program,
             prefix,

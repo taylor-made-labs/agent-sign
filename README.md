@@ -50,7 +50,13 @@ no downloadable releases yet: you build it from source.
    can't approve a lease for itself. Commits that ask while it's open
    (retries, or several agents at once) wait for the same answer instead of
    opening more dialogs, and the request closes by itself if every commit
-   waiting on it has gone (a test that timed out, say).
+   waiting on it has gone (a test that timed out, say). Only one approval
+   prompt is shown at a time, and after one is refused (Deny, or a Touch ID
+   that is cancelled, fails or times out) no new one opens for a while, 60
+   seconds at first and doubling with each refusal in a row (the agent is
+   told how long). At most 4 requests wait at once. A request is only asked
+   about if its repository is a real, existing git working tree and its path
+   and branch have no control or invisible characters in them.
    A commit that turns signing off (`--no-gpg-sign`, or `commit.gpgsign`
    set to false for that command or that repository, as test suites do for
    throwaway commits) never asks: it goes to plain git, unsigned.
@@ -111,8 +117,8 @@ It does not, yet:
   own service, or, if it knows your login password, type it into the
   system's prompt. The dialog and Touch ID close the screen-clicking route,
   not those
-- check who you are on Linux: there is no platform authenticator there yet
-  (see [Linux](#linux))
+- approve anything on Linux: it has no platform authenticator yet, so every
+  request there is refused (see [Linux](#linux))
 - keep agent work apart from yours on GitHub: the agent key goes on your
   GitHub account (the installer offers to add it, and does only if you say
   yes) and in `allowed_signers` under your email,
@@ -158,7 +164,6 @@ Branch now: feat/parser
 Branches: every branch except protected ones (main, master)
 Ends: when the work on branch 'feat/parser' is merged or the branch is deleted,
   after 7 days with no agent commits, or when you turn it off (agent-sign revoke)
-Reason given by the agent: Autonomous coding agent commit
 
 Choose what this approval covers, then Continue. You will then be asked to
 confirm that it is you (Touch ID or your password); nothing is approved until
@@ -194,16 +199,16 @@ When a commit is refused, the agent sees why; the messages are listed in
 
 ## Linux
 
-Linux has no platform authenticator in agent-sign yet, and a dialog any
-program can click would let an agent approve its own lease, so Linux has no
-dialog at all. The service asks only at its own terminal, and only when it
-has a real one (you started `agent-signd` by hand in a terminal; that
-is weaker than Touch ID, because anything that can type into that terminal
-can approve). The systemd user service has none, so on a desktop Linux machine it refuses new
-leases unless you turn on `auto_approve`, which grants every lease without
-asking (only where every process that can reach the service is trusted).
-Approving from another device, such as a passkey on your phone, is the
-planned next step and belongs to the agentic-credentials work; it isn't built.
+Linux can't approve leases yet, so the service refuses every request there
+(unless `auto_approve` is on). agent-sign has no platform authenticator for
+Linux, and the two ways it could have asked anyway both let an agent approve
+for itself: a dialog any program can click, and a terminal prompt, which an
+agent can drive through a pseudo-terminal of its own or by typing into yours.
+So there is neither. The refusal says why. For an unattended machine you
+trust, turn on `auto_approve`, which grants every lease without asking (only
+where every process that can reach the service is trusted). Approving from
+another device, such as a passkey on your phone, is the planned next step and
+belongs to the agentic-credentials work; it isn't built.
 
 ## Leases
 
@@ -217,6 +222,7 @@ planned next step and belongs to the agentic-credentials work; it isn't built.
 | `block_branches` | `["main", "master"]` | Branches no lease covers (a name, or a prefix ending in `*`). |
 | `allow_main_branch` | `false` | `true` turns that protection off. |
 | `max_commits_per_minute` | `10` | Commit rate limit per repository. |
+| `refusal_backoff` | `"60s"` | After an approval prompt is refused, no new one opens for this long, doubling with each refusal in a row (up to an hour); an approval resets it. `"none"` turns it off. A value agent-sign can't read stops the service. |
 
 Every lease also ends with its work: when the branch it was approved for is
 merged into `main` or `master` (counting only commits made since the

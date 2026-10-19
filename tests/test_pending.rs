@@ -68,8 +68,8 @@ fn start() -> Service {
         answer = answer.display(),
         home = home.display(),
     );
-    write_script(&fakebin.join("osascript"), &body);
-    write_script(&fakebin.join("zenity"), &body);
+    let dialog = fakebin.join("dialog");
+    write_script(&dialog, &body);
 
     let socket = home.join("s.sock");
     let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
@@ -79,7 +79,7 @@ fn start() -> Service {
         .env("PATH", &fakebin)
         // The stand-in dialog picks the coverage; this stands in for the owner.
         .env("AGENT_SIGN_TEST_AUTH", "allow")
-        .env("DISPLAY", ":99")
+        .env("AGENT_SIGN_TEST_DIALOG", &dialog)
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -103,6 +103,14 @@ fn start() -> Service {
 }
 
 impl Service {
+    /// A directory that looks like a git working tree (the service checks
+    /// that before asking about a repository). Returns its path.
+    fn repo(&self, name: &str) -> String {
+        let repo = self.home.join("w").join(name);
+        fs::create_dir_all(repo.join(".git")).unwrap();
+        repo.display().to_string()
+    }
+
     fn times_shown(&self) -> usize {
         fs::read_to_string(self.home.join("shown"))
             .map(|s| s.lines().count())
@@ -165,10 +173,12 @@ fn process_alive(pid: i32) -> bool {
 #[test]
 fn many_commits_asking_at_once_share_one_dialog() {
     let s = start();
+    let repo = s.repo("repo");
     let handles: Vec<_> = (0..5)
         .map(|_| {
             let socket = s.socket.clone();
-            std::thread::spawn(move || ask_lease(&socket, "/w/repo"))
+            let repo = repo.clone();
+            std::thread::spawn(move || ask_lease(&socket, &repo))
         })
         .collect();
     s.wait_until("all five waiting on one request", || {
@@ -187,7 +197,7 @@ fn a_dialog_closes_when_the_commit_that_asked_has_gone() {
     let s = start();
     let mut stream = UnixStream::connect(&s.socket).unwrap();
     let request = serde_json::to_string(&Request::RequestLease {
-        repo: "/w/repo".into(),
+        repo: s.repo("repo"),
         branch: "feat/a".into(),
         intent: "t".into(),
         duration_secs: None,
@@ -206,14 +216,16 @@ fn a_dialog_closes_when_the_commit_that_asked_has_gone() {
 #[test]
 fn one_commit_leaving_doesnt_close_a_dialog_another_is_waiting_on() {
     let s = start();
+    let repo = s.repo("repo");
     let waiting = {
         let socket = s.socket.clone();
-        std::thread::spawn(move || ask_lease(&socket, "/w/repo"))
+        let repo = repo.clone();
+        std::thread::spawn(move || ask_lease(&socket, &repo))
     };
     s.wait_until("the dialog to open", || s.times_shown() == 1);
     let mut leaving = UnixStream::connect(&s.socket).unwrap();
     let request = serde_json::to_string(&Request::RequestLease {
-        repo: "/w/repo".into(),
+        repo,
         branch: "feat/a".into(),
         intent: "t".into(),
         duration_secs: None,
@@ -241,14 +253,17 @@ fn one_commit_leaving_doesnt_close_a_dialog_another_is_waiting_on() {
 #[test]
 fn deny_all_answers_every_waiting_request_and_closes_the_dialogs() {
     let s = start();
-    let waiting: Vec<_> = ["/w/one", "/w/two"]
+    let (one, two) = (s.repo("one"), s.repo("two"));
+    let waiting: Vec<_> = [one.clone(), two.clone()]
         .into_iter()
         .map(|repo| {
             let socket = s.socket.clone();
-            std::thread::spawn(move || ask_lease(&socket, repo))
+            std::thread::spawn(move || ask_lease(&socket, &repo))
         })
         .collect();
-    s.wait_until("two dialogs open", || s.times_shown() == 2);
+    // One prompt at a time: one dialog is open, the other request waits its turn.
+    s.wait_until("two requests waiting", || s.pending().len() == 2);
+    s.wait_until("one dialog open", || s.times_shown() == 1);
 
     let cli = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_agent-sign"))
@@ -260,7 +275,7 @@ fn deny_all_answers_every_waiting_request_and_closes_the_dialogs() {
     };
     let listed = String::from_utf8_lossy(&cli(&["pending"]).stdout).to_string();
     assert!(
-        listed.contains("/w/one (feat/a)") && listed.contains("/w/two (feat/a)"),
+        listed.contains(&format!("{one} (feat/a)")) && listed.contains(&format!("{two} (feat/a)")),
         "{listed}"
     );
 
@@ -275,6 +290,8 @@ fn deny_all_answers_every_waiting_request_and_closes_the_dialogs() {
         s.wait_until("each dialog to close", || !process_alive(pid));
     }
     assert!(s.pending().is_empty());
+    // The request that was waiting its turn never got a dialog.
+    assert_eq!(s.times_shown(), 1);
     let none_left = String::from_utf8_lossy(&cli(&["pending"]).stdout).to_string();
     assert!(
         none_left.contains("No approval requests are waiting"),
@@ -285,19 +302,23 @@ fn deny_all_answers_every_waiting_request_and_closes_the_dialogs() {
 #[test]
 fn deny_by_id_answers_only_that_request() {
     let s = start();
+    let (repo_one, repo_two) = (s.repo("one"), s.repo("two"));
     let one = {
         let socket = s.socket.clone();
-        std::thread::spawn(move || ask_lease(&socket, "/w/one"))
+        let repo = repo_one.clone();
+        std::thread::spawn(move || ask_lease(&socket, &repo))
     };
     let two = {
         let socket = s.socket.clone();
-        std::thread::spawn(move || ask_lease(&socket, "/w/two"))
+        let repo = repo_two.clone();
+        std::thread::spawn(move || ask_lease(&socket, &repo))
     };
-    s.wait_until("two dialogs open", || s.times_shown() == 2);
+    s.wait_until("two requests waiting", || s.pending().len() == 2);
+    s.wait_until("a dialog open", || s.times_shown() >= 1);
     let id = s
         .pending()
         .into_iter()
-        .find(|p| p.repo == "/w/one")
+        .find(|p| p.repo == repo_one)
         .unwrap()
         .id;
     assert!(matches!(

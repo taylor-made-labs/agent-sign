@@ -73,7 +73,7 @@ pub enum Approval {
 
 /// Sent back when the service couldn't ask the person, so the agent (and the
 /// person reading its output) learns why and what to do.
-pub const NO_WAY_TO_ASK: &str = "agent-sign couldn't ask you to approve a lease: there is no way to confirm it is you on this machine (on macOS, a desktop session for Touch ID or your password; on Linux there is no platform authenticator yet, so the service only asks at its own terminal). On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
+pub const NO_WAY_TO_ASK: &str = "agent-sign couldn't ask you to approve a lease: there is no way to confirm it is you here. On macOS that needs a desktop session (Touch ID or your login password). Linux has no way to approve yet, so every request there is refused unless auto_approve is on. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
 
 impl Approval {
     /// The error to send back for a refusal, or `None` if approved. The
@@ -129,23 +129,119 @@ pub fn confirm(
     }
 }
 
-/// The text the system shows with its authentication prompt: short, and
-/// naming what is being approved.
-pub fn auth_reason(repo: &str, coverage_label: &str) -> String {
-    let repo: String = if repo.chars().count() > 120 {
-        let tail: String = repo
-            .chars()
-            .rev()
-            .take(117)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect();
-        format!("...{tail}")
-    } else {
-        repo.to_string()
-    };
-    format!("approve an AI agent's git signing lease for {repo} ({coverage_label})")
+/// Whether `c` is invisible or can reshape text around it: a control
+/// character (Unicode Cc), a format character such as the bidirectional
+/// overrides and isolates and the zero-width characters (Cf), or a line or
+/// paragraph separator (Zl, Zp). Text with any of these must not reach a
+/// prompt the person relies on.
+pub fn is_unsafe_display_char(c: char) -> bool {
+    c.is_control()
+        || matches!(c,
+            '\u{00AD}' | '\u{0600}'..='\u{0605}' | '\u{061C}' | '\u{06DD}' | '\u{070F}'
+            | '\u{0890}'..='\u{0891}' | '\u{08E2}' | '\u{180E}' | '\u{200B}'..='\u{200F}'
+            | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
+            | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
+            | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}'
+            | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+}
+
+/// Whether `text` contains anything [`is_unsafe_display_char`] names. A
+/// request whose repository or branch does, is refused before anyone is asked.
+pub fn has_unsafe_display_chars(text: &str) -> bool {
+    text.chars().any(is_unsafe_display_char)
+}
+
+/// `text` for display: unsafe characters removed, and cut to at most `max`
+/// characters by dropping the middle (so both the start and the end, which
+/// is where a path says what it is, stay visible).
+pub fn display_text(text: &str, max: usize) -> String {
+    let clean: Vec<char> = text
+        .chars()
+        .filter(|c| !is_unsafe_display_char(*c))
+        .collect();
+    if clean.len() <= max {
+        return clean.into_iter().collect();
+    }
+    let keep = max.saturating_sub(3);
+    let head = keep / 2;
+    let tail = keep - head;
+    let mut out: String = clean[..head].iter().collect();
+    out.push_str("...");
+    out.extend(clean[clean.len() - tail..].iter());
+    out
+}
+
+/// The text the system shows with its authentication prompt. It is the one
+/// statement of what is being approved that the agent can't alter after the
+/// fact, so it leads with the coverage the person chose, in fixed wording
+/// (the label comes from the service, not the agent), then says where the
+/// request came from: the repository (the verified path) and the branch,
+/// cleaned and shortened by [`display_text`].
+pub fn auth_reason(repo: &str, branch: &str, coverage_label: &str) -> String {
+    format!(
+        "allow AI agents to sign git commits: {} (asked from {}, branch {})",
+        display_text(coverage_label, 120),
+        display_text(repo, 100),
+        display_text(branch, 60)
+    )
+}
+
+/// The most approval requests that may be open at once. A request holds a
+/// thread and may hold a dialog, so an agent can't pile them up by asking
+/// from many branches.
+pub const MAX_PENDING_REQUESTS: usize = 4;
+
+/// The longest the service ever holds back after refusals.
+const BACKOFF_CAP: Duration = Duration::from_secs(3600);
+
+/// Holds back new approval requests after the person (or the system) refused
+/// one, so an agent can't keep a Touch ID prompt coming until a reflexive
+/// touch gives in. After each refusal in a row the wait doubles, up to an
+/// hour; an approval resets it. A zero `base` turns it off.
+#[derive(Debug, Clone)]
+pub struct RefusalBackoff {
+    base: Duration,
+    in_a_row: u32,
+    until: Option<std::time::Instant>,
+}
+
+impl RefusalBackoff {
+    /// One that waits `base` after the first refusal, then double that, and so on.
+    pub fn new(base: Duration) -> Self {
+        RefusalBackoff {
+            base,
+            in_a_row: 0,
+            until: None,
+        }
+    }
+
+    /// How much longer new requests are held back at `now`, if at all.
+    pub fn remaining(&self, now: std::time::Instant) -> Option<Duration> {
+        self.until
+            .and_then(|t| t.checked_duration_since(now))
+            .filter(|d| !d.is_zero())
+    }
+
+    /// A prompt was refused (Deny, cancelled, failed, or timed out).
+    pub fn record_refusal(&mut self, now: std::time::Instant) {
+        if self.base.is_zero() {
+            return;
+        }
+        let doublings = self.in_a_row.min(16);
+        let wait = self
+            .base
+            .checked_mul(1u32 << doublings)
+            .unwrap_or(BACKOFF_CAP)
+            .min(BACKOFF_CAP);
+        self.in_a_row = self.in_a_row.saturating_add(1);
+        self.until = Some(now + wait);
+    }
+
+    /// A lease was approved: the next refusal starts from the base again.
+    pub fn record_approval(&mut self) {
+        self.in_a_row = 0;
+        self.until = None;
+    }
 }
 
 /// How long to wait for the owner to authenticate before denying. Generous,
@@ -178,7 +274,8 @@ pub fn platform_authenticator() -> Option<Box<dyn Authenticator>> {
 }
 
 /// Stand-in for the owner in end-to-end tests of the service, chosen by
-/// `AGENT_SIGN_TEST_AUTH`: `allow` succeeds; `timeout`, `unavailable` and
+/// `AGENT_SIGN_TEST_AUTH` (and, if `AGENT_SIGN_TEST_AUTH_LOG` names a file,
+/// recording each reason it was shown): `allow` succeeds; `timeout`, `unavailable` and
 /// anything else (including unset) deny, `fail` with a reason. It exists
 /// only when the feature `test-authenticator` is on, which `cargo build` and
 /// `cargo build --release` never do.
@@ -187,7 +284,18 @@ pub struct TestAuthenticator;
 
 #[cfg(feature = "test-authenticator")]
 impl Authenticator for TestAuthenticator {
-    fn authenticate(&self, _reason: &str, _cancel: &AtomicBool) -> AuthOutcome {
+    fn authenticate(&self, reason: &str, _cancel: &AtomicBool) -> AuthOutcome {
+        // Where a test wants to see what the owner would have been shown.
+        if let Some(path) = std::env::var_os("AGENT_SIGN_TEST_AUTH_LOG") {
+            use std::io::Write;
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+            {
+                let _ = writeln!(file, "{reason}");
+            }
+        }
         match std::env::var("AGENT_SIGN_TEST_AUTH").as_deref() {
             Ok("allow") => AuthOutcome::Authenticated,
             Ok("timeout") => AuthOutcome::TimedOut,

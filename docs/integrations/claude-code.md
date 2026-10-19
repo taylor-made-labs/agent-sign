@@ -19,10 +19,11 @@ Check from inside a session that `git` is the wrapper: ask it to run
 
 1. Claude Code runs `git commit -m "..."`. Its tool runner has no terminal
    attached, so the wrapper treats the commit as an agent's.
-2. The first time in a repository, you get one dialog (on macOS, or a Linux
-   desktop with `zenity` or `kdialog`) showing the repository, the branch,
-   which branches the lease covers, and when it ends: by default, when you
-   revoke it with `agent-sign revoke`.
+2. The first time in a repository, you get one dialog (on macOS; Linux can't
+   approve leases yet, so it refuses) showing the repository, the branch,
+   which branches the lease covers, and when it ends: by default, when it
+   finishes or you revoke it with `agent-sign revoke`. Pick what it covers and
+   press Continue, then confirm with Touch ID or your password.
 3. Approve, and later commits in that repository are signed with the agent
    key without asking, until the lease ends. Commits on `main` or `master`
    are refused.
