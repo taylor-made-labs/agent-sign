@@ -35,18 +35,18 @@ impl Drop for Service {
     }
 }
 
-/// Starts `agent-signd` in `home` with `path` as its whole `PATH`, no display, and
-/// no terminal.
-fn start_service(home: &Path, path: &str, auto_approve: bool, display: bool) -> Service {
+/// Starts `agent-signd` in `home` with `path` as its whole `PATH`, no terminal,
+/// and `dialog` (if any) as its stand-in coverage dialog.
+fn start_service(home: &Path, path: &str, auto_approve: bool, dialog: Option<&Path>) -> Service {
     let socket = home.join("svc.sock");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
     cmd.arg("--socket")
         .arg(&socket)
         .env("HOME", home)
         .env("PATH", path)
-        .env_remove("DISPLAY")
-        .env_remove("WAYLAND_DISPLAY")
-        .env_remove("AGENT_SIGN_AUTO_APPROVE")
+        // The stand-in dialog picks the coverage; this stands in for the owner.
+        .env("AGENT_SIGN_TEST_AUTH", "allow")
+        .env_remove("AGENT_SIGN_TEST_DIALOG")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -54,8 +54,8 @@ fn start_service(home: &Path, path: &str, auto_approve: bool, display: bool) -> 
     if auto_approve {
         cmd.arg("--auto-approve");
     }
-    if display {
-        cmd.env("DISPLAY", ":99");
+    if let Some(dialog) = dialog {
+        cmd.env("AGENT_SIGN_TEST_DIALOG", dialog);
     }
     let child = cmd.spawn().expect("Failed to start agent-signd");
     let start = Instant::now();
@@ -104,6 +104,14 @@ fn ask_for_lease(socket: &Path, repo: &str) -> Response {
     .expect("request failed")
 }
 
+/// A directory that looks like a git working tree (it has a `.git`), which is
+/// all the service checks before asking about a repository. Returns its path.
+fn fake_repo(root: &Path, rel: &str) -> String {
+    let repo = root.join(rel);
+    fs::create_dir_all(repo.join(".git")).unwrap();
+    repo.display().to_string()
+}
+
 fn error_message(resp: Response) -> String {
     match resp {
         Response::Error { message } => message,
@@ -115,9 +123,10 @@ fn error_message(resp: Response) -> String {
 fn a_service_that_cannot_ask_says_so_instead_of_blaming_the_person() {
     let dir = tempdir().unwrap();
     let path = path_with_only_git(dir.path());
-    let svc = start_service(dir.path(), &path, false, false);
+    let svc = start_service(dir.path(), &path, false, None);
+    let repo = fake_repo(dir.path(), "some-repo");
 
-    let message = error_message(ask_for_lease(&svc.socket, "/tmp/some-repo"));
+    let message = error_message(ask_for_lease(&svc.socket, &repo));
     assert!(message.contains("couldn't ask you"), "{message}");
     assert!(message.contains("Headless machines"), "{message}");
     assert!(!message.to_lowercase().contains("rejected"), "{message}");
@@ -129,15 +138,14 @@ fn a_denial_is_reported_as_the_persons() {
     let dir = tempdir().unwrap();
     let fakebin = dir.path().join("fakebin");
     fs::create_dir_all(&fakebin).unwrap();
-    // Stand-ins that answer "Deny": osascript on macOS, zenity on Linux
-    // (tried because DISPLAY is set).
-    write_script(&fakebin.join("osascript"), "echo 'button returned:Deny'");
-    write_script(&fakebin.join("zenity"), "exit 1");
-    write_script(&fakebin.join("kdialog"), "exit 1");
-    let path = format!("{}:{}", fakebin.display(), path_with_only_git(dir.path()));
-    let svc = start_service(dir.path(), &path, false, true);
+    // A stand-in dialog that answers "Deny" (as the macOS list dialog does).
+    let dialog = fakebin.join("dialog");
+    write_script(&dialog, "echo false");
+    let path = path_with_only_git(dir.path());
+    let svc = start_service(dir.path(), &path, false, Some(&dialog));
+    let repo = fake_repo(dir.path(), "some-repo");
 
-    let message = error_message(ask_for_lease(&svc.socket, "/tmp/some-repo"));
+    let message = error_message(ask_for_lease(&svc.socket, &repo));
     assert!(message.contains("the person denied"), "{message}");
 }
 
@@ -145,10 +153,11 @@ fn a_denial_is_reported_as_the_persons() {
 fn revoking_a_repository_with_no_lease_is_an_error_not_a_success() {
     let dir = tempdir().unwrap();
     let path = path_with_only_git(dir.path());
-    let svc = start_service(dir.path(), &path, true, false);
+    let svc = start_service(dir.path(), &path, true, None);
+    let project = fake_repo(dir.path(), "work/project");
 
     assert!(matches!(
-        ask_for_lease(&svc.socket, "/work/project"),
+        ask_for_lease(&svc.socket, &project),
         Response::LeaseGranted { .. }
     ));
 
@@ -173,7 +182,7 @@ fn revoking_a_repository_with_no_lease_is_an_error_not_a_success() {
     }
 
     // The full path revokes it.
-    assert!(matches!(revoke("/work/project"), Response::Success));
+    assert!(matches!(revoke(&project), Response::Success));
     match send_request(&svc.socket, &Request::ListLeases).unwrap() {
         Response::LeaseList { leases } => assert!(leases.is_empty()),
         other => panic!("{other:?}"),
@@ -184,7 +193,7 @@ fn revoking_a_repository_with_no_lease_is_an_error_not_a_success() {
 fn agent_sign_revoke_dot_names_the_repository_it_is_run_in() {
     let dir = tempdir().unwrap();
     let path = path_with_only_git(dir.path());
-    let svc = start_service(dir.path(), &path, true, false);
+    let svc = start_service(dir.path(), &path, true, None);
 
     // A repository, and a lease under the key the git wrapper uses: the
     // canonical path of its top level.

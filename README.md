@@ -27,7 +27,8 @@ make yourself in a terminal go through your normal signing.
 
 **Status: pre-release (0.1.0).** Its author uses it daily on macOS for every
 agent commit. Linux builds and passes its tests, but has had little daily
-use. There are no downloadable releases yet: you build it from source.
+use, and cannot approve leases interactively (see [Linux](#linux)). There are
+no downloadable releases yet: you build it from source.
 
 ## How it works
 
@@ -41,11 +42,21 @@ use. There are no downloadable releases yet: you build it from source.
    commit's size unless you set one (`max_diff_lines`). Then it asks the
    service (`agent-signd`) for a lease covering this repository.
 3. If there's no lease, you get one dialog showing the repository, the
-   branch, which branches the lease would cover, when it ends, and the reason
-   the agent gave. You approve or deny. Commits that ask while it's open
+   branch, which branches the lease would cover, and when it ends. You pick
+   what the approval covers and press Continue (or Deny), and then the Mac
+   asks you to prove it's you: Touch ID, or your login password. Only then
+   is the lease granted. A click alone approves nothing, so a program that
+   can click the dialog (a computer-use agent, a System Events script)
+   can't approve a lease for itself. Commits that ask while it's open
    (retries, or several agents at once) wait for the same answer instead of
-   opening more dialogs, and the dialog closes by itself if every commit
-   waiting on it has gone (a test that timed out, say).
+   opening more dialogs, and the request closes by itself if every commit
+   waiting on it has gone (a test that timed out, say). Only one approval
+   prompt is shown at a time, and after one is refused (Deny, or a Touch ID
+   that is cancelled, fails or times out) no new one opens for a while, 60
+   seconds at first and doubling with each refusal in a row (the agent is
+   told how long). At most 4 requests wait at once. A request is only asked
+   about if its repository is a real, existing git working tree and its path
+   and branch have no control or invisible characters in them.
    A commit that turns signing off (`--no-gpg-sign`, or `commit.gpgsign`
    set to false for that command or that repository, as test suites do for
    throwaway commits) never asks: it goes to plain git, unsigned.
@@ -73,7 +84,9 @@ It does:
 - refuse agent commits on protected branches (`main` and `master` by
   default), checked on every commit
 - ask you before the first signed commit that no lease covers, showing the
-  lease's terms and letting you choose how far it reaches
+  lease's terms and letting you choose how far it reaches, and (on macOS)
+  require Touch ID or your login password to approve it. Cancel, a failed
+  or timed-out check, or no way to run the check all deny
 - stop runaway commit loops (and oversized diffs, if you set a size limit), and block edits to CI
   workflows and key files
 - fail closed: for a commit through the wrapper, if the service is down,
@@ -99,8 +112,13 @@ It does not, yet:
   the agent when it can be told (Claude Code, Gemini CLI and Codex mark the
   commands they run; others can be started with `AGENT_SIGN_AGENT_NAME`),
   but that's a label: any program can set those variables
-- make the dialog a biometric check: it's a confirmation dialog, and its
-  default button is Approve
+- stop an agent running as your user from approving its own lease by other
+  means than the dialog: it can edit the config (`auto_approve`), start its
+  own service, or, if it knows your login password, type it into the
+  system's prompt. The dialog and Touch ID close the screen-clicking route,
+  not those
+- approve anything on Linux: it has no platform authenticator yet, so every
+  request there is refused (see [Linux](#linux))
 - keep agent work apart from yours on GitHub: the agent key goes on your
   GitHub account (the installer offers to add it, and does only if you say
   yes) and in `allowed_signers` under your email,
@@ -146,34 +164,51 @@ Branch now: feat/parser
 Branches: every branch except protected ones (main, master)
 Ends: when the work on branch 'feat/parser' is merged or the branch is deleted,
   after 7 days with no agent commits, or when you turn it off (agent-sign revoke)
-Reason given by the agent: Autonomous coding agent commit
 
-Choose what this approval covers. These terms are fixed when you approve.
-They never grow.
+Choose what this approval covers, then Continue. You will then be asked to
+confirm that it is you (Touch ID or your password); nothing is approved until
+you do. These terms are fixed when you approve. They never grow.
 
-  > This repository only
+    This repository only
     Every repository under /Users/you/code
     Every repository on this computer
 
-                                         [Deny]  [Approve]
+                                         [Deny]  [Continue]
 ```
 
-"This repository only" is selected, so Approve alone keeps it to one
-repository. Choose a wider scope if you start new repositories often and
-don't want to be asked for each. Agent commits in what you chose are signed
-from then on without asking. Check one with `git log -1 --show-signature`.
-(With `allow_branch_switching = false`, only "This repository only" is
-offered: a wider lease can't be held to one branch.)
+Nothing is selected to begin with, and Continue stays greyed out until you
+pick one; Deny (or Escape) refuses. After Continue, the system's own prompt
+asks for Touch ID or your login password, and waits up to five minutes; if
+you cancel, get it wrong, or it times out, the lease is refused and the agent
+sees that agent-sign could not confirm it was you. Choose a wider scope if
+you start new repositories often and don't want to be asked for each. Agent
+commits in what you chose are signed from then on without asking. Check one
+with `git log -1 --show-signature`. (With `allow_branch_switching = false`,
+only "This repository only" is offered: a wider lease can't be held to one
+branch.)
 
 In a brand-new repository, make the first commit yourself (agents can't
 commit on `main`), then have the agent work on a branch.
 
 On a machine with no screen (a server, a container, or over SSH: the service
-runs in the background, so your SSH terminal doesn't count), agent-sign can't show
-the dialog, so it refuses: see
+runs in the background, so your SSH terminal doesn't count), agent-sign can't
+ask you, so it refuses: see
 [Headless machines](docs/INSTALL.md#headless-machines-servers-containers-ci).
 When a commit is refused, the agent sees why; the messages are listed in
 [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+## Linux
+
+Linux can't approve leases yet, so the service refuses every request there
+(unless `auto_approve` is on). agent-sign has no platform authenticator for
+Linux, and the two ways it could have asked anyway both let an agent approve
+for itself: a dialog any program can click, and a terminal prompt, which an
+agent can drive through a pseudo-terminal of its own or by typing into yours.
+So there is neither. The refusal says why. For an unattended machine you
+trust, turn on `auto_approve`, which grants every lease without asking (only
+where every process that can reach the service is trusted). Approving from
+another device, such as a passkey on your phone, is the planned next step and
+belongs to the agentic-credentials work; it isn't built.
 
 ## Leases
 
@@ -187,6 +222,7 @@ When a commit is refused, the agent sees why; the messages are listed in
 | `block_branches` | `["main", "master"]` | Branches no lease covers (a name, or a prefix ending in `*`). |
 | `allow_main_branch` | `false` | `true` turns that protection off. |
 | `max_commits_per_minute` | `10` | Commit rate limit per repository. |
+| `refusal_backoff` | `"60s"` | After an approval prompt is refused, no new one opens for this long, doubling with each refusal in a row (up to an hour); an approval resets it. `"none"` turns it off. A value agent-sign can't read stops the service. |
 
 Every lease also ends with its work: when the branch it was approved for is
 merged into `main` or `master` (counting only commits made since the

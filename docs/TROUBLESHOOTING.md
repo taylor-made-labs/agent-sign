@@ -38,7 +38,11 @@ The wrapper prints why, starting `[agent-git]`.
 | `No signing lease: Branch 'main' is protected` | Agents never commit on `main` or `master` (`block_branches`). | Have the agent work on another branch. |
 | `No signing lease: the person denied the signing lease` | You pressed Deny. | Commit again to be asked again. |
 | You're asked again when the agent changes branch | The lease covers only the branch it was approved on (`allow_branch_switching = false`, or leases approved that way). | Approve, or set `allow_branch_switching = true` for future leases. |
-| `No signing lease: agent-sign couldn't ask you to approve a lease` | No dialog could be shown and the service has no terminal: a server, a container, an SSH session, or a Linux desktop without `zenity` or `kdialog`. | See "No dialog appears" and "Machines with no screen" below. |
+| `No signing lease: agent-sign couldn't ask you to approve a lease` | The service couldn't confirm it was you: no desktop session on macOS, or Linux (which has no approval dialog), or a server, container or SSH session with no terminal. | See "Linux has no approval dialog" and "Machines with no screen" below. |
+| `No signing lease: the signing lease was not approved: agent-sign could not confirm it was you (...)` | You picked a coverage but the Touch ID / password check was cancelled, failed, or timed out (five minutes). | Commit again and authenticate. If the Mac offers no check (no password set, no desktop session), the reason says so. |
+| `No signing lease: agent-sign is not asking again for N more seconds` | A recent approval prompt was refused (Deny, or Touch ID cancelled, failed or timed out), so new ones are held back, doubling with each refusal in a row. | Wait, or set `refusal_backoff` (default `"60s"`, `"none"` turns it off) and restart the service. |
+| `No signing lease: agent-sign already has 4 approval requests waiting` | Four requests are already waiting for an answer. | Answer them, or `agent-sign deny --all`. |
+| `No signing lease: ... isn't an existing git working tree` or `... control or invisible characters` | The repository the wrapper named doesn't exist or isn't a git working tree, or its path or the branch name has characters that could disguise the prompt. | Run git from inside a real repository; rename the branch or folder. |
 | `Token issuance failed: Rate limit exceeded` | More than `max_commits_per_minute` agent commits in a minute in this repository. | Wait a minute, or raise the limit in `~/.agent-sign/config.toml` and restart the service. |
 | `Security Policy Violation: ... forbidden path` | The commit changes a path in `forbidden_paths` (CI workflows, key files). | Commit that change yourself from your terminal. |
 | `Agent commit changes N lines, more than the limit you set` | You set `max_diff_lines`, and the commit changes more lines than that. (There's no limit by default.) | Split the commit, or commit with `AGENT_SIGN_ALLOW_LARGE_DIFF=1`. |
@@ -66,20 +70,22 @@ Developer, turn on "Use the SSH agent".
 
 Agent commits are signed with the agent's file key, so they need no touch.
 Your own commits still use your key and still need a touch. Your hardware
-key isn't used to approve leases: that's the dialog.
+key isn't used to approve leases: that's the dialog, then Touch ID or your
+login password on the Mac.
 
-## No dialog appears (Linux)
+## Linux has no approval dialog
 
-On Linux, agent-sign shows its dialog with `zenity` or `kdialog`, and only when
-the service's environment has `DISPLAY` or `WAYLAND_DISPLAY`. Install one of
-them (`sudo apt-get install zenity`, `sudo dnf install zenity`,
-`sudo pacman -S zenity`). If your desktop session doesn't pass `DISPLAY` to
-user services, run `systemctl --user import-environment DISPLAY
-WAYLAND_DISPLAY` and restart the service.
+Linux can't approve leases yet, so the service refuses every request there. agent-sign
+no longer shows a `zenity` or `kdialog` dialog or a terminal prompt: Linux has
+no platform authenticator in agent-sign, and a dialog any program can click, or
+a terminal an agent can drive, would let an agent approve its own lease. To
+grant leases anyway see the next section. Approving from another device, such
+as a passkey on your phone, is planned, not built.
 
 ## Machines with no screen (servers, containers, CI)
 
-With no screen and no terminal, agent-sign can't ask you, so it refuses leases.
+With no screen and no terminal (or on Linux, which can't approve leases),
+agent-sign can't ask you, so it refuses leases.
 To grant every lease without asking, set in `~/.agent-sign/config.toml`:
 
 ```toml
@@ -125,5 +131,6 @@ lease.
   requests (one per repository and branch, however many commits are
   waiting on it), and `agent-sign deny --all` (or `agent-sign deny <id>`)
   answers no and closes their dialogs.
-- **Left open after a program stopped:** a dialog closes by itself within
-  about a second once every commit waiting on it has gone.
+- **Left open after a program stopped:** a dialog (or the Touch ID prompt)
+  closes by itself within about a second once every commit waiting on it
+  has gone.

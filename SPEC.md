@@ -47,8 +47,23 @@ Each invariant says whether it holds today, and how that's checked.
   saving or reloading it never extends it, and a later config change can only
   narrow it. Leases are saved, so a crash, restart or sleep doesn't ask again.
   *Holds* (tests: `test_lease_terms.rs`, `test_persistent_identity_leases.rs`).
-  The approval is a confirmation dialog, not a biometric check, and its
-  default button is Approve.
+  Approving takes two steps, and a click can supply only the first: the
+  person picks what the lease covers (macOS: a list dialog with nothing
+  preselected, buttons Continue and Deny), and then the device's owner
+  authenticates through the system (macOS: LocalAuthentication, policy
+  `deviceOwnerAuthentication`, so Touch ID or the login password). Cancel,
+  failure, a timeout (five minutes) or no authenticator denies. There is no
+  Approve default anywhere. *Holds on macOS* (tests:
+  `test_device_owner_approval.rs`; the real sensor is a manual check, F10).
+  Linux has no platform authenticator, so there is no dialog and no terminal
+  prompt either (an agent can drive its own pseudo-terminal or type into the
+  person's): every request is refused unless `auto_approve` is on (see 4.3).
+  Around that: one prompt at a time; after a refused prompt, new requests are
+  held back (`refusal_backoff`, doubling); at most 4 requests wait at once; a
+  request is asked about only if its repository is an existing git working
+  tree and neither it nor the branch has control, invisible or
+  direction-changing characters; and the system prompt's text leads with the
+  coverage chosen, then the verified path and branch.
 - **INV-5, configurable attribution.** `split`, `trailers` and `alias` modes
   change author, committer and message, not the signing. *Holds*, except that
   `trailers` only rewrites a message given with `-m` or `--message`.
@@ -160,11 +175,31 @@ the agent key. `agent-sign` accepts the same arguments, as `agent-sign` did.
   `max_lease_ceiling` it can't read stops it. Environment variables in the
   service's own environment (`AGENT_SIGN_AUTO_APPROVE`, `AGENT_SIGN_LEASE_MODE`, ...)
   override the file.
-- Asks the person, in order: on macOS an AppleScript dialog; on Linux with
-  `DISPLAY` or `WAYLAND_DISPLAY`, `zenity` or `kdialog`; otherwise a prompt
-  on its own terminal, which it has only when started by hand. With none of
-  these it refuses the lease and says it couldn't ask. With `auto_approve`,
-  every lease is granted without asking.
+- Asks the person: on macOS an AppleScript list dialog (nothing preselected;
+  Continue or Deny, giving up as a denial after five minutes) followed by the
+  system's owner authentication (`src/device_owner.rs`; Touch ID or the
+  login password). If no dialog can be shown it refuses and says it couldn't
+  ask. There is no terminal prompt and no Linux dialog, by design: a dialog
+  any program can click, or a terminal an agent can drive, would let an agent
+  approve its own lease; on Linux every request is refused. With
+  `auto_approve`, every lease is granted without asking. One prompt is shown
+  at a time across the service; a Deny, cancelled or failed authentication,
+  or timeout holds new requests back for `refusal_backoff` (default 60
+  seconds, doubling with each refusal in a row up to an hour, reset by an
+  approval; `agent-sign deny` doesn't count); at most 4 requests may wait.
+  Before asking, `RequestLease` refuses a repository that isn't an existing
+  git working tree (a `.git` inside the path), and a repository or branch
+  containing control, invisible or direction-changing characters. The decision
+  itself (`src/approval.rs`: a choice counts only if the `Authenticator`
+  succeeds) sits behind a small trait so tests can inject one. Test builds
+  only (cargo feature `test-authenticator`, which `cargo test` turns on and
+  `cargo build` never does, and which refuses to compile without debug
+  assertions, so `cargo test --release` fails instead of producing an
+  installable program with it) have stand-ins for the owner and the dialog
+  (`AGENT_SIGN_TEST_AUTH`, `AGENT_SIGN_TEST_DIALOG`). The installer also
+  refuses programs that contain them (`scripts/check-binary-clean.sh`).
+- Approving a lease from another device (a passkey on the phone) is the next
+  step and belongs to agentic-credentials; it is not built.
 - Tokens are single-use and expire after 60 seconds. A token authorises one
   signature of whatever buffer is sent with it; the service doesn't check the
   buffer is a commit.
@@ -262,6 +297,7 @@ end_after_idle = "7d"             # a lease ends after this long with no agent c
 block_branches = ["main", "master"]   # exact names, or a prefix ending in "*", e.g. "release/*"
 allow_main_branch = false         # true turns branch protection off entirely
 max_commits_per_minute = 10
+refusal_backoff = "60s"           # after a refused prompt, no new one for this long, doubling; "none" turns it off; unreadable = service won't start
 auto_approve = false              # true grants every lease without asking
 
 [security]                        # read by the wrapper (repository files and environment apply)
@@ -323,17 +359,16 @@ the person's own user account, and agent-sign doesn't change that.
 |---|---|---|
 | An agent signs as the person with the person's key | The agent key is separate; agents never talk to the person's signer through agent-sign. | An agent can still call the real git (or the person's signer) directly. |
 | The agent key is copied | It's registered on GitHub as a signing key only, so it can't log in, clone or push. | It's unencrypted and readable by the person's user, so any process running as them can copy it, and commits signed with it show as Verified for the person. |
-| An agent approves its own lease | The dialog comes from the service, not the agent. | An agent running as the person can edit the config (`auto_approve`), start its own service, or answer a terminal prompt. |
+| An agent approves its own lease | The dialog comes from the service, not the agent, and clicking it is not enough: on macOS the owner must also pass Touch ID or the login password, which a program that controls the screen can't produce. | An agent running as the person can still edit the config (`auto_approve`), start its own service, or, if it knows the login password, type it into the system's prompt. On Linux nothing can be approved interactively: every request is refused unless `auto_approve` is on. A prompt can still be repeated by an agent with a screen: the service shows one at a time and holds requests back after a refusal, but one reflexive touch for the wrong request is still a grant, and the prompt's text leads with the coverage so it can be read. |
 | Runaway commit loops | `max_commits_per_minute` per repository. | No total cap per lease. |
 | Commits on protected branches | Refused on every token. | Detached HEAD isn't protected; `allow_main_branch` turns protection off. |
 | Changes to CI workflows or key files | `forbidden_paths` and `max_diff_lines` in the wrapper. | A repository's `.agent-sign.toml` or an environment variable, both writable by the agent, can loosen them. |
-| Approving by accident | The dialog states the repository, branch, coverage, end, and the agent's reason. | Its default button is Approve, and the dialog text is built into an AppleScript string. |
+| Approving by accident | The dialog states the repository, branch, coverage and end; nothing is preselected, Continue is disabled until a choice is made, Deny and Escape refuse, and the system's authentication prompt must then be passed. | The dialog text is built into an AppleScript string. |
 | Mixing agents' work | None. | One key and one set of leases per machine user; agents aren't told apart. |
 
 The release checklist (`docs/RELEASE_CHECKLIST.md`) tracks the work on these
 gaps: a separate service user (so agents can't read the key or approve their
-own leases), attribution to a separate GitHub machine account, and a dialog
-with no default Approve.
+own leases) and attribution to a separate GitHub machine account.
 
 ## 6. Tests
 
@@ -346,6 +381,7 @@ installed agent-sign.
 | `test_human_isolation.rs` | Without a token, signing goes to the person's signer; a bad token is refused. |
 | `test_interceptor.rs` | Only `commit` is intercepted; `split` and `trailers` attribution. |
 | `test_lease_engine.rs` | Granting, commits under a lease, protected branches, rate limit, branch switching, revocation. |
+| `test_device_owner_approval.rs` | A choice without successful owner authentication is denied (failure, cancel, timeout, unavailable); success approves the chosen coverage; Deny never asks for authentication; the running service denies a click-through without the owner and grants with it; one prompt at a time; the hold-back after a refusal; the cap on waiting requests; a repository that doesn't exist, or a path or branch with control or invisible characters, is refused unasked; the prompt text leads with the coverage; an optimized build can't include the test stand-in; the installer refuses a program that does; no Approve button, Linux dialog or terminal prompt in the source. |
 | `test_lease_terms.rs` | Terms fixed at approval; config narrows, never widens; the dialog's terms; the unreadable ceiling. |
 | `test_persistent_identity_leases.rs` | Leases survive restarts; revocation persists; ceiling; scope. |
 | `test_crypto_verification.rs` | Keys and signatures in OpenSSH format, verified by `ssh-keygen`. |
@@ -353,5 +389,7 @@ installed agent-sign.
 | `test_e2e_git_commit.rs` | Real git commits through the wrapper, signing program and service, verified by git; old and new names. |
 | `test_refusals_and_revoke.rs` | "Couldn't ask" versus "denied"; revoking a repository with no lease is an error; `agent-sign revoke .`; the doctor's advice. |
 
-Not covered by an automated test yet: the real dialogs. The installer and
+Not covered by an automated test yet: the real dialogs and the real Touch ID
+prompt (a program can't press a finger on the sensor; see check F10 in
+`docs/RELEASE_CHECKLIST.md`). The installer and
 uninstaller are covered on Linux by `scripts/release/install-test.sh`.

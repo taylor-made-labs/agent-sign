@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io::{BufRead, BufReader, IsTerminal, Write};
+use std::io::{BufRead, BufReader};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
@@ -20,6 +20,10 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use clap::{Parser, Subcommand};
 
+use agent_sign::approval::{
+    AUTH_TIMEOUT, Approval, MAX_PENDING_REQUESTS, RefusalBackoff, auth_reason, confirm,
+    has_unsafe_display_chars, platform_authenticator,
+};
 use agent_sign::config::Config;
 use agent_sign::crypto::AgentKeyPair;
 use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy};
@@ -70,6 +74,8 @@ struct DaemonState {
     /// Approval requests waiting for the person, one per repository and
     /// branch, keyed by `pending_key`.
     pending: HashMap<String, Arc<PendingAsk>>,
+    /// Holds new requests back after a refused one (see `RefusalBackoff`).
+    backoff: RefusalBackoff,
 }
 
 /// One approval request waiting for the person. Every commit asking for the
@@ -138,25 +144,52 @@ fn wait_for_answer(ask: &PendingAsk, stream: &UnixStream) -> Option<Response> {
     }
 }
 
-/// Runs a dialog program and waits for it, unless `cancel` is set first, in
-/// which case the program (and so its dialog) is stopped and `None` returned.
-fn run_cancellable(mut cmd: Command, cancel: &AtomicBool) -> Option<std::process::Output> {
+/// Why a dialog program didn't give an answer.
+enum RunEnd {
+    /// `cancel` was set, so the program was stopped.
+    Cancelled,
+    /// It was still open after `timeout`, so it was stopped: no answer is a
+    /// denial.
+    TimedOut,
+    /// It couldn't be started, or its result couldn't be read.
+    Failed,
+}
+
+/// Runs a dialog program and waits for it, unless `cancel` is set first or
+/// `timeout` passes, in which case the program (and so its dialog) is stopped.
+#[cfg_attr(
+    not(any(target_os = "macos", feature = "test-authenticator")),
+    allow(dead_code)
+)]
+fn run_cancellable(
+    mut cmd: Command,
+    cancel: &AtomicBool,
+    timeout: Duration,
+) -> Result<std::process::Output, RunEnd> {
     let mut child = cmd
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .ok()?;
+        .map_err(|_| RunEnd::Failed)?;
+    let deadline = Instant::now() + timeout;
     loop {
-        if cancel.load(Ordering::SeqCst) {
+        let stop = if cancel.load(Ordering::SeqCst) {
+            Some(RunEnd::Cancelled)
+        } else if Instant::now() >= deadline {
+            Some(RunEnd::TimedOut)
+        } else {
+            None
+        };
+        if let Some(end) = stop {
             let _ = child.kill();
             let _ = child.wait();
-            return None;
+            return Err(end);
         }
         match child.try_wait() {
-            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(Some(_)) => return child.wait_with_output().map_err(|_| RunEnd::Failed),
             Ok(None) => std::thread::sleep(Duration::from_millis(100)),
-            Err(_) => return None,
+            Err(_) => return Err(RunEnd::Failed),
         }
     }
 }
@@ -279,6 +312,7 @@ fn run_daemon(
     };
     let max_ceiling = config.security.max_ceiling_duration()?;
     let idle_limit = config.security.idle_limit_duration()?;
+    let refusal_backoff = config.security.refusal_backoff_duration()?;
     if config.security.lease_mode == agent_sign::config::LeaseMode::Process {
         eprintln!(
             "[agent-signd] lease_mode = \"process\" is not tied to a process yet: leases end after default_lease_duration ({}), as in \"timed\" mode.",
@@ -344,12 +378,17 @@ fn run_daemon(
         valid_tokens: HashMap::new(),
         auto_approve: effective_auto_approve,
         pending: HashMap::new(),
+        backoff: RefusalBackoff::new(refusal_backoff),
     }));
 
     let listener = UnixListener::bind(&socket_path)?;
     fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))?;
 
     println!("agent-signd running on {}", socket_path.display());
+    #[cfg(feature = "test-authenticator")]
+    eprintln!(
+        "[agent-signd] WARNING: this is a test build with a stand-in for the device owner (AGENT_SIGN_TEST_AUTH). It must never be installed."
+    );
 
     for stream in listener.incoming() {
         match stream {
@@ -419,6 +458,31 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 );
                 return;
             }
+            // What the person is shown must be what the agent really asked
+            // about: a path that exists and holds a git working tree, with
+            // no control, invisible or direction-changing characters in it
+            // or in the branch name. Refused before anyone is asked.
+            if has_unsafe_display_chars(&repo) || has_unsafe_display_chars(&branch) {
+                let _ = send_response(
+                    stream,
+                    &Response::Error {
+                        message: "the repository path or branch name contains control or invisible characters, so no approval was asked for".to_string(),
+                    },
+                );
+                return;
+            }
+            if !Path::new(&repo).join(".git").exists() {
+                let _ = send_response(
+                    stream,
+                    &Response::Error {
+                        message: format!(
+                            "couldn't identify the repository ('{}' isn't an existing git working tree), so no approval was asked for",
+                            repo
+                        ),
+                    },
+                );
+                return;
+            }
             // Check active lease state without holding lock across UI dialog
             let (blocked, covering, can_follow, auto_approve_val, terms, choices) = {
                 let mut st = state.lock().unwrap();
@@ -472,8 +536,15 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 // Nothing covers this commit: ask the person, outside the lock.
                 // Unattended approval only ever grants this repository.
                 if !auto_approve_val {
-                    let ask =
-                        join_or_open_request(&state, &repo, &branch, &intent, &terms, &choices);
+                    let ask = match join_or_open_request(
+                        &state, &repo, &branch, &intent, &terms, &choices,
+                    ) {
+                        Ok(ask) => ask,
+                        Err(message) => {
+                            let _ = send_response(stream, &Response::Error { message });
+                            return;
+                        }
+                    };
                     // `None`: the commit's program is gone, so there's no one
                     // to answer.
                     if let Some(response) = wait_for_answer(&ask, stream) {
@@ -664,12 +735,25 @@ fn join_or_open_request(
     intent: &str,
     terms: &agent_sign::lease::TermsText,
     choices: &[(Coverage, String)],
-) -> Arc<PendingAsk> {
+) -> Result<Arc<PendingAsk>, String> {
     let key = pending_key(repo, branch);
     let mut st = state.lock().unwrap();
     if let Some(ask) = st.pending.get(&key) {
         ask.waiters.fetch_add(1, Ordering::SeqCst);
-        return Arc::clone(ask);
+        return Ok(Arc::clone(ask));
+    }
+    // A new request: not while approvals are being held back after a
+    // refusal, and not past the number that may be open at once.
+    if let Some(wait) = st.backoff.remaining(Instant::now()) {
+        return Err(format!(
+            "agent-sign is not asking again for {} more seconds: the last approval request was refused, and requests are held back after a refusal so that a prompt can't be repeated until someone gives in",
+            wait.as_secs() + 1
+        ));
+    }
+    if st.pending.len() >= MAX_PENDING_REQUESTS {
+        return Err(format!(
+            "agent-sign already has {MAX_PENDING_REQUESTS} approval requests waiting for an answer, so it is not asking about more (see `agent-sign pending`)"
+        ));
     }
     let ask = Arc::new(PendingAsk {
         id: uuid::Uuid::new_v4().simple().to_string()[..8].to_string(),
@@ -702,11 +786,22 @@ fn join_or_open_request(
         // can never be followed by a grant.
         let response = {
             let mut st = state.lock().unwrap();
-            let approval = if asking.denied_by_command.load(Ordering::SeqCst) {
+            let by_command = asking.denied_by_command.load(Ordering::SeqCst);
+            let approval = if by_command {
                 Approval::Denied
             } else {
                 approval
             };
+            // A refused prompt holds the next one back; an approval clears it.
+            // A deny the person typed in a terminal (`agent-sign deny`) is
+            // not a refused prompt.
+            match &approval {
+                Approval::Approved(_) => st.backoff.record_approval(),
+                Approval::Denied | Approval::NotAuthenticated(_) if !by_command => {
+                    st.backoff.record_refusal(Instant::now())
+                }
+                _ => {}
+            }
             let response = match approval {
                 Approval::Approved(coverage) => {
                     match st
@@ -732,80 +827,112 @@ fn join_or_open_request(
         *asking.outcome.lock().unwrap() = Some(response);
         asking.done.notify_all();
     });
-    ask
+    Ok(ask)
 }
 
-/// The person's answer to a lease request, or that there was no way to ask.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Approval {
-    /// Approved, covering what the person chose.
-    Approved(Coverage),
+/// What the choosing step produced, before the owner is authenticated.
+enum Selection {
+    /// The person picked this coverage.
+    Chosen(Coverage),
+    /// Deny, a closed dialog, nothing picked, no answer in time, or an answer
+    /// that matched no choice.
     Denied,
-    /// No dialog could be shown and the service has no terminal: nobody was
-    /// asked, so the lease is refused (failing closed).
-    NoWayToAsk,
-    /// The dialog was closed because every commit waiting on it had gone.
+    /// Closed because every commit waiting on it had gone.
     Withdrawn,
-}
-
-impl Approval {
-    /// The error to send back for a refusal, or `None` if approved. The two
-    /// refusals are worded differently so that a headless machine doesn't
-    /// report that the person said no.
-    fn refusal(&self) -> Option<String> {
-        match self {
-            Approval::Approved(_) => None,
-            Approval::Denied => Some("the person denied the signing lease".to_string()),
-            Approval::NoWayToAsk => Some(NO_WAY_TO_ASK.to_string()),
-            Approval::Withdrawn => Some(
-                "the approval request was withdrawn: every commit waiting on it had gone"
-                    .to_string(),
-            ),
-        }
-    }
-
-    /// Reads a dialog's answer: the label of one of the choices offered is
-    /// approval of that coverage; anything else is a denial, so an answer
-    /// that can't be matched never approves more than was shown.
-    fn from_answer(answer: &str, choices: &[(Coverage, String)]) -> Approval {
-        let answer = answer.trim();
-        choices
-            .iter()
-            .find(|(_, label)| label == answer)
-            .map_or(Approval::Denied, |(coverage, _)| {
-                Approval::Approved(coverage.clone())
-            })
-    }
-}
-
-/// Sent back when the service couldn't ask the person, so the agent (and the
-/// person reading its output) learns why and what to do.
-const NO_WAY_TO_ASK: &str = "agent-sign couldn't ask you to approve a lease: there is no desktop session for a dialog, and the service has no terminal. On a machine without a screen, see \"Headless machines\" in docs/INSTALL.md";
-
-/// Text for a dialog that reads markup (zenity's Pango): `&`, `<`, `>` and
-/// quotes become entities, so they show as written.
-#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
-fn escape_markup(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
+    /// No dialog could be shown here.
+    Unavailable,
 }
 
 /// A string as an AppleScript string literal.
-#[cfg(target_os = "macos")]
+#[cfg(any(target_os = "macos", feature = "test-authenticator"))]
 fn applescript_string(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// The program that shows the coverage dialog: `osascript` on macOS. Test
+/// builds (and only they) can name a stand-in in `AGENT_SIGN_TEST_DIALOG`, so
+/// the service's whole path can be tested on any system. Elsewhere there is
+/// none: a dialog any program can click would let an agent approve its own
+/// lease, and Linux has no authenticator to follow one.
+fn dialog_program() -> Option<std::ffi::OsString> {
+    #[cfg(feature = "test-authenticator")]
+    if let Some(program) = std::env::var_os("AGENT_SIGN_TEST_DIALOG") {
+        return Some(program);
+    }
+    #[cfg(target_os = "macos")]
+    return Some("osascript".into());
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
+/// The list dialog, which only picks the coverage. Nothing is preselected and
+/// its default action is Deny: the person must pick a coverage and press
+/// Continue, and a pick alone approves nothing, since the owner is
+/// authenticated afterwards. (A click is not proof of a person: any program
+/// that controls the screen can click.) `choose from list` can't change which
+/// button Return presses, so the button that moves on is named "Continue" and
+/// stays disabled until a choice is made. It gives up, as a denial, after
+/// the same time the authentication is given.
+fn select_with_dialog(
+    prompt_text: &str,
+    choices: &[(Coverage, String)],
+    cancel: &AtomicBool,
+) -> Selection {
+    #[cfg(not(any(target_os = "macos", feature = "test-authenticator")))]
+    {
+        let _ = (prompt_text, choices, cancel);
+        Selection::Unavailable
+    }
+    #[cfg(any(target_os = "macos", feature = "test-authenticator"))]
+    {
+        let Some(program) = dialog_program() else {
+            return Selection::Unavailable;
+        };
+        let items: Vec<String> = choices.iter().map(|(_, l)| applescript_string(l)).collect();
+        let script = format!(
+            "choose from list {{{}}} with title \"agent-sign\" with prompt {} OK button name \"Continue\" cancel button name \"Deny\" without empty selection allowed",
+            items.join(", "),
+            applescript_string(prompt_text),
+        );
+        let mut dialog = Command::new(program);
+        dialog.arg("-e").arg(&script);
+        match run_cancellable(dialog, cancel, AUTH_TIMEOUT) {
+            Ok(output) => {
+                let res = String::from_utf8_lossy(&output.stdout);
+                // Any answer is the person's; an empty one with a failure
+                // means no dialog could be shown.
+                if !res.trim().is_empty() || output.status.success() {
+                    return match Approval::selection_from_answer(&res, choices) {
+                        Some(coverage) => Selection::Chosen(coverage),
+                        None => Selection::Denied,
+                    };
+                }
+                Selection::Unavailable
+            }
+            Err(RunEnd::Cancelled) => Selection::Withdrawn,
+            Err(RunEnd::TimedOut) => Selection::Denied,
+            Err(RunEnd::Failed) => Selection::Unavailable,
+        }
+    }
+}
+
+/// One approval prompt at a time, across the whole service: several open at
+/// once would each need a touch, and an agent could time one for a moment
+/// the person expects a Touch ID prompt anyway.
+static PROMPT_LOCK: Mutex<()> = Mutex::new(());
+
 /// Asks the person to approve a lease, showing its fixed terms and letting
-/// them choose what it covers (`choices`, the first being the default).
-/// The repository and branch are the ones git reports for the commit; the
-/// agent's stated reason isn't shown, since until agents send a real one it
-/// was always the same placeholder. It's one dialog with the narrowest choice
-/// preselected,
-/// so approving takes one click, as before scopes existed.
+/// them choose what it covers (`choices`). The repository and branch were
+/// checked before this (an existing git working tree, no control or
+/// invisible characters).
+///
+/// Approval takes two things, and a click is not one a program can supply:
+/// the person's choice, then the owner's authentication ([`confirm`]: Touch
+/// ID or the login password on macOS). Cancel, failure, timeout or no
+/// authenticator at all denies. Where there is no authenticator (Linux)
+/// nobody is asked and the lease is refused: there is no terminal fallback,
+/// because an agent can drive its own pseudo-terminal or type into the
+/// person's, so a terminal answer proves nothing.
 fn request_human_approval(
     repo: &str,
     branch: &str,
@@ -813,162 +940,62 @@ fn request_human_approval(
     choices: &[(Coverage, String)],
     cancel: &AtomicBool,
 ) -> Approval {
-    let prompt_text = format!(
-        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nBranches: {}\nEnds: {}\n\nChoose what this approval covers. These terms are fixed when you approve. They never grow.",
-        repo, branch, terms.covers, terms.ends
-    );
-    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
-
-    // 1. If on macOS, a list dialog: Approve with a choice selected, or Deny
-    // (which answers "false").
-    #[cfg(target_os = "macos")]
-    {
-        let items: Vec<String> = labels.iter().map(|l| applescript_string(l)).collect();
-        let script = format!(
-            "choose from list {{{}}} with title \"agent-sign\" with prompt {} default items {{{}}} OK button name \"Approve\" cancel button name \"Deny\"",
-            items.join(", "),
-            applescript_string(&prompt_text),
-            items[0]
+    let Some(authenticator) = platform_authenticator() else {
+        eprintln!(
+            "[agent-signd] No way to confirm an approval on this machine; signing lease denied. There is no clickable or terminal fallback: anything that can click or type could approve its own lease."
         );
+        eprintln!(
+            "[agent-signd] Hint: Linux can't approve leases yet. For an unattended machine you trust, use --auto-approve or AGENT_SIGN_AUTO_APPROVE=1."
+        );
+        return Approval::NoWayToAsk;
+    };
 
-        let mut osascript = Command::new("osascript");
-        osascript.arg("-e").arg(&script);
-        match run_cancellable(osascript, cancel) {
-            Some(output) => {
-                let res = String::from_utf8_lossy(&output.stdout);
-                // Any answer is the person's; an empty one with a failure
-                // means no dialog could be shown, so try the next way to ask.
-                if !res.trim().is_empty() || output.status.success() {
-                    return Approval::from_answer(&res, choices);
-                }
-            }
-            None if cancel.load(Ordering::SeqCst) => return Approval::Withdrawn,
-            None => {}
-        }
-    }
-
-    // 2. If on Linux with active graphical session (X11 / Wayland)
-    #[cfg(target_os = "linux")]
-    {
-        if std::env::var_os("DISPLAY").is_some() || std::env::var_os("WAYLAND_DISPLAY").is_some() {
-            let mut zenity_args = vec![
-                "--list".to_string(),
-                "--radiolist".to_string(),
-                "--title=agent-sign".to_string(),
-                // zenity reads --text as Pango markup: escaped, so a path or
-                // branch with & or < can't blank or reshape the dialog.
-                format!("--text={}", escape_markup(&prompt_text)),
-                "--column= ".to_string(),
-                "--column=Covers".to_string(),
-                "--ok-label=Approve".to_string(),
-                "--cancel-label=Deny".to_string(),
-                "--width=640".to_string(),
-                "--height=420".to_string(),
-            ];
-            for (i, label) in labels.iter().enumerate() {
-                zenity_args.push(if i == 0 { "TRUE" } else { "FALSE" }.to_string());
-                zenity_args.push(label.to_string());
-            }
-            let mut zenity = Command::new("zenity");
-            zenity.args(&zenity_args);
-            let zenity_output = run_cancellable(zenity, cancel);
-            if zenity_output.is_none() && cancel.load(Ordering::SeqCst) {
-                return Approval::Withdrawn;
-            }
-            if let Some(output) = zenity_output {
-                // zenity exits 0 with the chosen label, and 1 for Deny or a
-                // closed window; any other failure (no display, say) falls
-                // through to the terminal, as before.
-                match output.status.code() {
-                    Some(0) => {
-                        return Approval::from_answer(
-                            &String::from_utf8_lossy(&output.stdout),
-                            choices,
-                        );
-                    }
-                    Some(1) => return Approval::Denied,
-                    _ => {}
-                }
-            } else {
-                let mut kdialog_args = vec![
-                    "--title".to_string(),
-                    "agent-sign".to_string(),
-                    "--radiolist".to_string(),
-                    // Not escaped: kdialog (Qt) treats text as rich only if
-                    // a tag comes before the first line break, and the first
-                    // line here is always the same plain sentence, so the
-                    // text shows as written.
-                    prompt_text.clone(),
-                ];
-                for (i, label) in labels.iter().enumerate() {
-                    kdialog_args.push((i + 1).to_string());
-                    kdialog_args.push(label.to_string());
-                    kdialog_args.push(if i == 0 { "on" } else { "off" }.to_string());
-                }
-                let mut kdialog = Command::new("kdialog");
-                kdialog.args(&kdialog_args);
-                let kdialog_output = run_cancellable(kdialog, cancel);
-                if kdialog_output.is_none() && cancel.load(Ordering::SeqCst) {
+    // Wait for our turn, giving up if every commit asking has gone.
+    let _one_at_a_time = loop {
+        match PROMPT_LOCK.try_lock() {
+            Ok(guard) => break guard,
+            Err(std::sync::TryLockError::Poisoned(e)) => break e.into_inner(),
+            Err(std::sync::TryLockError::WouldBlock) => {
+                if cancel.load(Ordering::SeqCst) {
                     return Approval::Withdrawn;
                 }
-                if let Some(output) = kdialog_output {
-                    // kdialog prints the chosen tag (the choice's number).
-                    let tag = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    let chosen = tag
-                        .parse::<usize>()
-                        .ok()
-                        .and_then(|n| n.checked_sub(1))
-                        .and_then(|i| choices.get(i));
-                    return match (output.status.success(), chosen) {
-                        (true, Some((coverage, _))) => Approval::Approved(coverage.clone()),
-                        _ => Approval::Denied,
-                    };
-                }
+                std::thread::sleep(Duration::from_millis(100));
             }
         }
+    };
+    if cancel.load(Ordering::SeqCst) {
+        return Approval::Withdrawn;
     }
 
-    // 3. Fallback to interactive terminal prompt if stdin is a TTY. One
-    // prompt at a time: two at once would each take the next line typed,
-    // so an answer meant for one request could approve another.
-    if std::io::stdin().is_terminal() {
-        static TERMINAL_PROMPT: Mutex<()> = Mutex::new(());
-        let _one_at_a_time = TERMINAL_PROMPT.lock().unwrap_or_else(|e| e.into_inner());
-        eprintln!("\n========================================================");
-        eprintln!(" 🔏 agent-sign approval request");
-        eprintln!("========================================================");
-        eprintln!("Repository: {}", repo);
-        eprintln!("Branch now: {}", branch);
-        eprintln!("Branches:   {}", terms.covers);
-        eprintln!("Ends:       {}", terms.ends);
-        eprintln!("========================================================");
-        eprintln!("These terms are fixed when you approve. They never grow.");
-        for (i, label) in labels.iter().enumerate() {
-            eprintln!("  {}) {}", i + 1, label);
-        }
-        eprint!(
-            "Approve, covering which? [1-{}, y = 1, N = deny]: ",
-            labels.len()
-        );
-        let _ = std::io::stderr().flush();
-
-        let mut input = String::new();
-        if std::io::stdin().read_line(&mut input).is_ok() {
-            let trimmed = input.trim().to_lowercase();
-            let index = match trimmed.as_str() {
-                "y" | "yes" => Some(0),
-                n => n.parse::<usize>().ok().and_then(|n| n.checked_sub(1)),
-            };
-            return match index.and_then(|i| choices.get(i)) {
-                Some((coverage, _)) => Approval::Approved(coverage.clone()),
-                None => Approval::Denied,
-            };
-        }
-    }
-
-    eprintln!("[agent-signd] No interactive approval backend available; signing lease denied.");
-    eprintln!(
-        "[agent-signd] Hint: In headless environments, containers, or CI, run with --auto-approve or AGENT_SIGN_AUTO_APPROVE=1 (AGENT_SIGN_AUTO_APPROVE=1 also works)"
+    // Show the real place, not the spelling the agent used for it.
+    let shown_repo = fs::canonicalize(repo)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| repo.to_string());
+    let prompt_text = format!(
+        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nBranches: {}\nEnds: {}\n\nChoose what this approval covers, then Continue. You will then be asked to confirm that it is you (Touch ID or your password); nothing is approved until you do. These terms are fixed when you approve. They never grow.",
+        shown_repo, branch, terms.covers, terms.ends
     );
-    Approval::NoWayToAsk
+    match select_with_dialog(&prompt_text, choices, cancel) {
+        Selection::Withdrawn => Approval::Withdrawn,
+        Selection::Denied => Approval::Denied,
+        Selection::Unavailable => {
+            eprintln!(
+                "[agent-signd] No dialog could be shown; signing lease denied. Run the service in your desktop session."
+            );
+            Approval::NoWayToAsk
+        }
+        Selection::Chosen(coverage) => {
+            let label = choices
+                .iter()
+                .find(|(c, _)| *c == coverage)
+                .map(|(_, l)| l.as_str())
+                .unwrap_or("");
+            confirm(
+                Some(coverage),
+                authenticator.as_ref(),
+                &auth_reason(&shown_repo, branch, label),
+                cancel,
+            )
+        }
+    }
 }

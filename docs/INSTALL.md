@@ -12,8 +12,10 @@ service). There are no prebuilt releases yet, so you build it from source.
   verify SSH signatures). On macOS both come with the Xcode command line
   tools (`xcode-select --install`), as does `python3`.
 - `python3` (the installer uses it to update editor settings)
-- On Linux, for the approval dialog: a desktop session and `zenity` or
-  `kdialog`. Without them, see [Headless machines](#headless-machines-servers-containers-ci).
+- On macOS, to approve leases: a desktop session, and Touch ID or a login
+  password on the Mac.
+- On Linux there is no approval dialog (see
+  [Headless machines](#headless-machines-servers-containers-ci)).
 - Optional: the GitHub CLI (`gh`), logged in, so the installer can register
   the agent's signing key on your account
 
@@ -45,7 +47,7 @@ It checks every piece and says how to fix anything that's wrong.
 
 To see it work end to end, run `./scripts/demo-sandbox.sh` from the `agent-sign`
 directory. It makes two signed agent commits in a throwaway repository
-(you'll see the lease dialog once), shows one refused by a local rule, then
+(you'll see the lease dialog and the Touch ID or password prompt once), shows one refused by a local rule, then
 deletes the repository and revokes its lease.
 
 When you try it in your own repository, have the agent work on a branch
@@ -86,9 +88,15 @@ Two consequences worth knowing:
 With no screen, `agent-signd` can't ask you (it runs in the background, so a
 terminal you're logged in to over SSH doesn't help), so it refuses new
 leases (failing closed), and the agent sees "agent-sign couldn't ask you to
-approve a lease". To use agent-sign anyway, turn on auto-approval, which grants
-every lease without asking. Use it only where every process that can reach
-the service is trusted.
+approve a lease". **Linux machines are in the same position**: Linux has no platform
+authenticator in agent-sign yet, and the two ways it could ask anyway both let
+an agent approve for itself (a dialog any program can click, and a terminal
+prompt an agent can drive through its own pseudo-terminal or by typing into
+yours). So the service refuses every new lease there. (Earlier builds showed a
+`zenity` or `kdialog` dialog or a terminal prompt; both were removed for this
+reason.) To use agent-sign anyway, turn on auto-approval, which grants every
+lease without asking. Use it only where every process that can reach the
+service is trusted.
 
 1. In `~/.agent-sign/config.toml`, under `[security]`, set `auto_approve = true`. A repository's `.agent-sign.toml`
    can't turn it on.
@@ -101,7 +109,8 @@ Alternatively, set `AGENT_SIGN_AUTO_APPROVE=1` in the service's environment
 
 On Linux, a user service stops when you log out unless lingering is on:
 `loginctl enable-linger "$USER"` (some systems allow this only for an
-administrator). Approving from another device is planned, not built.
+administrator). Approving from another device, such as a passkey on your
+phone, is planned (it belongs to the agentic-credentials work), not built.
 
 ## Checking an agent commit
 

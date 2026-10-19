@@ -234,42 +234,30 @@ fn write_script(path: &Path, body: &str) {
     fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
-/// Stand-in dialogs that append a line to `log` each time they're shown and
-/// answer with `choice` (the label of a scope), or deny when it's `None`.
+/// A stand-in dialog that appends a line to `log` each time it's shown and
+/// answers with `choice` (the label of a scope), or denies when it's `None`
+/// (as the macOS list dialog does, by printing "false").
 fn stand_in_dialogs(dir: &Path, log: &Path, choice: Option<&str>) -> PathBuf {
     let fakebin = dir.join("fakebin");
     fs::create_dir_all(&fakebin).unwrap();
     let log = log.display();
-    let (mac, zenity, kdialog_tag) = match choice {
-        Some(label) => {
-            let tag = if label.starts_with("This repository") {
-                "repository"
-            } else if label.starts_with("Every repository under") {
-                "folder"
-            } else {
-                "everywhere"
-            };
-            (
-                format!("echo '{label}'"),
-                format!("echo '{label}'"),
-                format!("echo {tag}"),
-            )
-        }
-        None => ("echo false".into(), "exit 1".into(), "exit 1".into()),
+    let answer = match choice {
+        Some(label) => format!("echo '{label}'"),
+        None => "echo false".to_string(),
     };
     write_script(
-        &fakebin.join("osascript"),
-        &format!("echo shown >> '{log}'\n{mac}"),
-    );
-    write_script(
-        &fakebin.join("zenity"),
-        &format!("echo shown >> '{log}'\n{zenity}"),
-    );
-    write_script(
-        &fakebin.join("kdialog"),
-        &format!("echo shown >> '{log}'\n{kdialog_tag}"),
+        &fakebin.join("dialog"),
+        &format!("echo shown >> '{log}'\n{answer}"),
     );
     fakebin
+}
+
+/// A directory that looks like a git working tree (the service checks that
+/// before asking about a repository). Returns its path.
+fn fake_repo(root: &Path, rel: &str) -> String {
+    let repo = root.join(rel);
+    fs::create_dir_all(repo.join(".git")).unwrap();
+    repo.display().to_string()
 }
 
 fn real_git_dir() -> &'static str {
@@ -293,9 +281,12 @@ fn start_service(home: &Path, fakebin: &Path) -> Service {
         .arg(&socket)
         .env("HOME", home)
         .env("PATH", format!("{}:{}", fakebin.display(), real_git_dir()))
-        .env("DISPLAY", ":99")
-        .env_remove("WAYLAND_DISPLAY")
-        .env_remove("AGENT_SIGN_AUTO_APPROVE")
+        // The stand-in dialog picks the coverage; this stands in for the owner.
+        .env("AGENT_SIGN_TEST_AUTH", "allow")
+        .env("AGENT_SIGN_TEST_DIALOG", fakebin.join("dialog"))
+        // These tests deny and ask again at once; the hold-back after a
+        // refusal has its own tests.
+        .env("AGENT_SIGN_REFUSAL_BACKOFF", "none")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -357,9 +348,10 @@ fn one_approval_then_twenty_commits_ask_nothing_more() {
     let log = dir.path().join("dialog.log");
     let fakebin = stand_in_dialogs(dir.path(), &log, Some("This repository only"));
     let svc = start_service(dir.path(), &fakebin);
+    let app = fake_repo(&dir.path().join("w"), "dev/app");
 
     for i in 0..20 {
-        commit_through_service(&svc.socket, "/w/dev/app", "feat/a")
+        commit_through_service(&svc.socket, &app, "feat/a")
             .unwrap_or_else(|e| panic!("commit {i} refused: {e}"));
     }
     assert_eq!(times_shown(&log), 1);
@@ -369,16 +361,25 @@ fn one_approval_then_twenty_commits_ask_nothing_more() {
 fn choosing_the_folder_covers_the_next_repository_without_asking() {
     let dir = tempdir().unwrap();
     let log = dir.path().join("dialog.log");
-    let fakebin = stand_in_dialogs(dir.path(), &log, Some("Every repository under /w/dev"));
+    let w = dir.path().join("w");
+    let dev = w.join("dev");
+    let fakebin = stand_in_dialogs(
+        dir.path(),
+        &log,
+        Some(&format!("Every repository under {}", dev.display())),
+    );
     let svc = start_service(dir.path(), &fakebin);
+    let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
+    let elsewhere = fake_repo(&w, "elsewhere/repo");
 
-    commit_through_service(&svc.socket, "/w/dev/app", "feat/a").unwrap();
-    commit_through_service(&svc.socket, "/w/dev/other", "feat/b").unwrap();
+    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
+    commit_through_service(&svc.socket, &other, "feat/b").unwrap();
     assert_eq!(times_shown(&log), 1);
 
     // A repository outside the folder asks again. (The stand-in answers with
-    // /w/dev, which isn't offered there, so that answer counts as a denial.)
-    let _ = commit_through_service(&svc.socket, "/w/elsewhere/repo", "feat/a");
+    // the dev folder, which isn't offered there, so that answer counts as a
+    // denial.)
+    let _ = commit_through_service(&svc.socket, &elsewhere, "feat/a");
     assert_eq!(times_shown(&log), 2);
 }
 
@@ -388,9 +389,11 @@ fn choosing_this_repository_asks_again_for_the_next_one() {
     let log = dir.path().join("dialog.log");
     let fakebin = stand_in_dialogs(dir.path(), &log, Some("This repository only"));
     let svc = start_service(dir.path(), &fakebin);
+    let w = dir.path().join("w");
+    let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
 
-    commit_through_service(&svc.socket, "/w/dev/app", "feat/a").unwrap();
-    commit_through_service(&svc.socket, "/w/dev/other", "feat/a").unwrap();
+    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
+    commit_through_service(&svc.socket, &other, "feat/a").unwrap();
     assert_eq!(times_shown(&log), 2);
 }
 
@@ -400,8 +403,9 @@ fn denying_in_the_scope_dialog_refuses_and_grants_nothing() {
     let log = dir.path().join("dialog.log");
     let fakebin = stand_in_dialogs(dir.path(), &log, None);
     let svc = start_service(dir.path(), &fakebin);
+    let app = fake_repo(&dir.path().join("w"), "dev/app");
 
-    let err = commit_through_service(&svc.socket, "/w/dev/app", "feat/a").unwrap_err();
+    let err = commit_through_service(&svc.socket, &app, "feat/a").unwrap_err();
     assert!(err.contains("the person denied"), "{err}");
     let listed = send_request(&svc.socket, &Request::ListLeases).unwrap();
     match listed {
@@ -420,10 +424,11 @@ fn a_dialog_answer_that_matches_no_choice_is_a_denial() {
         Some("Every repository under /not/the/folder"),
     );
     let svc = start_service(dir.path(), &fakebin);
+    let app = fake_repo(&dir.path().join("w"), "dev/app");
 
     // The stand-in's folder label doesn't match the one offered for this
     // repository, so it can't be read as approval of anything.
-    let err = commit_through_service(&svc.socket, "/w/dev/app", "feat/a").unwrap_err();
+    let err = commit_through_service(&svc.socket, &app, "feat/a").unwrap_err();
     assert!(err.contains("the person denied"), "{err}");
 }
 
@@ -431,9 +436,18 @@ fn a_dialog_answer_that_matches_no_choice_is_a_denial() {
 fn leases_shows_what_a_wide_lease_covers_and_revoke_takes_the_folder_or_everywhere() {
     let dir = tempdir().unwrap();
     let log = dir.path().join("dialog.log");
-    let fakebin = stand_in_dialogs(dir.path(), &log, Some("Every repository under /w/dev"));
+    // The canonical path, as the git wrapper sends it, because `agent-sign
+    // revoke <folder>` canonicalizes the folder it is given.
+    let w = fs::canonicalize(dir.path()).unwrap().join("w");
+    let dev = w.join("dev").display().to_string();
+    let fakebin = stand_in_dialogs(
+        dir.path(),
+        &log,
+        Some(&format!("Every repository under {dev}")),
+    );
     let svc = start_service(dir.path(), &fakebin);
-    commit_through_service(&svc.socket, "/w/dev/app", "feat/a").unwrap();
+    let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
+    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
 
     let cli = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_agent-sign"))
@@ -448,14 +462,13 @@ fn leases_shows_what_a_wide_lease_covers_and_revoke_takes_the_folder_or_everywhe
 
     let listed = String::from_utf8_lossy(&cli(&["leases"]).stdout).to_string();
     assert!(
-        listed.contains("/w/dev  (every repository under /w/dev)"),
+        listed.contains(&format!("{dev}  (every repository under {dev})")),
         "{listed}"
     );
 
-    assert!(cli(&["revoke", "/w/dev"]).status.success());
+    assert!(cli(&["revoke", &dev]).status.success());
     assert!(
-        commit_through_service(&svc.socket, "/w/dev/other", "feat/a").is_err()
-            || times_shown(&log) == 2,
+        commit_through_service(&svc.socket, &other, "feat/a").is_err() || times_shown(&log) == 2,
         "after revoking, the folder asks again"
     );
     assert!(!cli(&["revoke", "/w/nothing-here"]).status.success());

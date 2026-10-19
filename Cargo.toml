@@ -42,6 +42,30 @@ rand = "0.8"
 base64 = "0.22"
 zeroize = "1.8"
 
+# macOS only: the bridge to the system's LocalAuthentication framework
+# (Touch ID, Apple Watch, or the login password), which the service uses to
+# confirm that the device's owner, not a program, approved a lease. The objc2
+# family is the maintained, widely used set of Rust bindings to Apple's
+# frameworks (MIT, or Zlib / Apache-2.0 / MIT for the generated bindings); a
+# hand-written Objective-C shim would need a C compiler at build time and
+# more unsafe code to audit than these typed bindings. Exact versions are
+# pinned here as well as in Cargo.lock, so an upgrade is its own change.
+# Only the features the bridge calls are on.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.5"
+block2 = "=0.6.2"
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString", "NSError"] }
+objc2-local-authentication = { version = "=0.3.2", default-features = false, features = ["std", "block2", "LAContext", "LAError"] }
+
+[features]
+# Lets tests stand in for the owner's authentication (`AGENT_SIGN_TEST_AUTH`).
+# Never on in a normal build: the dev-dependency below turns it on for
+# `cargo test` and `cargo clippy --all-targets` only.
+test-authenticator = []
+
 [dev-dependencies]
 tempfile = "3.12"
+# Turns `test-authenticator` on for the test builds of the service, and only
+# those: `cargo build [--release]` never has it.
+agent-sign = { path = ".", features = ["test-authenticator"] }
 

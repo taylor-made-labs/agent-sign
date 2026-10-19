@@ -149,6 +149,12 @@ pub struct SecurityConfig {
     /// it, such as "7d", or "none" to turn it off.
     #[serde(default = "default_end_after_idle")]
     pub end_after_idle: String,
+    /// How long approval requests are held back after one is refused (Deny, a
+    /// cancelled or failed Touch ID, a timeout), doubling with each refusal in
+    /// a row, such as "60s"; "none" turns it off. It stops an agent from
+    /// keeping a prompt coming until a reflexive touch gives in.
+    #[serde(default = "default_refusal_backoff")]
+    pub refusal_backoff: String,
     #[serde(default = "default_block_branches")]
     pub block_branches: Vec<String>,
     #[serde(default)]
@@ -179,6 +185,10 @@ fn default_max_lease_ceiling() -> String {
 /// weekend, short enough that a forgotten approval doesn't stay open.
 fn default_end_after_idle() -> String {
     "7d".to_string()
+}
+
+fn default_refusal_backoff() -> String {
+    "60s".to_string()
 }
 
 fn default_block_branches() -> Vec<String> {
@@ -215,6 +225,7 @@ impl Default for SecurityConfig {
             default_lease_duration: default_lease_duration_str(),
             max_lease_ceiling: default_max_lease_ceiling(),
             end_after_idle: default_end_after_idle(),
+            refusal_backoff: default_refusal_backoff(),
             block_branches: default_block_branches(),
             allow_main_branch: false,
             allow_branch_switching: true,
@@ -247,6 +258,23 @@ impl SecurityConfig {
             parse_duration_string(s).map(Some).ok_or_else(|| {
                 format!(
                     "end_after_idle = \"{}\" is not a duration; use a number with s, m, h or d (for example \"7d\"), or \"none\"",
+                    s
+                )
+            })
+        }
+    }
+
+    /// The hold-back after a refused approval (`refusal_backoff`); zero when
+    /// it's "none". A value that isn't a duration stops the service, as the
+    /// other duration settings do, rather than silently turning the guard off.
+    pub fn refusal_backoff_duration(&self) -> Result<Duration, String> {
+        let s = self.refusal_backoff.trim();
+        if s.is_empty() || s.eq_ignore_ascii_case("none") {
+            Ok(Duration::ZERO)
+        } else {
+            parse_duration_string(s).ok_or_else(|| {
+                format!(
+                    "refusal_backoff = \"{}\" is not a duration; use a number with s, m, h or d (for example \"60s\"), or \"none\"",
                     s
                 )
             })
@@ -416,6 +444,10 @@ impl Config {
 
         if let Some(val) = paths::env_var("END_AFTER_IDLE") {
             config.security.end_after_idle = val;
+        }
+
+        if let Some(val) = paths::env_var("REFUSAL_BACKOFF") {
+            config.security.refusal_backoff = val;
         }
 
         if let Some(val) = paths::env_var("MODE") {

@@ -92,17 +92,12 @@ impl Setup {
         let log = home.join("dialog.log");
         fs::write(&answer, THIS_REPOSITORY).unwrap();
         let (a, l) = (answer.display(), log.display());
-        // macOS's list dialog prints "false" for Deny; zenity exits 1.
+        // The list dialog prints "false" for Deny.
+        let dialog = fakebin.join("dialog");
         write_script(
-            &fakebin.join("osascript"),
+            &dialog,
             &format!(
                 "echo shown >> '{l}'\necho \"$@\" >> '{l}.text'\nread -r A < '{a}'\n[ \"$A\" = {DENY} ] && echo false || echo \"$A\""
-            ),
-        );
-        write_script(
-            &fakebin.join("zenity"),
-            &format!(
-                "echo shown >> '{l}'\necho \"$@\" >> '{l}.text'\nread -r A < '{a}'\n[ \"$A\" = {DENY} ] && exit 1\necho \"$A\""
             ),
         );
 
@@ -123,9 +118,12 @@ impl Setup {
             .arg(&self.socket)
             .env("HOME", &self.home)
             .env("PATH", &self.fakebin)
-            .env("DISPLAY", ":99")
-            .env_remove("WAYLAND_DISPLAY")
-            .env_remove("AGENT_SIGN_AUTO_APPROVE")
+            // The stand-in dialog picks the coverage; this stands in for the owner.
+            .env("AGENT_SIGN_TEST_AUTH", "allow")
+            .env("AGENT_SIGN_TEST_DIALOG", self.fakebin.join("dialog"))
+            // These tests deny and ask again at once; the hold-back after a
+            // refusal has its own tests.
+            .env("AGENT_SIGN_REFUSAL_BACKOFF", "none")
             .env_remove("AGENT_SIGN_AUTO_APPROVE")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -322,10 +320,13 @@ fn a_forged_or_reused_token_signs_nothing() {
     .unwrap();
     assert!(matches!(forged, Response::Error { .. }), "{forged:?}");
 
+    let w_r = s.home.join("w/r");
+    fs::create_dir_all(w_r.join(".git")).unwrap();
+    let w_r = w_r.display().to_string();
     let granted = send_request(
         &s.socket,
         &Request::RequestLease {
-            repo: "/w/r".into(),
+            repo: w_r.clone(),
             branch: "feat/a".into(),
             intent: "t".into(),
             duration_secs: None,
@@ -336,7 +337,7 @@ fn a_forged_or_reused_token_signs_nothing() {
     let Response::TokenIssued { token } = send_request(
         &s.socket,
         &Request::IssueToken {
-            repo: "/w/r".into(),
+            repo: w_r.clone(),
             branch: "feat/a".into(),
         },
     )
@@ -1135,16 +1136,13 @@ fn a_commit_through_an_alias_is_still_an_agent_commit() {
 
 #[test]
 fn a_path_with_markup_characters_is_shown_as_written() {
-    // zenity (Linux) reads its text as markup; an unescaped "&" blanks it.
+    // The dialog text is passed as one quoted string; "&" and "<" in a path
+    // must reach it unchanged.
     let s = Setup::new("", false);
     let repo = s.repo("R&D <lab>", "feat/a");
     assert!(s.agent_commit(&repo, "a.txt").status.success());
     let shown = s.dialog_text();
-    if cfg!(target_os = "linux") {
-        assert!(shown.contains("R&amp;D &lt;lab&gt;"), "{shown}");
-    } else {
-        assert!(shown.contains("R&D <lab>"), "{shown}");
-    }
+    assert!(shown.contains("R&D <lab>"), "{shown}");
 }
 
 // --- From the second security review (10 Oct) -------------------------------
