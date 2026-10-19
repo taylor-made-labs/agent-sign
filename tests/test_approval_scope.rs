@@ -1,16 +1,17 @@
-//! What one approval covers, chosen by the person in the approval dialog:
-//! this repository only, every repository under the folder that holds it, or
-//! every repository on this computer (release check F9). And that after one
-//! approval, further commits in that scope never ask again (check F2).
+//! What one approval covers (release check F9), and that after one approval,
+//! further commits in that coverage never ask again (check F2).
 //!
-//! The engine tests pin down the boundaries: a folder covers the
+//! The approval is one Touch ID prompt with no choice in it: it covers the
+//! narrowest thing, this branch of this repository, unless the config lets
+//! leases follow the agent between branches. The engine still honours folder
+//! and everywhere leases (saved earlier, so they keep working and can be
+//! revoked), and its tests pin down their boundaries: a folder covers the
 //! repositories inside it and nothing beside it, even a sibling whose name
 //! starts the same; the most specific lease applies; protected branches stay
-//! protected whatever the scope. The service tests use stand-in dialogs
-//! that record each time they're shown, so no real dialog can appear.
+//! protected whatever the scope. The service tests use a stand-in owner that
+//! records each reason it was shown, so no real prompt can appear.
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
@@ -21,6 +22,7 @@ use tempfile::tempdir;
 
 fn engine() -> LeaseEngine {
     LeaseEngine::new(LeasePolicy {
+        allow_branch_switching: true,
         max_commits_per_minute: 1000,
         ..LeasePolicy::default()
     })
@@ -194,28 +196,39 @@ fn leases_saved_before_scopes_existed_load_as_repository_leases() {
 }
 
 #[test]
-fn the_choices_offered_name_the_folder_and_drop_wide_scopes_when_branches_dont_follow() {
-    let p = LeasePolicy::default();
-    let choices = p.scope_choices("/w/dev/app");
-    let labels: Vec<&str> = choices.iter().map(|(_, l)| l.as_str()).collect();
+fn the_prompt_says_which_branches_the_lease_will_reach() {
+    use agent_sign::approval::BranchReach;
+    // The default is the narrowest: this branch only.
     assert_eq!(
-        labels,
-        [
-            "This repository only",
-            "Every repository under /w/dev",
-            "Every repository on this computer"
-        ]
+        LeasePolicy::default().branch_reach("feat/a"),
+        BranchReach::This("feat/a".to_string())
     );
-    assert_eq!(choices[1].0, Coverage::Folder("/w/dev".to_string()));
-
-    let narrow = LeasePolicy {
-        allow_branch_switching: false,
+    let following = LeasePolicy {
+        allow_branch_switching: true,
         ..LeasePolicy::default()
     };
-    assert_eq!(narrow.scope_choices("/w/dev/app").len(), 1);
+    assert_eq!(
+        following.branch_reach("feat/a"),
+        BranchReach::AnyUnprotected
+    );
+    let unprotected = LeasePolicy {
+        allow_branch_switching: true,
+        allow_main_branch: true,
+        ..LeasePolicy::default()
+    };
+    assert_eq!(unprotected.branch_reach("feat/a"), BranchReach::Any);
+    // A repo-wide lease scope follows branches whatever the switch says.
+    let repo_scope = LeasePolicy {
+        scope: agent_sign::config::LeaseScope::Repo,
+        ..LeasePolicy::default()
+    };
+    assert_eq!(
+        repo_scope.branch_reach("feat/a"),
+        BranchReach::AnyUnprotected
+    );
 }
 
-// --- The running service, with stand-in dialogs ---------------------------
+// --- The running service, with a stand-in owner ---------------------------
 
 struct Service {
     child: Child,
@@ -227,29 +240,6 @@ impl Drop for Service {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
-}
-
-fn write_script(path: &Path, body: &str) {
-    fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-}
-
-/// A stand-in dialog that appends a line to `log` each time it's shown and
-/// answers with `choice` (the label of a scope), or denies when it's `None`
-/// (as the macOS list dialog does, by printing "false").
-fn stand_in_dialogs(dir: &Path, log: &Path, choice: Option<&str>) -> PathBuf {
-    let fakebin = dir.join("fakebin");
-    fs::create_dir_all(&fakebin).unwrap();
-    let log = log.display();
-    let answer = match choice {
-        Some(label) => format!("echo '{label}'"),
-        None => "echo false".to_string(),
-    };
-    write_script(
-        &fakebin.join("dialog"),
-        &format!("echo shown >> '{log}'\n{answer}"),
-    );
-    fakebin
 }
 
 /// A directory that looks like a git working tree (the service checks that
@@ -267,12 +257,15 @@ fn real_git_dir() -> &'static str {
         .expect("git is needed for these tests")
 }
 
-fn start_service(home: &Path, fakebin: &Path) -> Service {
+/// Starts a service in `home` whose stand-in owner answers `owner`
+/// (`allow` or `fail`) and logs each reason it is shown to `home/auth.log`.
+/// `extra_config` is added under `[security]`.
+fn start_service(home: &Path, owner: &str, extra_config: &str) -> Service {
     let state = home.join(".agent-sign");
     fs::create_dir_all(&state).unwrap();
     fs::write(
         state.join("config.toml"),
-        "[security]\nmax_commits_per_minute = 1000\n",
+        format!("[security]\nmax_commits_per_minute = 1000\n{extra_config}"),
     )
     .unwrap();
     let socket = home.join("svc.sock");
@@ -280,11 +273,10 @@ fn start_service(home: &Path, fakebin: &Path) -> Service {
         .arg("--socket")
         .arg(&socket)
         .env("HOME", home)
-        .env("PATH", format!("{}:{}", fakebin.display(), real_git_dir()))
-        // The stand-in dialog picks the coverage; this stands in for the owner.
-        .env("AGENT_SIGN_TEST_AUTH", "allow")
-        .env("AGENT_SIGN_TEST_DIALOG", fakebin.join("dialog"))
-        // These tests deny and ask again at once; the hold-back after a
+        .env("PATH", real_git_dir())
+        .env("AGENT_SIGN_TEST_AUTH", owner)
+        .env("AGENT_SIGN_TEST_AUTH_LOG", home.join("auth.log"))
+        // These tests fail and ask again at once; the hold-back after a
         // refusal has its own tests.
         .env("AGENT_SIGN_REFUSAL_BACKOFF", "none")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
@@ -306,8 +298,18 @@ fn start_service(home: &Path, fakebin: &Path) -> Service {
     Service { child, socket }
 }
 
+/// Makes the repository's `HEAD` name `branch`, as the service checks that
+/// the branch it is asked about is the one checked out.
+fn set_head(repo: &str, branch: &str) {
+    let git = Path::new(repo).join(".git");
+    if git.is_dir() {
+        let _ = fs::write(git.join("HEAD"), format!("ref: refs/heads/{branch}\n"));
+    }
+}
+
 /// What the git wrapper does for one commit: ask for a lease, then a token.
 fn commit_through_service(socket: &Path, repo: &str, branch: &str) -> Result<(), String> {
+    set_head(repo, branch);
     let lease = send_request(
         socket,
         &Request::RequestLease {
@@ -336,8 +338,9 @@ fn commit_through_service(socket: &Path, repo: &str, branch: &str) -> Result<(),
     }
 }
 
-fn times_shown(log: &Path) -> usize {
-    fs::read_to_string(log)
+/// How many prompts the owner was shown.
+fn times_shown(home: &Path) -> usize {
+    fs::read_to_string(home.join("auth.log"))
         .map(|s| s.lines().count())
         .unwrap_or(0)
 }
@@ -345,68 +348,58 @@ fn times_shown(log: &Path) -> usize {
 #[test]
 fn one_approval_then_twenty_commits_ask_nothing_more() {
     let dir = tempdir().unwrap();
-    let log = dir.path().join("dialog.log");
-    let fakebin = stand_in_dialogs(dir.path(), &log, Some("This repository only"));
-    let svc = start_service(dir.path(), &fakebin);
+    let svc = start_service(dir.path(), "allow", "");
     let app = fake_repo(&dir.path().join("w"), "dev/app");
 
     for i in 0..20 {
         commit_through_service(&svc.socket, &app, "feat/a")
             .unwrap_or_else(|e| panic!("commit {i} refused: {e}"));
     }
-    assert_eq!(times_shown(&log), 1);
+    assert_eq!(times_shown(dir.path()), 1);
 }
 
 #[test]
-fn choosing_the_folder_covers_the_next_repository_without_asking() {
+fn by_default_an_approval_covers_one_branch_of_one_repository() {
     let dir = tempdir().unwrap();
-    let log = dir.path().join("dialog.log");
-    let w = dir.path().join("w");
-    let dev = w.join("dev");
-    let fakebin = stand_in_dialogs(
-        dir.path(),
-        &log,
-        Some(&format!("Every repository under {}", dev.display())),
-    );
-    let svc = start_service(dir.path(), &fakebin);
-    let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
-    let elsewhere = fake_repo(&w, "elsewhere/repo");
-
-    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
-    commit_through_service(&svc.socket, &other, "feat/b").unwrap();
-    assert_eq!(times_shown(&log), 1);
-
-    // A repository outside the folder asks again. (The stand-in answers with
-    // the dev folder, which isn't offered there, so that answer counts as a
-    // denial.)
-    let _ = commit_through_service(&svc.socket, &elsewhere, "feat/a");
-    assert_eq!(times_shown(&log), 2);
-}
-
-#[test]
-fn choosing_this_repository_asks_again_for_the_next_one() {
-    let dir = tempdir().unwrap();
-    let log = dir.path().join("dialog.log");
-    let fakebin = stand_in_dialogs(dir.path(), &log, Some("This repository only"));
-    let svc = start_service(dir.path(), &fakebin);
+    let svc = start_service(dir.path(), "allow", "");
     let w = dir.path().join("w");
     let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
 
     commit_through_service(&svc.socket, &app, "feat/a").unwrap();
+    assert_eq!(times_shown(dir.path()), 1);
+
+    // Another branch of the same repository asks again...
+    commit_through_service(&svc.socket, &app, "feat/b").unwrap();
+    assert_eq!(times_shown(dir.path()), 2);
+    // ...and so does the same branch name in another repository, and a
+    // repository in the same folder.
     commit_through_service(&svc.socket, &other, "feat/a").unwrap();
-    assert_eq!(times_shown(&log), 2);
+    assert_eq!(times_shown(dir.path()), 3);
 }
 
 #[test]
-fn denying_in_the_scope_dialog_refuses_and_grants_nothing() {
+fn with_branch_switching_on_an_approval_covers_the_repositorys_other_branches() {
     let dir = tempdir().unwrap();
-    let log = dir.path().join("dialog.log");
-    let fakebin = stand_in_dialogs(dir.path(), &log, None);
-    let svc = start_service(dir.path(), &fakebin);
+    let svc = start_service(dir.path(), "allow", "allow_branch_switching = true\n");
+    let w = dir.path().join("w");
+    let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
+
+    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
+    commit_through_service(&svc.socket, &app, "feat/b").unwrap();
+    assert_eq!(times_shown(dir.path()), 1);
+    // Still only this repository.
+    commit_through_service(&svc.socket, &other, "feat/a").unwrap();
+    assert_eq!(times_shown(dir.path()), 2);
+}
+
+#[test]
+fn failing_authentication_refuses_and_grants_nothing() {
+    let dir = tempdir().unwrap();
+    let svc = start_service(dir.path(), "fail", "");
     let app = fake_repo(&dir.path().join("w"), "dev/app");
 
     let err = commit_through_service(&svc.socket, &app, "feat/a").unwrap_err();
-    assert!(err.contains("the person denied"), "{err}");
+    assert!(err.contains("could not confirm it was you"), "{err}");
     let listed = send_request(&svc.socket, &Request::ListLeases).unwrap();
     match listed {
         Response::LeaseList { leases } => assert!(leases.is_empty()),
@@ -415,39 +408,34 @@ fn denying_in_the_scope_dialog_refuses_and_grants_nothing() {
 }
 
 #[test]
-fn a_dialog_answer_that_matches_no_choice_is_a_denial() {
+fn leases_shows_what_a_saved_wide_lease_covers_and_revoke_takes_the_folder_or_everywhere() {
     let dir = tempdir().unwrap();
-    let log = dir.path().join("dialog.log");
-    let fakebin = stand_in_dialogs(
-        dir.path(),
-        &log,
-        Some("Every repository under /not/the/folder"),
-    );
-    let svc = start_service(dir.path(), &fakebin);
-    let app = fake_repo(&dir.path().join("w"), "dev/app");
-
-    // The stand-in's folder label doesn't match the one offered for this
-    // repository, so it can't be read as approval of anything.
-    let err = commit_through_service(&svc.socket, &app, "feat/a").unwrap_err();
-    assert!(err.contains("the person denied"), "{err}");
-}
-
-#[test]
-fn leases_shows_what_a_wide_lease_covers_and_revoke_takes_the_folder_or_everywhere() {
-    let dir = tempdir().unwrap();
-    let log = dir.path().join("dialog.log");
     // The canonical path, as the git wrapper sends it, because `agent-sign
     // revoke <folder>` canonicalizes the folder it is given.
     let w = fs::canonicalize(dir.path()).unwrap().join("w");
     let dev = w.join("dev").display().to_string();
-    let fakebin = stand_in_dialogs(
-        dir.path(),
-        &log,
-        Some(&format!("Every repository under {dev}")),
-    );
-    let svc = start_service(dir.path(), &fakebin);
     let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
+
+    // A folder lease saved by an earlier version, where the person chose it
+    // in the dialog: the service loads it from the state folder.
+    let mut saved = LeaseEngine::new_with_storage(
+        LeasePolicy {
+            allow_branch_switching: true,
+            ..LeasePolicy::default()
+        },
+        Some(dir.path().join("leases.json")),
+    );
+    saved
+        .try_grant_lease_covering(&app, "feat/a", "t", Coverage::Folder(dev.clone()))
+        .unwrap();
+    drop(saved);
+
+    // That version's config let leases follow the agent, as this one's can.
+    let svc = start_service(dir.path(), "allow", "allow_branch_switching = true\n");
+    // Covered without asking, in both repositories.
     commit_through_service(&svc.socket, &app, "feat/a").unwrap();
+    commit_through_service(&svc.socket, &other, "feat/b").unwrap();
+    assert_eq!(times_shown(dir.path()), 0);
 
     let cli = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_agent-sign"))
@@ -466,15 +454,21 @@ fn leases_shows_what_a_wide_lease_covers_and_revoke_takes_the_folder_or_everywhe
         "{listed}"
     );
 
-    assert!(cli(&["revoke", &dev]).status.success());
+    // Leases the service can no longer grant are pointed out, so they aren't
+    // forgotten about.
     assert!(
-        commit_through_service(&svc.socket, &other, "feat/a").is_err() || times_shown(&log) == 2,
-        "after revoking, the folder asks again"
+        listed.contains("lease(s) from an earlier version cover more than one repository"),
+        "{listed}"
     );
+
+    assert!(cli(&["revoke", &dev]).status.success());
+    // After revoking, the folder asks again.
+    commit_through_service(&svc.socket, &other, "feat/a").unwrap();
+    assert_eq!(times_shown(dir.path()), 1);
     assert!(!cli(&["revoke", "/w/nothing-here"]).status.success());
 
     // An everywhere lease, revoked by name.
-    let mut e = LeaseEngine::new(LeasePolicy::default());
+    let mut e = engine();
     e.try_grant_lease_covering("/x/y", "feat/a", "t", Coverage::Everywhere)
         .unwrap();
     assert_eq!(e.list_leases()[0].repo, "everywhere");

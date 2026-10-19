@@ -7,6 +7,13 @@
 //! program that can click, type or script the screen can't answer for the
 //! owner (it would need a fingerprint, or the password).
 //!
+//! The reason text passed in is what the prompt says is being approved (see
+//! [`crate::approval::auth_reason`]). macOS builds the prompt from it as
+//! "<name> is trying to <reason>.", where the name is that of the program
+//! that asked: the installer runs the service from a small app bundle so
+//! that name is "agent-sign" and not "agent-signd" (see
+//! `scripts/agent-sign.Info.plist`). Nothing in this file can set the name.
+//!
 //! Anything but a success reply is a denial: wrong or cancelled
 //! authentication, a lockout, no password set, no usable session, the wait
 //! running out, or the request being withdrawn.
@@ -53,7 +60,11 @@ impl Authenticator for DeviceOwner {
         unsafe {
             let ctx = LAContext::new();
             if let Err(e) = ctx.canEvaluatePolicy_error(LAPolicy::DeviceOwnerAuthentication) {
-                return AuthOutcome::Unavailable(e.localizedDescription().to_string());
+                let why = e.localizedDescription().to_string();
+                // The agent is told only that nobody could be asked; the
+                // service's log says why.
+                eprintln!("[agent-signd] Can't ask the device owner to authenticate: {why}");
+                return AuthOutcome::Unavailable(why);
             }
             let (tx, rx) = mpsc::channel::<Result<(), String>>();
             let reply = RcBlock::new(move |ok: Bool, error: *mut NSError| {

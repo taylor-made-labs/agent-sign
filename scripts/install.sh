@@ -12,7 +12,9 @@ set -euo pipefail
 # Everything lives in ~/.agent-sign: the programs (bin/), the agent key
 # (keys/), config.toml, leases.json and the service's socket. The service runs
 # as the LaunchAgent com.agentsign.agent-signd (macOS) or the systemd
-# user unit agent-signd (Linux).
+# user unit agent-signd (Linux). On macOS it runs from a copy inside a small
+# app bundle, ~/.agent-sign/agent-sign.app, so that the system's Touch ID
+# prompt says "agent-sign" instead of "agent-signd".
 #
 # Installing over an existing install keeps its key, leases and config. If
 # ~/.agent-sign is a link to a directory kept elsewhere, it's used in place.
@@ -30,6 +32,9 @@ CONFIG_DIR="$STATE_DIR"
 CONFIG_FILE="$CONFIG_DIR/config.toml"
 PUB_KEY_FILE="$KEYS_DIR/agent_ed25519.pub"
 SERVICE_LABEL="com.agentsign.agent-signd"
+# macOS: the app bundle the service runs from (see make_service_bundle).
+APP_DIR="$STATE_DIR/agent-sign.app"
+APP_PROGRAM="$APP_DIR/Contents/MacOS/agent-signd"
 
 # The directory holding this script (and the service files beside it), and
 # the checkout or archive it came in, so it works from any directory.
@@ -307,10 +312,13 @@ if [ ! -f "$CONFIG_FILE" ]; then
 # process yet; works as "timed")
 lease_mode = "identity"
 
-# Lease scope: "branch" (default) or "repo". With branch scope and
-# allow_branch_switching (default true), a lease covers every unprotected
-# branch of the repository, and the approval says so.
+# Lease scope: "branch" (default) or "repo". With branch scope, a lease covers
+# only the branch you approved, in that repository (allow_branch_switching =
+# false, the default and the narrowest). Set it to true, or lease_scope to
+# "repo", to cover every unprotected branch of the repository; the approval
+# prompt then says "any unprotected branch".
 lease_scope = "branch"
+allow_branch_switching = false
 
 # How long a "timed" lease lasts
 default_lease_duration = "2h"
@@ -423,13 +431,46 @@ fi
 OS="$(uname -s)"
 
 start_by_hand() {
-    nohup "$INSTALL_DIR/agent-signd" >/dev/null 2>&1 &
+    local program="$INSTALL_DIR/agent-signd"
+    # On macOS, from the app bundle, so the Touch ID prompt is named right.
+    [ -x "$APP_PROGRAM" ] && program="$APP_PROGRAM"
+    nohup "$program" >/dev/null 2>&1 &
     disown
     ok "Service started in the background (PID: $!)"
 }
 
+# macOS: the app bundle the service runs from. The system's Touch ID prompt
+# says "<name> is trying to ...", with the name of the program that asked; a
+# bare background program shows as "agent-signd" (the "d" means daemon, which
+# means nothing to most people), and one inside an app bundle shows the
+# bundle's name, "agent-sign". The bundle is built beside the real one and
+# renamed into place, only after the old service is stopped, and signed
+# ad hoc (no developer account needed; it only seals the bundle).
+make_service_bundle() {
+    local tmp="$STATE_DIR/.agent-sign.app.new"
+    rm -rf "$tmp"
+    mkdir -p "$tmp/Contents/MacOS"
+    # A copy, not a link: the system looks at where the running program
+    # really is, and a link would lead it out of the bundle.
+    cp "$INSTALL_DIR/agent-signd" "$tmp/Contents/MacOS/agent-signd"
+    cp "$SCRIPT_DIR/agent-sign.Info.plist" "$tmp/Contents/Info.plist"
+    if command -v codesign &>/dev/null; then
+        codesign --force --sign - "$tmp" 2>/dev/null \
+            || warn "Couldn't sign the app bundle; it will still run"
+    fi
+    rm -rf "$APP_DIR"
+    mv "$tmp" "$APP_DIR"
+    ok "Service app bundle ready: $APP_DIR (the Touch ID prompt should say \"agent-sign\")"
+}
+
 if [ "$OS" = "Darwin" ]; then
-    # macOS: the LaunchAgent.
+    # macOS: the app bundle, then the LaunchAgent that starts it.
+    if [ -f "$SCRIPT_DIR/agent-sign.Info.plist" ]; then
+        make_service_bundle
+    else
+        err "agent-sign.Info.plist not found beside the installer: the service can't be set up without it"
+        exit 1
+    fi
     PLIST_SRC="$SCRIPT_DIR/agent-signd.plist"
     PLIST_DST="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
     if [ -f "$PLIST_SRC" ]; then

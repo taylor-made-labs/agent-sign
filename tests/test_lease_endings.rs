@@ -175,7 +175,12 @@ fn a_lease_ends_when_its_work_is_finished_and_others_stay() {
 
 #[test]
 fn a_folder_lease_ends_with_the_work_it_was_approved_for() {
-    let mut e = LeaseEngine::new(LeasePolicy::default());
+    // Folder leases are no longer granted by the service, but earlier ones
+    // load, and need leases to be allowed to follow branches.
+    let mut e = LeaseEngine::new(LeasePolicy {
+        allow_branch_switching: true,
+        ..LeasePolicy::default()
+    });
     e.try_grant_for_work(
         "/w/dev/a",
         "feat/a",

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  The Info.plist of the tiny app bundle the macOS service runs from
+  (~/.agent-sign/agent-sign.app, built by scripts/install.sh).
+
+  Why it exists: the system's Touch ID prompt says "<name> is trying to ...",
+  and takes the name from the program that asked. A bare background program
+  shows as "agent-signd", where the "d" (for daemon) means nothing to most
+  people. Run from an app bundle, it shows the bundle's name instead:
+  "agent-sign". The bundle holds a copy of agent-signd and nothing else.
+  LSUIElement keeps it out of the Dock and the app switcher.
+-->
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>agent-sign</string>
+    <key>CFBundleDisplayName</key>
+    <string>agent-sign</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.agentsign.agent-sign</string>
+    <key>CFBundleExecutable</key>
+    <string>agent-signd</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleVersion</key>
+    <string>0.1.0</string>
+    <key>CFBundleShortVersionString</key>
+    <string>0.1.0</string>
+    <key>LSUIElement</key>
+    <true/>
+</dict>
+</plist>

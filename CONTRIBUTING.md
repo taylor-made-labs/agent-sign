@@ -25,8 +25,8 @@ cargo test --locked
 ```
 
 The end-to-end tests start their own service in a temporary home with its
-own socket, a stand-in dialog and a stand-in owner (`AGENT_SIGN_TEST_DIALOG` and
-`AGENT_SIGN_TEST_AUTH`, which only debug test builds have), so they never touch
+own socket and a stand-in for the owner's Touch ID (`AGENT_SIGN_TEST_AUTH` and
+the variables beside it, which only debug test builds have), so they never touch
 an installed agent-sign. Run `cargo test` without `--release`: the stand-ins
 refuse to compile into an optimized build, so that no installable program can
 contain them.

@@ -54,7 +54,7 @@ tell an aim from a guarantee.
   unwraps its state lock (a panic in one connection would poison it for the
   rest) and has a few `expect`s on checked invariants.
 - The service handles each connection on its own thread and never holds its
-  lock while a dialog is open. *Today:* yes.
+  lock while a prompt is open. *Today:* yes.
 - Stop cleanly on SIGTERM. *Today:* not handled; the service relies on the
   socket being removed and recreated on the next start.
 
@@ -72,9 +72,9 @@ tell an aim from a guarantee.
   integration tests over a real socket; end-to-end tests with real git,
   verified by `ssh-keygen` and `git log --show-signature`. The end-to-end
   tests start their own service in a temporary home with its own socket and
-  stand-in dialogs and a stand-in owner (`AGENT_SIGN_TEST_AUTH`, test builds only), so they never touch an installed agent-sign or show a real
-  dialog.
+  a stand-in owner (`AGENT_SIGN_TEST_AUTH`, test builds only), so they never touch an installed agent-sign or show a real
+  prompt.
 - Every fix comes with a test that fails without it.
 - *Today:* 72 tests. Not covered automatically: the wrapper's terminal check,
-  the real dialogs, and the installer (see the install test in
+  the real Touch ID prompt, and the installer (see the install test in
   [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)).

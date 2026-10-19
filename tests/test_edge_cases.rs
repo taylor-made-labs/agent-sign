@@ -2,9 +2,9 @@
 //! F8 (edge cases), end to end: a real service, the git wrapper, the signing
 //! program, and git, in a temporary home.
 //!
-//! No real dialog can appear: the service's `PATH` holds only git and
-//! stand-in dialogs, which answer from a file and log each time they're
-//! shown. "Never signed some other way" is checked by the commit not
+//! No real prompt can appear: the service runs with a stand-in for the owner
+//! (Touch ID), which answers from a file and logs the reason it would have
+//! shown each time. "Never signed some other way" is checked by the commit not
 //! existing at all after a refusal: the wrapper never falls through to the
 //! person's own git and signing.
 
@@ -18,8 +18,9 @@ use agent_sign::attribution::KNOWN_AGENTS;
 use agent_sign::protocol::{Request, Response, send_request};
 use tempfile::{TempDir, tempdir};
 
-const THIS_REPOSITORY: &str = "This repository only";
-const DENY: &str = "DENY";
+/// What the stand-in owner answers: authenticate, or fail.
+const ALLOW: &str = "allow";
+const DENY: &str = "fail";
 
 struct Setup {
     _dir: TempDir,
@@ -33,11 +34,6 @@ impl Drop for Setup {
     fn drop(&mut self) {
         self.stop_service();
     }
-}
-
-fn write_script(path: &Path, body: &str) {
-    fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 fn real_git() -> &'static str {
@@ -76,8 +72,8 @@ fn git_ok(repo: &Path, args: &[&str]) {
 
 impl Setup {
     /// A home with `config` as its config file and a running service.
-    /// `auto_approve` grants without asking; otherwise the stand-in dialogs
-    /// answer with whatever `answer` holds ([`THIS_REPOSITORY`] to start).
+    /// `auto_approve` grants without asking; otherwise the stand-in owner
+    /// answers with whatever `answer` holds ([`ALLOW`] to start).
     fn new(config: &str, auto_approve: bool) -> Setup {
         let dir = tempdir().unwrap();
         let home = dir.path().to_path_buf();
@@ -88,18 +84,7 @@ impl Setup {
         let fakebin = home.join("fakebin");
         fs::create_dir_all(&fakebin).unwrap();
         std::os::unix::fs::symlink(real_git(), fakebin.join("git")).unwrap();
-        let answer = home.join("answer");
-        let log = home.join("dialog.log");
-        fs::write(&answer, THIS_REPOSITORY).unwrap();
-        let (a, l) = (answer.display(), log.display());
-        // The list dialog prints "false" for Deny.
-        let dialog = fakebin.join("dialog");
-        write_script(
-            &dialog,
-            &format!(
-                "echo shown >> '{l}'\necho \"$@\" >> '{l}.text'\nread -r A < '{a}'\n[ \"$A\" = {DENY} ] && echo false || echo \"$A\""
-            ),
-        );
+        fs::write(home.join("answer"), ALLOW).unwrap();
 
         let mut setup = Setup {
             socket: home.join("s.sock"),
@@ -118,9 +103,11 @@ impl Setup {
             .arg(&self.socket)
             .env("HOME", &self.home)
             .env("PATH", &self.fakebin)
-            // The stand-in dialog picks the coverage; this stands in for the owner.
-            .env("AGENT_SIGN_TEST_AUTH", "allow")
-            .env("AGENT_SIGN_TEST_DIALOG", self.fakebin.join("dialog"))
+            // The stand-in for the owner answers from a file and logs each
+            // reason it is shown.
+            .env_remove("AGENT_SIGN_TEST_AUTH")
+            .env("AGENT_SIGN_TEST_AUTH_ANSWER", self.home.join("answer"))
+            .env("AGENT_SIGN_TEST_AUTH_LOG", self.home.join("auth.log"))
             // These tests deny and ask again at once; the hold-back after a
             // refusal has its own tests.
             .env("AGENT_SIGN_REFUSAL_BACKOFF", "none")
@@ -157,7 +144,7 @@ impl Setup {
     }
 
     fn times_asked(&self) -> usize {
-        fs::read_to_string(self.home.join("dialog.log"))
+        fs::read_to_string(self.home.join("auth.log"))
             .map(|s| s.lines().count())
             .unwrap_or(0)
     }
@@ -784,9 +771,9 @@ fn signing_off_in_the_persons_global_config_still_signs_agent_commits() {
 // --- The repository a commit is for, however git is pointed at it -----------
 
 impl Setup {
-    /// Everything the dialogs were shown, as one string.
+    /// Every reason the owner was shown, as one string.
     fn dialog_text(&self) -> String {
-        fs::read_to_string(self.home.join("dialog.log.text")).unwrap_or_default()
+        fs::read_to_string(self.home.join("auth.log")).unwrap_or_default()
     }
 
     /// The wrapper's `commit` run from `cwd` with `args` before `commit`.
@@ -835,10 +822,15 @@ fn a_commit_pointed_at_a_repository_with_dash_c_names_that_repository() {
     assert!(out.status.success(), "{}", stderr(&out));
     let canonical = fs::canonicalize(&repo).unwrap().display().to_string();
     assert_eq!(s.lease_repos(), vec![canonical.clone()]);
+    // The prompt names the repository -C pointed at, by name and by place (the
+    // test's home folder is shown as "~").
     let shown = s.dialog_text();
-    assert!(shown.contains(&canonical), "{shown}");
-    assert!(shown.contains("feat/a"), "{shown}");
+    assert!(
+        shown.contains("branch \u{201C}feat/a\u{201D} in r (~/r)"),
+        "{shown}"
+    );
     assert!(!shown.contains("default-repo"), "{shown}");
+    assert!(!shown.contains("not-a-repo"), "{shown}");
     assert!(s.head_verifies(&repo));
 }
 
@@ -1136,8 +1128,7 @@ fn a_commit_through_an_alias_is_still_an_agent_commit() {
 
 #[test]
 fn a_path_with_markup_characters_is_shown_as_written() {
-    // The dialog text is passed as one quoted string; "&" and "<" in a path
-    // must reach it unchanged.
+    // "&" and "<" in a path must reach the prompt's text unchanged.
     let s = Setup::new("", false);
     let repo = s.repo("R&D <lab>", "feat/a");
     assert!(s.agent_commit(&repo, "a.txt").status.success());

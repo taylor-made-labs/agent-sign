@@ -19,10 +19,16 @@ Open a new terminal afterwards, and run `agent-sign doctor`.
   signing arguments, so a `gpg.ssh.program` that names it keeps working, and
   signatures are the same byte for byte (`tests/test_signature_equivalence.rs`).
 - **Leases are saved and their terms fixed.** Approvals survive a restart,
-  crash or sleep. What a lease covers and when it ends are shown before you
-  approve, and never grow; config changes can only narrow them.
-- **You choose what one approval covers:** this repository, every repository
-  under its folder, or every repository.
+  crash or sleep. What a lease covers and when it ends never grow; config
+  changes can only narrow them.
+- **One approval covers one branch of one repository** (19 Oct 2026). Earlier
+  builds had you pick, in a dialog, this repository, every repository under
+  its folder, or every repository, and covered all of a repository's branches
+  by default. Now the approval is one Touch ID prompt that says the branch and
+  repository, the lease covers just that (`allow_branch_switching` is off by
+  default; turn it on to cover the repository's other unprotected branches),
+  and leases of the wider kinds approved earlier still work and can be
+  revoked.
 - **Commits name the agent** that made them, when it marks its commands
   (Claude Code, Gemini CLI, Codex) or is started with
   `AGENT_SIGN_AGENT_NAME`. An agent that marks its commands is treated as an

@@ -1,24 +1,28 @@
-//! What it takes to approve a signing lease: the person's choice, then proof
-//! that the device's owner made it.
+//! What it takes to approve a signing lease: the platform's own
+//! authentication, with a reason that says what is being approved.
 //!
 //! A dialog alone proves nothing. Any program allowed to control the screen
 //! (a computer-use agent, a System Events script) can click its button, so an
-//! agent could approve its own lease. So the service never grants a lease on
-//! a click: after the person picks what the lease covers, the choice only
-//! counts if the platform's own authentication succeeds too (on macOS,
-//! Touch ID or the login password, through LocalAuthentication; see
-//! [`crate::device_owner`]). A program can't produce either.
+//! agent could approve its own lease. So the service shows no dialog of its
+//! own: the approval is one prompt from the platform's authentication (on
+//! macOS, Touch ID or the login password, through LocalAuthentication; see
+//! [`crate::device_owner`]), whose reason text ([`auth_reason`]) says plainly
+//! which branch of which repository is being approved. A program can't answer
+//! that prompt for the owner.
 //!
-//! This module is the decision, kept apart from any dialog or platform call
-//! so it can be tested with a stand-in [`Authenticator`]:
+//! This module is the decision, kept apart from any platform call so it can
+//! be tested with a stand-in [`Authenticator`]:
 //!
-//! - no selection (Deny, closed, nothing picked) is a denial, and the
-//!   authenticator isn't even asked;
-//! - a selection is approved only if the authenticator says
+//! - an approval is granted only if the authenticator says
 //!   [`AuthOutcome::Authenticated`]; failure, cancellation, timeout and
 //!   unavailability all deny;
 //! - when the request is withdrawn while the authenticator waits, the
 //!   authentication is cancelled and the result is `Withdrawn`.
+//!
+//! What a lease covers is not chosen at the prompt: it is the narrowest
+//! coverage (this branch of this repository) unless the config widens it
+//! (`allow_branch_switching`, `lease_scope`). That keeps the prompt to one
+//! question the person can read in full.
 //!
 //! Nothing here grants anything on its own: the caller turns an
 //! [`Approval::Approved`] into a lease.
@@ -58,11 +62,11 @@ pub trait Authenticator: Send + Sync {
 /// The person's answer to a lease request, or that there was no way to ask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Approval {
-    /// Approved, covering what the person chose, and authenticated.
+    /// Approved, covering what the prompt said, and authenticated.
     Approved(Coverage),
-    /// The person said no, or chose nothing.
+    /// Refused with `agent-sign deny` while the prompt was open.
     Denied,
-    /// The person chose a coverage but authentication didn't succeed: the
+    /// Authentication didn't succeed (cancelled, failed, timed out): the
     /// lease is refused. The text says why.
     NotAuthenticated(String),
     /// Nobody could be asked: the lease is refused (failing closed).
@@ -93,47 +97,35 @@ impl Approval {
             ),
         }
     }
-
-    /// Reads a dialog's answer: the label of one of the choices offered is a
-    /// choice of that coverage; anything else is a denial, so an answer that
-    /// can't be matched never approves more than was shown. This is only the
-    /// person's choice: it still needs [`confirm`].
-    pub fn selection_from_answer(answer: &str, choices: &[(Coverage, String)]) -> Option<Coverage> {
-        let answer = answer.trim();
-        choices
-            .iter()
-            .find(|(_, label)| label == answer)
-            .map(|(coverage, _)| coverage.clone())
-    }
 }
 
-/// Turns the person's choice into a decision. `selection` is what they
-/// picked (`None` for Deny, a closed dialog, or nothing picked). It is
-/// approved only if `authenticator` succeeds; the authenticator isn't asked
-/// at all when there's nothing to approve.
+/// Turns the authentication into a decision: `coverage` is approved only if
+/// `authenticator` succeeds, showing `reason`. Failure, cancellation and
+/// timeout refuse, and so does an authenticator that can't be used here
+/// ([`Approval::NoWayToAsk`]).
 pub fn confirm(
-    selection: Option<Coverage>,
+    coverage: Coverage,
     authenticator: &dyn Authenticator,
     reason: &str,
     cancel: &AtomicBool,
 ) -> Approval {
-    let Some(coverage) = selection else {
-        return Approval::Denied;
-    };
     match authenticator.authenticate(reason, cancel) {
         AuthOutcome::Authenticated => Approval::Approved(coverage),
         AuthOutcome::Failed(why) => Approval::NotAuthenticated(why),
         AuthOutcome::TimedOut => Approval::NotAuthenticated("timed out".to_string()),
-        AuthOutcome::Unavailable(why) => Approval::NotAuthenticated(why),
+        // Nobody could be asked at all (no password set, no desktop
+        // session): that is not a refusal, so it is worded as one that
+        // couldn't ask, and doesn't hold back the next request.
+        AuthOutcome::Unavailable(_) => Approval::NoWayToAsk,
         AuthOutcome::Withdrawn => Approval::Withdrawn,
     }
 }
 
 /// Whether `c` is invisible or can reshape text around it: a control
 /// character (Unicode Cc), a format character such as the bidirectional
-/// overrides and isolates and the zero-width characters (Cf), or a line or
-/// paragraph separator (Zl, Zp). Text with any of these must not reach a
-/// prompt the person relies on.
+/// overrides and isolates and the zero-width characters (Cf), a line or
+/// paragraph separator (Zl, Zp), or a blank filler that passes for a space.
+/// Text with any of these must not reach a prompt the person relies on.
 pub fn is_unsafe_display_char(c: char) -> bool {
     c.is_control()
         || matches!(c,
@@ -142,7 +134,12 @@ pub fn is_unsafe_display_char(c: char) -> bool {
             | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
             | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
             | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}'
-            | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+            | '\u{E0001}' | '\u{E0020}'..='\u{E007F}'
+            // Characters that draw nothing but aren't format characters:
+            // the Hangul fillers, Khmer inherent vowels and the blank braille
+            // pattern, which pass for spaces.
+            | '\u{115F}' | '\u{1160}' | '\u{17B4}' | '\u{17B5}' | '\u{2800}'
+            | '\u{3164}' | '\u{FFA0}')
 }
 
 /// Whether `text` contains anything [`is_unsafe_display_char`] names. A
@@ -171,19 +168,149 @@ pub fn display_text(text: &str, max: usize) -> String {
     out
 }
 
-/// The text the system shows with its authentication prompt. It is the one
-/// statement of what is being approved that the agent can't alter after the
-/// fact, so it leads with the coverage the person chose, in fixed wording
-/// (the label comes from the service, not the agent), then says where the
-/// request came from: the repository (the verified path) and the branch,
-/// cleaned and shortened by [`display_text`].
-pub fn auth_reason(repo: &str, branch: &str, coverage_label: &str) -> String {
-    format!(
-        "allow AI agents to sign git commits: {} (asked from {}, branch {})",
-        display_text(coverage_label, 120),
-        display_text(repo, 100),
-        display_text(branch, 60)
-    )
+/// Which branches a new lease reaches, as the prompt says it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BranchReach {
+    /// This branch only (the default, and the narrowest).
+    This(String),
+    /// Every branch except the protected ones (`allow_branch_switching`, or
+    /// `lease_scope = "repo"`).
+    AnyUnprotected,
+    /// Every branch, protected ones included (`allow_main_branch`, or no
+    /// protected branches).
+    Any,
+}
+
+/// The most characters of each part of the reason text. The whole reason is
+/// at most [`MAX_REASON_CHARS`].
+///
+/// macOS documents no maximum for LocalAuthentication's reason. The system
+/// puts it in the sentence "<name> is trying to <reason>." and wraps it in
+/// the prompt, but the Touch Bar form ("Touch ID to <reason>") has to fit in
+/// one line. So the reason is kept short and ordered by importance: the
+/// branch and the repository's name come first and are only shortened when
+/// they are unusually long, and the path, which comes later, gives way first.
+const MAX_BRANCH_CHARS: usize = 32;
+const MAX_NAME_CHARS: usize = 20;
+const MAX_PATH_CHARS: usize = 32;
+const MAX_WORKTREE_CHARS: usize = 16;
+const MAX_ENDS_CHARS: usize = 32;
+
+/// The longest reason [`auth_reason`] ever produces.
+pub const MAX_REASON_CHARS: usize = 200;
+
+/// `path` with the start of `home` replaced by `~`, the way a person writes
+/// it. Only a whole leading folder is replaced: `/Users/me2/x` is not under
+/// `/Users/me`.
+pub fn short_path(path: &str, home: Option<&str>) -> String {
+    if let Some(home) = home
+        .map(|h| h.trim_end_matches('/'))
+        .filter(|h| !h.is_empty())
+    {
+        if path == home {
+            return "~".to_string();
+        }
+        if let Some(rest) = path.strip_prefix(home)
+            && rest.starts_with('/')
+        {
+            return format!("~{rest}");
+        }
+    }
+    path.to_string()
+}
+
+/// The last folder of `path`: the repository's name as the person knows it.
+fn repo_name(path: &str) -> &str {
+    let trimmed = path.trim_end_matches('/');
+    match trimmed.rsplit('/').next() {
+        Some(name) if !name.is_empty() => name,
+        _ => trimmed,
+    }
+}
+
+/// Whether `c` is a right-to-left letter (Hebrew, Arabic, Syriac, Thaana,
+/// N'Ko and their presentation forms). Next to the prompt's own punctuation
+/// these can make the bidirectional algorithm reorder it.
+fn is_rtl_letter(c: char) -> bool {
+    matches!(c,
+        '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}'
+        | '\u{10800}'..='\u{10FFF}' | '\u{1E800}'..='\u{1EFFF}')
+}
+
+/// A folder name or path made to sit inside the prompt's sentence: unsafe
+/// characters removed and the text shortened by [`display_text`], then the
+/// characters that could close or open the sentence's own brackets and quotes
+/// ( `(` `)` `"` and the curly quotes), and right-to-left letters, shown as
+/// `?`. Folder names are the agent's to choose, and a repository named
+/// `x (~/dev/suite)` must not read as two places.
+fn plain(text: &str, max: usize) -> String {
+    display_text(text, max)
+        .chars()
+        .map(|c| {
+            if matches!(c, '(' | ')' | '"' | '\u{201C}' | '\u{201D}') || is_rtl_letter(c) {
+                '?'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// What the approval prompt is about, all of it verified by the service
+/// before it asks.
+#[derive(Debug, Clone)]
+pub struct Asked<'a> {
+    /// The repository whose object store the commits go into: the canonical
+    /// path, or, for a linked worktree, the main repository's.
+    pub repo: &'a str,
+    /// For a linked worktree, the worktree's own canonical path.
+    pub worktree: Option<&'a str>,
+    /// The folder's `.git` claims to be a linked worktree but the repository
+    /// it names doesn't confirm it; the prompt says so.
+    pub unrecognized_worktree: bool,
+    /// The person's home folder, shown as `~`.
+    pub home: Option<&'a str>,
+    /// Which branches the lease will cover.
+    pub reach: &'a BranchReach,
+    /// How long it lasts, in a few words ("until merged"); see
+    /// `LeasePolicy::end_phrase`.
+    pub ends: &'a str,
+}
+
+/// The text the system shows as the reason in its authentication prompt. It
+/// is the one statement of what is being approved that the agent can't alter
+/// after the fact, so it says it plainly, in fixed wording from the service:
+/// `let an agent sign commits on branch “<branch>” in <repo name> (<path>),
+/// until merged`. On macOS the prompt reads "agent-sign is trying to
+/// <reason>.", so the reason starts lowercase and has no full stop.
+///
+/// The branch is checked before this (valid, plain characters, the one the
+/// repository has checked out: see [`crate::repo_info`]) and set in curly
+/// quotes so it reads as a name. The names and paths are the agent's to
+/// choose, so they are cleaned by [`plain`]. For a linked worktree the
+/// parentheses also say `worktree “<name>”`; a folder that only claims to be
+/// a worktree says `not a recognized worktree` instead. The result is at most
+/// [`MAX_REASON_CHARS`] characters.
+pub fn auth_reason(asked: &Asked) -> String {
+    let name = plain(repo_name(asked.repo), MAX_NAME_CHARS);
+    let path = plain(&short_path(asked.repo, asked.home), MAX_PATH_CHARS);
+    let on = match asked.reach {
+        BranchReach::This(branch) => {
+            format!("branch \u{201C}{}\u{201D}", plain(branch, MAX_BRANCH_CHARS))
+        }
+        BranchReach::AnyUnprotected => "any unprotected branch".to_string(),
+        BranchReach::Any => "any branch".to_string(),
+    };
+    let place = match asked.worktree {
+        Some(worktree) => format!(
+            "{path}, worktree \u{201C}{}\u{201D}",
+            plain(repo_name(worktree), MAX_WORKTREE_CHARS)
+        ),
+        None if asked.unrecognized_worktree => format!("{path}, not a recognized worktree"),
+        None => path,
+    };
+    let ends = plain(asked.ends, MAX_ENDS_CHARS);
+    format!("let an agent sign commits on {on} in {name} ({place}), {ends}")
 }
 
 /// The most approval requests that may be open at once. A request holds a
@@ -273,33 +400,103 @@ pub fn platform_authenticator() -> Option<Box<dyn Authenticator>> {
     }
 }
 
-/// Stand-in for the owner in end-to-end tests of the service, chosen by
-/// `AGENT_SIGN_TEST_AUTH` (and, if `AGENT_SIGN_TEST_AUTH_LOG` names a file,
-/// recording each reason it was shown): `allow` succeeds; `timeout`, `unavailable` and
-/// anything else (including unset) deny, `fail` with a reason. It exists
-/// only when the feature `test-authenticator` is on, which `cargo build` and
+/// Stand-in for the owner in end-to-end tests of the service. It exists only
+/// when the feature `test-authenticator` is on, which `cargo build` and
 /// `cargo build --release` never do.
+///
+/// `AGENT_SIGN_TEST_AUTH` chooses the outcome: `allow` succeeds; `timeout`,
+/// `unavailable` and anything else (including unset) deny, `fail` with a
+/// reason. Three more variables let a test watch and steer the prompt:
+///
+/// - `AGENT_SIGN_TEST_AUTH_LOG`: a file that gets each reason the owner would
+///   have been shown, one line per prompt; `<file>.events` gets `start` and
+///   `end` around each prompt (to see prompts overlap), and
+///   `<file>.withdrawn` gets a line when a prompt is cancelled while open.
+/// - `AGENT_SIGN_TEST_AUTH_DELAY_MS`: the prompt stays open this long first.
+/// - `AGENT_SIGN_TEST_AUTH_ANSWER`: a file; the prompt stays open until it
+///   exists, and what it holds (`allow`, `timeout`, anything else denies)
+///   replaces `AGENT_SIGN_TEST_AUTH`. This is how a test plays the person
+///   taking their time.
+///
+/// Like the real thing, it stops waiting when `cancel` is set and gives up,
+/// denying, after [`AUTH_TIMEOUT`].
 #[cfg(feature = "test-authenticator")]
 pub struct TestAuthenticator;
 
 #[cfg(feature = "test-authenticator")]
+fn append_line(path: &std::path::Path, line: &str) {
+    use std::io::Write;
+    if let Ok(mut file) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+    {
+        let _ = writeln!(file, "{line}");
+    }
+}
+
+#[cfg(feature = "test-authenticator")]
 impl Authenticator for TestAuthenticator {
-    fn authenticate(&self, reason: &str, _cancel: &AtomicBool) -> AuthOutcome {
-        // Where a test wants to see what the owner would have been shown.
-        if let Some(path) = std::env::var_os("AGENT_SIGN_TEST_AUTH_LOG") {
-            use std::io::Write;
-            if let Ok(mut file) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-            {
-                let _ = writeln!(file, "{reason}");
+    fn authenticate(&self, reason: &str, cancel: &AtomicBool) -> AuthOutcome {
+        use std::sync::atomic::Ordering;
+        let log = std::env::var_os("AGENT_SIGN_TEST_AUTH_LOG").map(std::path::PathBuf::from);
+        let side_file = |suffix: &str| {
+            log.as_ref().map(|p| {
+                let mut name = p.clone().into_os_string();
+                name.push(suffix);
+                std::path::PathBuf::from(name)
+            })
+        };
+        let event = |line: &str| {
+            if let Some(path) = side_file(".events") {
+                append_line(&path, line);
             }
+        };
+        if let Some(path) = &log {
+            append_line(path, reason);
         }
-        match std::env::var("AGENT_SIGN_TEST_AUTH").as_deref() {
-            Ok("allow") => AuthOutcome::Authenticated,
-            Ok("timeout") => AuthOutcome::TimedOut,
-            Ok("unavailable") => AuthOutcome::Unavailable("no authenticator".to_string()),
+        event("start");
+
+        let answer = std::env::var_os("AGENT_SIGN_TEST_AUTH_ANSWER").map(std::path::PathBuf::from);
+        let delay = std::env::var("AGENT_SIGN_TEST_AUTH_DELAY_MS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .map(Duration::from_millis);
+        let started = std::time::Instant::now();
+        loop {
+            let waiting = match (&answer, delay) {
+                (Some(path), _) => !path.exists(),
+                (None, Some(d)) => started.elapsed() < d,
+                (None, None) => false,
+            };
+            if !waiting {
+                break;
+            }
+            if cancel.load(Ordering::SeqCst) {
+                if let Some(path) = side_file(".withdrawn") {
+                    append_line(&path, "withdrawn");
+                }
+                event("end");
+                return AuthOutcome::Withdrawn;
+            }
+            if started.elapsed() >= AUTH_TIMEOUT {
+                event("end");
+                return AuthOutcome::TimedOut;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        event("end");
+
+        let chosen = match &answer {
+            Some(path) => std::fs::read_to_string(path)
+                .map(|t| t.trim().to_string())
+                .unwrap_or_default(),
+            None => std::env::var("AGENT_SIGN_TEST_AUTH").unwrap_or_default(),
+        };
+        match chosen.as_str() {
+            "allow" => AuthOutcome::Authenticated,
+            "timeout" => AuthOutcome::TimedOut,
+            "unavailable" => AuthOutcome::Unavailable("no authenticator".to_string()),
             _ => AuthOutcome::Failed("authentication failed".to_string()),
         }
     }

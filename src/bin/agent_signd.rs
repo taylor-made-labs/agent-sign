@@ -12,7 +12,6 @@ use std::io::{BufRead, BufReader};
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
@@ -21,7 +20,7 @@ use base64::Engine;
 use clap::{Parser, Subcommand};
 
 use agent_sign::approval::{
-    AUTH_TIMEOUT, Approval, MAX_PENDING_REQUESTS, RefusalBackoff, auth_reason, confirm,
+    Approval, Asked, BranchReach, MAX_PENDING_REQUESTS, RefusalBackoff, auth_reason, confirm,
     has_unsafe_display_chars, platform_authenticator,
 };
 use agent_sign::config::Config;
@@ -80,16 +79,16 @@ struct DaemonState {
 
 /// One approval request waiting for the person. Every commit asking for the
 /// same repository and branch while it's open waits on this one answer, so
-/// retries and parallel commits never open a second dialog.
+/// retries and parallel commits never open a second prompt.
 struct PendingAsk {
     id: String,
     repo: String,
     branch: String,
     asked_at: Instant,
     /// Commits waiting on the answer. When the last one goes away (its
-    /// program timed out or was stopped), the dialog is withdrawn.
+    /// program timed out or was stopped), the prompt is withdrawn.
     waiters: AtomicUsize,
-    /// Set to close the dialog without an answer from it.
+    /// Set to close the prompt without an answer from it.
     cancel: AtomicBool,
     /// Set by `agent-sign deny`: the request is answered as denied.
     denied_by_command: AtomicBool,
@@ -123,7 +122,7 @@ fn client_gone(stream: &UnixStream) -> bool {
 
 /// Waits for `ask`'s answer while checking that this commit's program is
 /// still there. `None` when it has gone: if it was the last one waiting, the
-/// dialog is withdrawn.
+/// prompt is withdrawn.
 fn wait_for_answer(ask: &PendingAsk, stream: &UnixStream) -> Option<Response> {
     let mut outcome = ask.outcome.lock().unwrap();
     loop {
@@ -140,56 +139,6 @@ fn wait_for_answer(ask: &PendingAsk, stream: &UnixStream) -> Option<Response> {
                 ask.cancel.store(true, Ordering::SeqCst);
             }
             return None;
-        }
-    }
-}
-
-/// Why a dialog program didn't give an answer.
-enum RunEnd {
-    /// `cancel` was set, so the program was stopped.
-    Cancelled,
-    /// It was still open after `timeout`, so it was stopped: no answer is a
-    /// denial.
-    TimedOut,
-    /// It couldn't be started, or its result couldn't be read.
-    Failed,
-}
-
-/// Runs a dialog program and waits for it, unless `cancel` is set first or
-/// `timeout` passes, in which case the program (and so its dialog) is stopped.
-#[cfg_attr(
-    not(any(target_os = "macos", feature = "test-authenticator")),
-    allow(dead_code)
-)]
-fn run_cancellable(
-    mut cmd: Command,
-    cancel: &AtomicBool,
-    timeout: Duration,
-) -> Result<std::process::Output, RunEnd> {
-    let mut child = cmd
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
-        .map_err(|_| RunEnd::Failed)?;
-    let deadline = Instant::now() + timeout;
-    loop {
-        let stop = if cancel.load(Ordering::SeqCst) {
-            Some(RunEnd::Cancelled)
-        } else if Instant::now() >= deadline {
-            Some(RunEnd::TimedOut)
-        } else {
-            None
-        };
-        if let Some(end) = stop {
-            let _ = child.kill();
-            let _ = child.wait();
-            return Err(end);
-        }
-        match child.try_wait() {
-            Ok(Some(_)) => return child.wait_with_output().map_err(|_| RunEnd::Failed),
-            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
-            Err(_) => return Err(RunEnd::Failed),
         }
     }
 }
@@ -381,6 +330,14 @@ fn run_daemon(
         backoff: RefusalBackoff::new(refusal_backoff),
     }));
 
+    // Leases that cover more than one repository can no longer be granted;
+    // ones approved earlier still work, so say so in the log.
+    if let Some(note) =
+        agent_sign::protocol::wide_leases_note(&state.lock().unwrap().lease_engine.list_leases())
+    {
+        eprintln!("[agent-signd] {note}");
+    }
+
     let listener = UnixListener::bind(&socket_path)?;
     fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))?;
 
@@ -483,8 +440,8 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 );
                 return;
             }
-            // Check active lease state without holding lock across UI dialog
-            let (blocked, covering, can_follow, auto_approve_val, terms, choices) = {
+            // Check active lease state without holding the lock across the prompt
+            let (blocked, covering, can_follow, auto_approve_val, terms, reach, ends) = {
                 let mut st = state.lock().unwrap();
                 end_finished_work(&mut st);
                 let engine = &st.lease_engine;
@@ -502,7 +459,8 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                     can_follow,
                     st.auto_approve,
                     engine.policy.describe_terms(&branch),
-                    engine.policy.scope_choices(&repo),
+                    engine.policy.branch_reach(&branch),
+                    engine.policy.end_phrase(),
                 )
             };
 
@@ -536,8 +494,15 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 // Nothing covers this commit: ask the person, outside the lock.
                 // Unattended approval only ever grants this repository.
                 if !auto_approve_val {
+                    // The branch goes into the prompt's sentence, and the
+                    // agent chose it: it must be a plain, valid branch name
+                    // and the one the repository really has checked out.
+                    if let Err(message) = check_asked_branch(&repo, &branch) {
+                        let _ = send_response(stream, &Response::Error { message });
+                        return;
+                    }
                     let ask = match join_or_open_request(
-                        &state, &repo, &branch, &intent, &terms, &choices,
+                        &state, &repo, &branch, &intent, &terms, &reach, &ends,
                     ) {
                         Ok(ask) => ask,
                         Err(message) => {
@@ -726,7 +691,7 @@ fn end_finished_work(st: &mut DaemonState) {
 }
 
 /// Joins the open request for this repository and branch, or opens one: a
-/// dialog in its own thread, whose answer every waiting commit receives. The
+/// prompt in its own thread, whose answer every waiting commit receives. The
 /// lease, if approved, is granted once, by that thread.
 fn join_or_open_request(
     state: &Arc<Mutex<DaemonState>>,
@@ -734,7 +699,8 @@ fn join_or_open_request(
     branch: &str,
     intent: &str,
     terms: &agent_sign::lease::TermsText,
-    choices: &[(Coverage, String)],
+    reach: &BranchReach,
+    ends: &str,
 ) -> Result<Arc<PendingAsk>, String> {
     let key = pending_key(repo, branch);
     let mut st = state.lock().unwrap();
@@ -772,9 +738,9 @@ fn join_or_open_request(
     let state = Arc::clone(state);
     let asking = Arc::clone(&ask);
     let (repo, branch, intent) = (repo.to_string(), branch.to_string(), intent.to_string());
-    let (terms, choices) = (terms.clone(), choices.to_vec());
+    let (terms, reach, ends) = (terms.clone(), reach.clone(), ends.to_string());
     std::thread::spawn(move || {
-        let approval = request_human_approval(&repo, &branch, &terms, &choices, &asking.cancel);
+        let approval = request_human_approval(&repo, &reach, &ends, &asking.cancel);
         // Read the branch's tip before taking the lock: git runs in a
         // repository the agent controls, and mustn't stall the service.
         let work = match approval {
@@ -808,10 +774,18 @@ fn join_or_open_request(
                         .lease_engine
                         .try_grant_for_work(&repo, &branch, &intent, coverage, work)
                     {
-                        Ok(lease) => Response::LeaseGranted {
-                            lease_id: lease.id,
-                            expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
-                        },
+                        Ok(lease) => {
+                            // The prompt is too short to list a lease's terms,
+                            // so the service's log records them in full.
+                            eprintln!(
+                                "[agent-signd] Approved a lease for {repo} (asked from branch '{branch}'). Covers: {}. Ends: {}.",
+                                terms.covers, terms.ends
+                            );
+                            Response::LeaseGranted {
+                                lease_id: lease.id,
+                                expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
+                            }
+                        }
                         Err(e) => Response::Error { message: e },
                     }
                 }
@@ -830,114 +804,30 @@ fn join_or_open_request(
     Ok(ask)
 }
 
-/// What the choosing step produced, before the owner is authenticated.
-enum Selection {
-    /// The person picked this coverage.
-    Chosen(Coverage),
-    /// Deny, a closed dialog, nothing picked, no answer in time, or an answer
-    /// that matched no choice.
-    Denied,
-    /// Closed because every commit waiting on it had gone.
-    Withdrawn,
-    /// No dialog could be shown here.
-    Unavailable,
-}
-
-/// A string as an AppleScript string literal.
-#[cfg(any(target_os = "macos", feature = "test-authenticator"))]
-fn applescript_string(s: &str) -> String {
-    format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
-}
-
-/// The program that shows the coverage dialog: `osascript` on macOS. Test
-/// builds (and only they) can name a stand-in in `AGENT_SIGN_TEST_DIALOG`, so
-/// the service's whole path can be tested on any system. Elsewhere there is
-/// none: a dialog any program can click would let an agent approve its own
-/// lease, and Linux has no authenticator to follow one.
-fn dialog_program() -> Option<std::ffi::OsString> {
-    #[cfg(feature = "test-authenticator")]
-    if let Some(program) = std::env::var_os("AGENT_SIGN_TEST_DIALOG") {
-        return Some(program);
-    }
-    #[cfg(target_os = "macos")]
-    return Some("osascript".into());
-    #[cfg(not(target_os = "macos"))]
-    None
-}
-
-/// The list dialog, which only picks the coverage. Nothing is preselected and
-/// its default action is Deny: the person must pick a coverage and press
-/// Continue, and a pick alone approves nothing, since the owner is
-/// authenticated afterwards. (A click is not proof of a person: any program
-/// that controls the screen can click.) `choose from list` can't change which
-/// button Return presses, so the button that moves on is named "Continue" and
-/// stays disabled until a choice is made. It gives up, as a denial, after
-/// the same time the authentication is given.
-fn select_with_dialog(
-    prompt_text: &str,
-    choices: &[(Coverage, String)],
-    cancel: &AtomicBool,
-) -> Selection {
-    #[cfg(not(any(target_os = "macos", feature = "test-authenticator")))]
-    {
-        let _ = (prompt_text, choices, cancel);
-        Selection::Unavailable
-    }
-    #[cfg(any(target_os = "macos", feature = "test-authenticator"))]
-    {
-        let Some(program) = dialog_program() else {
-            return Selection::Unavailable;
-        };
-        let items: Vec<String> = choices.iter().map(|(_, l)| applescript_string(l)).collect();
-        let script = format!(
-            "choose from list {{{}}} with title \"agent-sign\" with prompt {} OK button name \"Continue\" cancel button name \"Deny\" without empty selection allowed",
-            items.join(", "),
-            applescript_string(prompt_text),
-        );
-        let mut dialog = Command::new(program);
-        dialog.arg("-e").arg(&script);
-        match run_cancellable(dialog, cancel, AUTH_TIMEOUT) {
-            Ok(output) => {
-                let res = String::from_utf8_lossy(&output.stdout);
-                // Any answer is the person's; an empty one with a failure
-                // means no dialog could be shown.
-                if !res.trim().is_empty() || output.status.success() {
-                    return match Approval::selection_from_answer(&res, choices) {
-                        Some(coverage) => Selection::Chosen(coverage),
-                        None => Selection::Denied,
-                    };
-                }
-                Selection::Unavailable
-            }
-            Err(RunEnd::Cancelled) => Selection::Withdrawn,
-            Err(RunEnd::TimedOut) => Selection::Denied,
-            Err(RunEnd::Failed) => Selection::Unavailable,
-        }
-    }
-}
-
 /// One approval prompt at a time, across the whole service: several open at
 /// once would each need a touch, and an agent could time one for a moment
 /// the person expects a Touch ID prompt anyway.
 static PROMPT_LOCK: Mutex<()> = Mutex::new(());
 
-/// Asks the person to approve a lease, showing its fixed terms and letting
-/// them choose what it covers (`choices`). The repository and branch were
-/// checked before this (an existing git working tree, no control or
-/// invisible characters).
+/// Asks the person to approve a lease: one prompt from the platform's own
+/// authentication (on macOS, Touch ID or the login password) whose reason
+/// says which branch of which repository is being approved. The repository
+/// and branch were checked before this (an existing git working tree, no
+/// control or invisible characters).
 ///
-/// Approval takes two things, and a click is not one a program can supply:
-/// the person's choice, then the owner's authentication ([`confirm`]: Touch
-/// ID or the login password on macOS). Cancel, failure, timeout or no
+/// There is no dialog of our own: a click is not proof of a person, since any
+/// program that controls the screen can click. What the lease covers isn't
+/// chosen here either; it is the narrowest coverage, this repository (and,
+/// unless the config lets leases follow the agent, this branch), and the
+/// reason says exactly that ([`BranchReach`]). Cancel, failure, timeout or no
 /// authenticator at all denies. Where there is no authenticator (Linux)
 /// nobody is asked and the lease is refused: there is no terminal fallback,
 /// because an agent can drive its own pseudo-terminal or type into the
 /// person's, so a terminal answer proves nothing.
 fn request_human_approval(
     repo: &str,
-    branch: &str,
-    terms: &agent_sign::lease::TermsText,
-    choices: &[(Coverage, String)],
+    reach: &BranchReach,
+    ends: &str,
     cancel: &AtomicBool,
 ) -> Approval {
     let Some(authenticator) = platform_authenticator() else {
@@ -967,35 +857,60 @@ fn request_human_approval(
         return Approval::Withdrawn;
     }
 
-    // Show the real place, not the spelling the agent used for it.
+    // Show the real place, not the spelling the agent used for it, and the
+    // person's home folder as `~`.
     let shown_repo = fs::canonicalize(repo)
         .map(|p| p.to_string_lossy().into_owned())
         .unwrap_or_else(|_| repo.to_string());
-    let prompt_text = format!(
-        "An AI agent asks to sign git commits as the agent without asking you again.\n\nRepository: {}\nBranch now: {}\nBranches: {}\nEnds: {}\n\nChoose what this approval covers, then Continue. You will then be asked to confirm that it is you (Touch ID or your password); nothing is approved until you do. These terms are fixed when you approve. They never grow.",
-        shown_repo, branch, terms.covers, terms.ends
-    );
-    match select_with_dialog(&prompt_text, choices, cancel) {
-        Selection::Withdrawn => Approval::Withdrawn,
-        Selection::Denied => Approval::Denied,
-        Selection::Unavailable => {
-            eprintln!(
-                "[agent-signd] No dialog could be shown; signing lease denied. Run the service in your desktop session."
-            );
-            Approval::NoWayToAsk
-        }
-        Selection::Chosen(coverage) => {
-            let label = choices
-                .iter()
-                .find(|(c, _)| *c == coverage)
-                .map(|(_, l)| l.as_str())
-                .unwrap_or("");
-            confirm(
-                Some(coverage),
-                authenticator.as_ref(),
-                &auth_reason(&shown_repo, branch, label),
-                cancel,
-            )
-        }
+    let home = fs::canonicalize(agent_sign::paths::home_dir())
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned());
+    // A linked worktree commits into another repository's object store: name
+    // that one, but only when it confirms the worktree from its side. A
+    // folder that merely claims it is shown as itself, marked unrecognized.
+    let kind = agent_sign::repo_info::worktree_kind(Path::new(&shown_repo));
+    let main = match &kind {
+        agent_sign::repo_info::WorktreeKind::Linked(p) => Some(p.to_string_lossy().into_owned()),
+        _ => None,
+    };
+    let unrecognized = kind == agent_sign::repo_info::WorktreeKind::Unrecognized;
+    let asked = match &main {
+        Some(main) => Asked {
+            repo: main,
+            worktree: Some(&shown_repo),
+            unrecognized_worktree: false,
+            home: home.as_deref(),
+            reach,
+            ends,
+        },
+        None => Asked {
+            repo: &shown_repo,
+            worktree: None,
+            unrecognized_worktree: unrecognized,
+            home: home.as_deref(),
+            reach,
+            ends,
+        },
+    };
+    confirm(
+        Coverage::Repository,
+        authenticator.as_ref(),
+        &auth_reason(&asked),
+        cancel,
+    )
+}
+
+/// Whether `branch` may go into an approval prompt about `repo`: a valid git
+/// branch name made of plain characters, and the branch the repository has
+/// checked out (read from its `HEAD`; `HEAD` for a detached one, as the
+/// wrapper reports it). The error is sent to the agent.
+fn check_asked_branch(repo: &str, branch: &str) -> Result<(), String> {
+    agent_sign::repo_info::check_branch_name(branch)
+        .map_err(|why| format!("{why}, so no approval was asked for"))?;
+    match agent_sign::repo_info::current_branch(Path::new(repo)) {
+        Some(current) if current == branch => Ok(()),
+        _ => Err(format!(
+            "branch '{branch}' isn't the branch checked out in the repository, so no approval was asked for"
+        )),
     }
 }

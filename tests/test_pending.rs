@@ -1,15 +1,15 @@
-//! At most one approval dialog per repository and branch; dialogs withdrawn
+//! At most one approval prompt per repository and branch; prompts withdrawn
 //! when nobody is waiting on them any more; and `agent-sign pending` and
 //! `agent-sign deny` to see and close them. These came from one cas test run
 //! leaving about ten dialogs on the person's screen (9 Oct 2026).
 //!
-//! The stand-in dialog stays open until the test writes an answer, or until
-//! it's killed. It records its process ID, so a test can tell whether the
+//! The stand-in for the owner (Touch ID) keeps its prompt open until the
+//! test writes an answer. It logs each prompt it shows, and logs when the
+//! service cancelled one that was still open, so a test can tell whether the
 //! service closed it.
 
 use std::fs;
 use std::io::Write;
-use std::os::unix::fs::PermissionsExt;
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -29,19 +29,7 @@ impl Drop for Service {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
-        // Stop any stand-in dialog still open, rather than leave it behind.
-        for pid in self.dialog_pids() {
-            let _ = Command::new("kill")
-                .arg(pid.to_string())
-                .stderr(Stdio::null())
-                .status();
-        }
     }
-}
-
-fn write_script(path: &Path, body: &str) {
-    fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
 }
 
 fn start() -> Service {
@@ -49,27 +37,12 @@ fn start() -> Service {
     let home = dir.path().to_path_buf();
     let fakebin = home.join("fakebin");
     fs::create_dir_all(&fakebin).unwrap();
-    for tool in ["git", "sleep"] {
-        let real = ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"]
-            .iter()
-            .map(|d| Path::new(d).join(tool))
-            .find(|p| p.exists())
-            .unwrap();
-        std::os::unix::fs::symlink(real, fakebin.join(tool)).unwrap();
-    }
-    let (pids, log, answer) = (home.join("pids"), home.join("shown"), home.join("answer"));
-    // Waits for an answer to be written, then gives it, as the real dialog
-    // would when the person clicks. It gives up when its home is gone or
-    // `sleep` fails, so it can never outlive the test spinning.
-    let body = format!(
-        "echo $$ >> '{pids}'\necho shown >> '{log}'\nwhile [ ! -f '{answer}' ]; do [ -d '{home}' ] || exit 1; sleep 0.1 || exit 1; done\nread -r A < '{answer}'\n[ \"$A\" = false ] && {{ echo false; exit 1; }}\necho \"$A\"",
-        pids = pids.display(),
-        log = log.display(),
-        answer = answer.display(),
-        home = home.display(),
-    );
-    let dialog = fakebin.join("dialog");
-    write_script(&dialog, &body);
+    let real = ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"]
+        .iter()
+        .map(|d| Path::new(d).join("git"))
+        .find(|p| p.exists())
+        .unwrap();
+    std::os::unix::fs::symlink(real, fakebin.join("git")).unwrap();
 
     let socket = home.join("s.sock");
     let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
@@ -77,9 +50,11 @@ fn start() -> Service {
         .arg(&socket)
         .env("HOME", &home)
         .env("PATH", &fakebin)
-        // The stand-in dialog picks the coverage; this stands in for the owner.
-        .env("AGENT_SIGN_TEST_AUTH", "allow")
-        .env("AGENT_SIGN_TEST_DIALOG", &dialog)
+        // The stand-in owner keeps each prompt open until the test writes an
+        // answer, and logs each prompt and each cancellation.
+        .env_remove("AGENT_SIGN_TEST_AUTH")
+        .env("AGENT_SIGN_TEST_AUTH_ANSWER", home.join("answer"))
+        .env("AGENT_SIGN_TEST_AUTH_LOG", home.join("shown"))
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -108,6 +83,8 @@ impl Service {
     fn repo(&self, name: &str) -> String {
         let repo = self.home.join("w").join(name);
         fs::create_dir_all(repo.join(".git")).unwrap();
+        // The service checks that the branch asked about is the one checked out.
+        fs::write(repo.join(".git/HEAD"), "ref: refs/heads/feat/a\n").unwrap();
         repo.display().to_string()
     }
 
@@ -117,12 +94,11 @@ impl Service {
             .unwrap_or(0)
     }
 
-    fn dialog_pids(&self) -> Vec<i32> {
-        fs::read_to_string(self.home.join("pids"))
-            .unwrap_or_default()
-            .lines()
-            .filter_map(|l| l.trim().parse().ok())
-            .collect()
+    /// How many prompts the service cancelled while they were open.
+    fn times_withdrawn(&self) -> usize {
+        fs::read_to_string(self.home.join("shown.withdrawn"))
+            .map(|s| s.lines().count())
+            .unwrap_or(0)
     }
 
     fn answer(&self, answer: &str) {
@@ -161,17 +137,8 @@ fn ask_lease(socket: &Path, repo: &str) -> Response {
     .unwrap()
 }
 
-fn process_alive(pid: i32) -> bool {
-    Command::new("kill")
-        .args(["-0", &pid.to_string()])
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
 #[test]
-fn many_commits_asking_at_once_share_one_dialog() {
+fn many_commits_asking_at_once_share_one_prompt() {
     let s = start();
     let repo = s.repo("repo");
     let handles: Vec<_> = (0..5)
@@ -185,7 +152,7 @@ fn many_commits_asking_at_once_share_one_dialog() {
         s.pending().first().is_some_and(|p| p.waiters == 5)
     });
     assert_eq!(s.pending().len(), 1);
-    s.answer("This repository only");
+    s.answer("allow");
     for h in handles {
         assert!(matches!(h.join().unwrap(), Response::LeaseGranted { .. }));
     }
@@ -193,7 +160,7 @@ fn many_commits_asking_at_once_share_one_dialog() {
 }
 
 #[test]
-fn a_dialog_closes_when_the_commit_that_asked_has_gone() {
+fn a_prompt_closes_when_the_commit_that_asked_has_gone() {
     let s = start();
     let mut stream = UnixStream::connect(&s.socket).unwrap();
     let request = serde_json::to_string(&Request::RequestLease {
@@ -204,17 +171,16 @@ fn a_dialog_closes_when_the_commit_that_asked_has_gone() {
     })
     .unwrap();
     writeln!(stream, "{request}").unwrap();
-    s.wait_until("the dialog to open", || s.times_shown() == 1);
-    let pid = s.dialog_pids()[0];
-    assert!(process_alive(pid));
+    s.wait_until("the prompt to open", || s.times_shown() == 1);
+    assert_eq!(s.times_withdrawn(), 0);
 
     drop(stream); // the commit's program goes away (a test timed out, say)
-    s.wait_until("the dialog to close", || !process_alive(pid));
+    s.wait_until("the prompt to close", || s.times_withdrawn() == 1);
     s.wait_until("no request left waiting", || s.pending().is_empty());
 }
 
 #[test]
-fn one_commit_leaving_doesnt_close_a_dialog_another_is_waiting_on() {
+fn one_commit_leaving_doesnt_close_a_prompt_another_is_waiting_on() {
     let s = start();
     let repo = s.repo("repo");
     let waiting = {
@@ -222,7 +188,7 @@ fn one_commit_leaving_doesnt_close_a_dialog_another_is_waiting_on() {
         let repo = repo.clone();
         std::thread::spawn(move || ask_lease(&socket, &repo))
     };
-    s.wait_until("the dialog to open", || s.times_shown() == 1);
+    s.wait_until("the prompt to open", || s.times_shown() == 1);
     let mut leaving = UnixStream::connect(&s.socket).unwrap();
     let request = serde_json::to_string(&Request::RequestLease {
         repo,
@@ -239,11 +205,12 @@ fn one_commit_leaving_doesnt_close_a_dialog_another_is_waiting_on() {
     s.wait_until("one waiting", || {
         s.pending().first().is_some_and(|p| p.waiters == 1)
     });
-    assert!(
-        process_alive(s.dialog_pids()[0]),
-        "the dialog stays for the other commit"
+    assert_eq!(
+        s.times_withdrawn(),
+        0,
+        "the prompt stays for the other commit"
     );
-    s.answer("This repository only");
+    s.answer("allow");
     assert!(matches!(
         waiting.join().unwrap(),
         Response::LeaseGranted { .. }
@@ -251,7 +218,7 @@ fn one_commit_leaving_doesnt_close_a_dialog_another_is_waiting_on() {
 }
 
 #[test]
-fn deny_all_answers_every_waiting_request_and_closes_the_dialogs() {
+fn deny_all_answers_every_waiting_request_and_closes_the_prompts() {
     let s = start();
     let (one, two) = (s.repo("one"), s.repo("two"));
     let waiting: Vec<_> = [one.clone(), two.clone()]
@@ -261,9 +228,9 @@ fn deny_all_answers_every_waiting_request_and_closes_the_dialogs() {
             std::thread::spawn(move || ask_lease(&socket, &repo))
         })
         .collect();
-    // One prompt at a time: one dialog is open, the other request waits its turn.
+    // One prompt at a time: one is open, the other request waits its turn.
     s.wait_until("two requests waiting", || s.pending().len() == 2);
-    s.wait_until("one dialog open", || s.times_shown() == 1);
+    s.wait_until("one prompt open", || s.times_shown() == 1);
 
     let cli = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_agent-sign"))
@@ -286,11 +253,9 @@ fn deny_all_answers_every_waiting_request_and_closes_the_dialogs() {
             other => panic!("expected a denial, got {other:?}"),
         }
     }
-    for pid in s.dialog_pids() {
-        s.wait_until("each dialog to close", || !process_alive(pid));
-    }
+    s.wait_until("the open prompt to close", || s.times_withdrawn() == 1);
     assert!(s.pending().is_empty());
-    // The request that was waiting its turn never got a dialog.
+    // The request that was waiting its turn never got a prompt.
     assert_eq!(s.times_shown(), 1);
     let none_left = String::from_utf8_lossy(&cli(&["pending"]).stdout).to_string();
     assert!(
@@ -314,7 +279,7 @@ fn deny_by_id_answers_only_that_request() {
         std::thread::spawn(move || ask_lease(&socket, &repo))
     };
     s.wait_until("two requests waiting", || s.pending().len() == 2);
-    s.wait_until("a dialog open", || s.times_shown() >= 1);
+    s.wait_until("a prompt open", || s.times_shown() >= 1);
     let id = s
         .pending()
         .into_iter()
@@ -334,6 +299,6 @@ fn deny_by_id_answers_only_that_request() {
     ));
     assert!(matches!(one.join().unwrap(), Response::Error { .. }));
     assert_eq!(s.pending().len(), 1);
-    s.answer("This repository only");
+    s.answer("allow");
     assert!(matches!(two.join().unwrap(), Response::LeaseGranted { .. }));
 }

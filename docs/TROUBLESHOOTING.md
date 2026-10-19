@@ -36,11 +36,12 @@ The wrapper prints why, starting `[agent-git]`.
 |---|---|---|
 | `Unable to connect to the agent-sign service` | `agent-signd` isn't running. | Restart it (above), then `agent-sign status`. |
 | `No signing lease: Branch 'main' is protected` | Agents never commit on `main` or `master` (`block_branches`). | Have the agent work on another branch. |
-| `No signing lease: the person denied the signing lease` | You pressed Deny. | Commit again to be asked again. |
-| You're asked again when the agent changes branch | The lease covers only the branch it was approved on (`allow_branch_switching = false`, or leases approved that way). | Approve, or set `allow_branch_switching = true` for future leases. |
-| `No signing lease: agent-sign couldn't ask you to approve a lease` | The service couldn't confirm it was you: no desktop session on macOS, or Linux (which has no approval dialog), or a server, container or SSH session with no terminal. | See "Linux has no approval dialog" and "Machines with no screen" below. |
-| `No signing lease: the signing lease was not approved: agent-sign could not confirm it was you (...)` | You picked a coverage but the Touch ID / password check was cancelled, failed, or timed out (five minutes). | Commit again and authenticate. If the Mac offers no check (no password set, no desktop session), the reason says so. |
-| `No signing lease: agent-sign is not asking again for N more seconds` | A recent approval prompt was refused (Deny, or Touch ID cancelled, failed or timed out), so new ones are held back, doubling with each refusal in a row. | Wait, or set `refusal_backoff` (default `"60s"`, `"none"` turns it off) and restart the service. |
+| `No signing lease: the person denied the signing lease` | Someone ran `agent-sign deny` while the prompt was open. | Commit again to be asked again. |
+| You're asked again when the agent changes branch | By default a lease covers only the branch it was approved on, in the repository it was asked from (`allow_branch_switching = false`). | Approve, or set `allow_branch_switching = true` (and restart the service) so future leases cover the repository's other unprotected branches. |
+| `No signing lease: agent-sign couldn't ask you to approve a lease` | The service couldn't confirm it was you: no desktop session on macOS, or Linux (which has no way to approve), or a server, container or SSH session with no terminal. | See "Linux has no way to approve" and "Machines with no screen" below. |
+| `No signing lease: the signing lease was not approved: agent-sign could not confirm it was you (...)` | The Touch ID / password prompt was cancelled, failed, or timed out (five minutes). | Commit again and authenticate. If the Mac offers no check (no password set, no desktop session), the reason says so. |
+| `No signing lease: agent-sign is not asking again for N more seconds` | A recent approval prompt was refused (Touch ID cancelled, failed or timed out), so new ones are held back, doubling with each refusal in a row. | Wait, or set `refusal_backoff` (default `"60s"`, `"none"` turns it off) and restart the service. |
+| `No signing lease: ... no approval was asked for` about a branch ("uses characters other than letters, digits and / - _ ." or "isn't the branch checked out") | The branch goes into the approval prompt, so only plain branch names (letters, digits, `/ - _ .`) that are the repository's current branch are asked about. | Rename the branch (no spaces, `#`, `@`, accents), or run the commit from the branch's own checkout. |
 | `No signing lease: agent-sign already has 4 approval requests waiting` | Four requests are already waiting for an answer. | Answer them, or `agent-sign deny --all`. |
 | `No signing lease: ... isn't an existing git working tree` or `... control or invisible characters` | The repository the wrapper named doesn't exist or isn't a git working tree, or its path or the branch name has characters that could disguise the prompt. | Run git from inside a real repository; rename the branch or folder. |
 | `Token issuance failed: Rate limit exceeded` | More than `max_commits_per_minute` agent commits in a minute in this repository. | Wait a minute, or raise the limit in `~/.agent-sign/config.toml` and restart the service. |
@@ -70,10 +71,10 @@ Developer, turn on "Use the SSH agent".
 
 Agent commits are signed with the agent's file key, so they need no touch.
 Your own commits still use your key and still need a touch. Your hardware
-key isn't used to approve leases: that's the dialog, then Touch ID or your
+key isn't used to approve leases: that's Touch ID or your
 login password on the Mac.
 
-## Linux has no approval dialog
+## Linux has no way to approve
 
 Linux can't approve leases yet, so the service refuses every request there. agent-sign
 no longer shows a `zenity` or `kdialog` dialog or a terminal prompt: Linux has
@@ -121,7 +122,7 @@ changed from a repository.
 or a path inside the repository (such as `.`). `agent-sign revoke --all` ends every
 lease.
 
-## Approval dialogs keep appearing
+## Approval prompts keep appearing
 
 - **Many at once, from tests:** a test suite that makes throwaway commits
   should turn signing off for them (`git config commit.gpgsign false` in the
@@ -130,7 +131,7 @@ lease.
 - **To see and close what's waiting:** `agent-sign pending` lists the open
   requests (one per repository and branch, however many commits are
   waiting on it), and `agent-sign deny --all` (or `agent-sign deny <id>`)
-  answers no and closes their dialogs.
-- **Left open after a program stopped:** a dialog (or the Touch ID prompt)
+  answers no and closes their prompts.
+- **Left open after a program stopped:** the Touch ID prompt
   closes by itself within about a second once every commit waiting on it
   has gone.
