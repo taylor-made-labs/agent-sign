@@ -265,6 +265,9 @@ pub struct Asked<'a> {
     pub repo: &'a str,
     /// For a linked worktree, the worktree's own canonical path.
     pub worktree: Option<&'a str>,
+    /// The folder's `.git` claims to be a linked worktree but the repository
+    /// it names doesn't confirm it; the prompt says so.
+    pub unrecognized_worktree: bool,
     /// The person's home folder, shown as `~`.
     pub home: Option<&'a str>,
     /// Which branches the lease will cover.
@@ -285,7 +288,8 @@ pub struct Asked<'a> {
 /// repository has checked out: see [`crate::repo_info`]) and set in curly
 /// quotes so it reads as a name. The names and paths are the agent's to
 /// choose, so they are cleaned by [`plain`]. For a linked worktree the
-/// parentheses also say `worktree “<name>”`. The result is at most
+/// parentheses also say `worktree “<name>”`; a folder that only claims to be
+/// a worktree says `not a recognized worktree` instead. The result is at most
 /// [`MAX_REASON_CHARS`] characters.
 pub fn auth_reason(asked: &Asked) -> String {
     let name = plain(repo_name(asked.repo), MAX_NAME_CHARS);
@@ -302,6 +306,7 @@ pub fn auth_reason(asked: &Asked) -> String {
             "{path}, worktree \u{201C}{}\u{201D}",
             plain(repo_name(worktree), MAX_WORKTREE_CHARS)
         ),
+        None if asked.unrecognized_worktree => format!("{path}, not a recognized worktree"),
         None => path,
     };
     let ends = plain(asked.ends, MAX_ENDS_CHARS);

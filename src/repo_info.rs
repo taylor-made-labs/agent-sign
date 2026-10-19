@@ -13,9 +13,11 @@
 //!   part of the sentence around it.
 //! - [`current_branch`]: the branch the repository has checked out, read from
 //!   its `HEAD` file, so an agent can't ask about a branch it isn't on.
-//! - [`main_repository`]: for a linked worktree, the repository whose object
+//! - [`worktree_kind`]: for a linked worktree, the repository whose object
 //!   store the commits really go into, so the prompt can name that one and
-//!   not just the throwaway folder the agent made.
+//!   not just the throwaway folder the agent made. Only when that repository
+//!   confirms the worktree from its side; a forged claim is shown as the
+//!   folder itself, marked unrecognized.
 //!
 //! None of this runs git: a repository is agent-controlled, and git there
 //! may run its hooks or its config's programs.
@@ -94,17 +96,69 @@ pub fn current_branch(repo: &Path) -> Option<String> {
     (hex && head.chars().all(|c| c.is_ascii_hexdigit())).then(|| "HEAD".to_string())
 }
 
-/// For a linked worktree, the canonical path of the repository it belongs to
-/// (its main working tree, or the bare repository's folder); `None` for an
-/// ordinary repository, a submodule, or anything that can't be resolved.
-pub fn main_repository(repo: &Path) -> Option<PathBuf> {
+/// What a folder is, as far as the approval prompt may say.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorktreeKind {
+    /// An ordinary repository, a submodule, or not a repository at all: the
+    /// prompt names the folder itself.
+    NotLinked,
+    /// A verified linked worktree of the repository at this canonical path
+    /// (its main working tree, or the bare repository's folder).
+    Linked(PathBuf),
+    /// `.git` is a file that claims a shared repository (`commondir`) but the
+    /// claim doesn't check out in both directions. The prompt names the folder
+    /// itself and says so.
+    Unrecognized,
+}
+
+/// Classifies `repo` as a linked worktree only when git's own bookkeeping
+/// agrees from both sides, because everything in the folder, including its
+/// `.git` file, its gitdir and that gitdir's `commondir`, is the agent's to
+/// forge. A folder is a linked worktree of R only if:
+///
+/// 1. its gitdir, fully resolved (no symlinks), is a direct child of R's
+///    `.git/worktrees/` (`R` taken from the resolved `commondir`), and
+/// 2. `R/.git/worktrees/<name>/gitdir`, which only R's owner can write,
+///    points back at this folder's `.git`.
+///
+/// The agent can't write inside R, so it can't pass both. A gitdir of its own
+/// making fails (1); pointing at a real worktree's gitdir fails (2).
+pub fn worktree_kind(repo: &Path) -> WorktreeKind {
     let dot_git = repo.join(".git");
-    if !dot_git.is_file() {
+    // `symlink_metadata`: a `.git` that is a symlink is not a plain file.
+    match std::fs::symlink_metadata(&dot_git) {
+        Ok(m) if m.is_file() => {}
+        _ => return WorktreeKind::NotLinked,
+    }
+    let Some(gitdir_raw) = git_dir(repo) else {
+        return WorktreeKind::NotLinked;
+    };
+    let Ok(common_text) = std::fs::read_to_string(gitdir_raw.join("commondir")) else {
+        return WorktreeKind::NotLinked;
+    };
+    verified_main_repository(&dot_git, &gitdir_raw, common_text.trim())
+        .map_or(WorktreeKind::Unrecognized, WorktreeKind::Linked)
+}
+
+fn verified_main_repository(dot_git: &Path, gitdir_raw: &Path, common: &str) -> Option<PathBuf> {
+    let gitdir = std::fs::canonicalize(gitdir_raw).ok()?;
+    let common = std::fs::canonicalize(gitdir_raw.join(common)).ok()?;
+    // (1) The gitdir is `<common>/worktrees/<name>`, with no symlink on that
+    // path: the resolved gitdir equals the unresolved spelling.
+    let worktrees = common.join("worktrees");
+    if !std::fs::symlink_metadata(&worktrees).ok()?.is_dir() {
         return None;
     }
-    let gitdir = git_dir(repo)?;
-    let common = std::fs::read_to_string(gitdir.join("commondir")).ok()?;
-    let common = std::fs::canonicalize(gitdir.join(common.trim())).ok()?;
+    let name = gitdir.file_name()?;
+    if gitdir != worktrees.join(name) {
+        return None;
+    }
+    // (2) The worktree's record in R points back at this folder's `.git`.
+    let back = std::fs::read_to_string(gitdir.join("gitdir")).ok()?;
+    let back = std::fs::canonicalize(back.trim()).ok()?;
+    if back != std::fs::canonicalize(dot_git).ok()? {
+        return None;
+    }
     if common.file_name().is_some_and(|n| n == ".git") {
         common.parent().map(Path::to_path_buf)
     } else {
@@ -149,5 +203,107 @@ mod tests {
         for name in bad {
             assert!(check_branch_name(name).is_err(), "{name:?} was accepted");
         }
+    }
+
+    use std::fs;
+    use std::process::Command;
+
+    /// A real repository with a real linked worktree, made by git itself
+    /// (with the user's global config out of the way), and a canonical root.
+    fn real_worktree(root: &Path) -> (PathBuf, PathBuf) {
+        let git = |dir: &Path, args: &[&str]| {
+            let out = Command::new("git")
+                .current_dir(dir)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_CONFIG_SYSTEM", "/dev/null")
+                .args([
+                    "-c",
+                    "user.name=t",
+                    "-c",
+                    "user.email=t@t",
+                    "-c",
+                    "commit.gpgsign=false",
+                ])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "{args:?}: {out:?}");
+        };
+        let main = root.join("real");
+        fs::create_dir(&main).unwrap();
+        git(&main, &["init", "-q", "-b", "main"]);
+        git(&main, &["commit", "-q", "--allow-empty", "-m", "x"]);
+        let wt = root.join("wt");
+        git(
+            &main,
+            &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "side"],
+        );
+        (main, wt)
+    }
+
+    #[test]
+    fn a_real_linked_worktree_is_recognized() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let (main, wt) = real_worktree(&root);
+        assert_eq!(worktree_kind(&wt), WorktreeKind::Linked(main.clone()));
+        assert_eq!(worktree_kind(&main), WorktreeKind::NotLinked);
+    }
+
+    #[test]
+    fn a_forged_commondir_naming_a_real_repository_is_not_a_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let (main, _wt) = real_worktree(&root);
+        // The agent's folder, its own fake gitdir, a commondir naming the real repo.
+        let evil = root.join("evil");
+        let fake = root.join("fake-gitdir");
+        fs::create_dir_all(&evil).unwrap();
+        fs::create_dir_all(&fake).unwrap();
+        fs::write(evil.join(".git"), format!("gitdir: {}\n", fake.display())).unwrap();
+        fs::write(
+            fake.join("commondir"),
+            format!("{}\n", main.join(".git").display()),
+        )
+        .unwrap();
+        fs::write(fake.join("HEAD"), "ref: refs/heads/main\n").unwrap();
+        fs::write(
+            fake.join("gitdir"),
+            format!("{}\n", evil.join(".git").display()),
+        )
+        .unwrap();
+        assert_eq!(worktree_kind(&evil), WorktreeKind::Unrecognized);
+    }
+
+    #[test]
+    fn pointing_at_another_folders_real_worktree_record_is_not_a_worktree() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let (main, _wt) = real_worktree(&root);
+        let record = main.join(".git/worktrees/wt");
+        assert!(record.is_dir());
+        let evil = root.join("evil");
+        fs::create_dir_all(&evil).unwrap();
+        fs::write(evil.join(".git"), format!("gitdir: {}\n", record.display())).unwrap();
+        // Right place in R, but R's record points back at wt, not at evil.
+        assert_eq!(worktree_kind(&evil), WorktreeKind::Unrecognized);
+    }
+
+    #[test]
+    fn a_symlinked_gitdir_into_a_real_record_is_not_trusted() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = fs::canonicalize(tmp.path()).unwrap();
+        let (main, wt) = real_worktree(&root);
+        // A symlink to the real record, in a folder whose back-pointer is genuine
+        // for wt but which is spelled through a link: it resolves to the real
+        // record, so it is still judged by what it resolves to (wt's), and a
+        // different folder using it fails the back-pointer check.
+        let link = root.join("link");
+        std::os::unix::fs::symlink(main.join(".git/worktrees/wt"), &link).unwrap();
+        let evil = root.join("evil");
+        fs::create_dir_all(&evil).unwrap();
+        fs::write(evil.join(".git"), format!("gitdir: {}\n", link.display())).unwrap();
+        assert_eq!(worktree_kind(&evil), WorktreeKind::Unrecognized);
+        assert_eq!(worktree_kind(&wt), WorktreeKind::Linked(main));
     }
 }

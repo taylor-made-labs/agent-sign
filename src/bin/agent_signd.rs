@@ -866,13 +866,19 @@ fn request_human_approval(
         .ok()
         .map(|p| p.to_string_lossy().into_owned());
     // A linked worktree commits into another repository's object store: name
-    // that one, not just the folder the agent made.
-    let main = agent_sign::repo_info::main_repository(Path::new(&shown_repo))
-        .map(|p| p.to_string_lossy().into_owned());
+    // that one, but only when it confirms the worktree from its side. A
+    // folder that merely claims it is shown as itself, marked unrecognized.
+    let kind = agent_sign::repo_info::worktree_kind(Path::new(&shown_repo));
+    let main = match &kind {
+        agent_sign::repo_info::WorktreeKind::Linked(p) => Some(p.to_string_lossy().into_owned()),
+        _ => None,
+    };
+    let unrecognized = kind == agent_sign::repo_info::WorktreeKind::Unrecognized;
     let asked = match &main {
         Some(main) => Asked {
             repo: main,
             worktree: Some(&shown_repo),
+            unrecognized_worktree: false,
             home: home.as_deref(),
             reach,
             ends,
@@ -880,6 +886,7 @@ fn request_human_approval(
         None => Asked {
             repo: &shown_repo,
             worktree: None,
+            unrecognized_worktree: unrecognized,
             home: home.as_deref(),
             reach,
             ends,

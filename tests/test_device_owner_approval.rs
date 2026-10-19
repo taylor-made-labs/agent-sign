@@ -124,6 +124,7 @@ fn reason_for(repo: &str, home: Option<&str>, branch: &str, ends: &str) -> Strin
     auth_reason(&Asked {
         repo,
         worktree: None,
+        unrecognized_worktree: false,
         home,
         reach: &reach,
         ends,
@@ -151,6 +152,7 @@ fn the_prompt_says_the_branch_the_repository_where_it_is_and_how_long() {
     let wide = auth_reason(&Asked {
         repo: "/Users/me/dev/suite",
         worktree: None,
+        unrecognized_worktree: false,
         home: Some("/Users/me"),
         reach: &BranchReach::AnyUnprotected,
         ends: "until merged, at most 7 days",
@@ -162,6 +164,7 @@ fn the_prompt_says_the_branch_the_repository_where_it_is_and_how_long() {
     let all = auth_reason(&Asked {
         repo: "/w/app",
         worktree: None,
+        unrecognized_worktree: false,
         home: None,
         reach: &BranchReach::Any,
         ends: "until merged",
@@ -178,6 +181,7 @@ fn a_linked_worktree_names_the_repository_it_commits_into() {
     let reason = auth_reason(&Asked {
         repo: "/Users/me/dev/suite",
         worktree: Some("/Users/me/tmp/scratch-notes"),
+        unrecognized_worktree: false,
         home: Some("/Users/me"),
         reach: &reach,
         ends: "until merged",
@@ -252,6 +256,7 @@ fn a_long_reason_is_cut_but_keeps_the_branch_and_the_repository_name() {
     let worst = auth_reason(&Asked {
         repo: &long_repo,
         worktree: Some(&format!("/t/{}/wt-end", "w".repeat(300))),
+        unrecognized_worktree: false,
         home: None,
         reach: &reach,
         ends: &"until merged, at most 100 days ".repeat(10),
@@ -953,6 +958,12 @@ fn a_linked_worktree_is_shown_as_the_repository_it_commits_into() {
     let wt = dir.path().join("tmp/scratch-notes");
     fs::create_dir_all(&wt).unwrap();
     fs::write(wt.join(".git"), format!("gitdir: {}\n", wt_meta.display())).unwrap();
+    // git also records where the worktree lives; the service checks it.
+    fs::write(
+        wt_meta.join("gitdir"),
+        format!("{}\n", wt.join(".git").display()),
+    )
+    .unwrap();
 
     let response = send_request(
         &svc.socket,
@@ -973,6 +984,48 @@ fn a_linked_worktree_is_shown_as_the_repository_it_commits_into() {
         shown.trim_end(),
         "let an agent sign commits on branch \u{201C}feat/x\u{201D} in suite (~/dev/suite, worktree \u{201C}scratch-notes\u{201D}), until merged or 7 days idle"
     );
+}
+
+#[test]
+fn a_folder_forging_a_worktree_of_a_real_repository_is_shown_as_itself() {
+    let dir = tempdir().unwrap();
+    let svc = start_service(dir.path(), Some("allow"));
+    let main = fake_repo(dir.path(), "dev/suite");
+    // The agent's own folder, with a fake gitdir whose commondir names the
+    // real repository; nothing in the real repository mentions it.
+    let fake = dir.path().join("tmp/fake-gitdir");
+    fs::create_dir_all(&fake).unwrap();
+    fs::write(fake.join("HEAD"), "ref: refs/heads/feat/x\n").unwrap();
+    fs::write(fake.join("commondir"), format!("{main}/.git\n")).unwrap();
+    let evil = dir.path().join("tmp/evil");
+    fs::create_dir_all(&evil).unwrap();
+    fs::write(evil.join(".git"), format!("gitdir: {}\n", fake.display())).unwrap();
+    fs::write(
+        fake.join("gitdir"),
+        format!("{}\n", evil.join(".git").display()),
+    )
+    .unwrap();
+
+    let response = send_request(
+        &svc.socket,
+        &Request::RequestLease {
+            repo: evil.display().to_string(),
+            branch: "feat/x".to_string(),
+            intent: "t".to_string(),
+            duration_secs: None,
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(response, Response::LeaseGranted { .. }),
+        "{response:?}"
+    );
+    let shown = fs::read_to_string(dir.path().join("auth.log")).unwrap();
+    assert_eq!(
+        shown.trim_end(),
+        "let an agent sign commits on branch \u{201C}feat/x\u{201D} in evil (~/tmp/evil, not a recognized worktree), until merged or 7 days idle"
+    );
+    assert!(!shown.contains("suite"), "{shown}");
 }
 
 // --- The stand-in owner cannot be in an installable program -------------------
