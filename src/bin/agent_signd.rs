@@ -20,7 +20,7 @@ use base64::Engine;
 use clap::{Parser, Subcommand};
 
 use agent_sign::approval::{
-    Approval, BranchReach, MAX_PENDING_REQUESTS, RefusalBackoff, auth_reason, confirm,
+    Approval, Asked, BranchReach, MAX_PENDING_REQUESTS, RefusalBackoff, auth_reason, confirm,
     has_unsafe_display_chars, platform_authenticator,
 };
 use agent_sign::config::Config;
@@ -330,6 +330,14 @@ fn run_daemon(
         backoff: RefusalBackoff::new(refusal_backoff),
     }));
 
+    // Leases that cover more than one repository can no longer be granted;
+    // ones approved earlier still work, so say so in the log.
+    if let Some(note) =
+        agent_sign::protocol::wide_leases_note(&state.lock().unwrap().lease_engine.list_leases())
+    {
+        eprintln!("[agent-signd] {note}");
+    }
+
     let listener = UnixListener::bind(&socket_path)?;
     fs::set_permissions(&socket_path, fs::Permissions::from_mode(0o600))?;
 
@@ -433,7 +441,7 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 return;
             }
             // Check active lease state without holding the lock across the prompt
-            let (blocked, covering, can_follow, auto_approve_val, terms, reach) = {
+            let (blocked, covering, can_follow, auto_approve_val, terms, reach, ends) = {
                 let mut st = state.lock().unwrap();
                 end_finished_work(&mut st);
                 let engine = &st.lease_engine;
@@ -452,6 +460,7 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                     st.auto_approve,
                     engine.policy.describe_terms(&branch),
                     engine.policy.branch_reach(&branch),
+                    engine.policy.end_phrase(),
                 )
             };
 
@@ -485,15 +494,22 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 // Nothing covers this commit: ask the person, outside the lock.
                 // Unattended approval only ever grants this repository.
                 if !auto_approve_val {
-                    let ask =
-                        match join_or_open_request(&state, &repo, &branch, &intent, &terms, &reach)
-                        {
-                            Ok(ask) => ask,
-                            Err(message) => {
-                                let _ = send_response(stream, &Response::Error { message });
-                                return;
-                            }
-                        };
+                    // The branch goes into the prompt's sentence, and the
+                    // agent chose it: it must be a plain, valid branch name
+                    // and the one the repository really has checked out.
+                    if let Err(message) = check_asked_branch(&repo, &branch) {
+                        let _ = send_response(stream, &Response::Error { message });
+                        return;
+                    }
+                    let ask = match join_or_open_request(
+                        &state, &repo, &branch, &intent, &terms, &reach, &ends,
+                    ) {
+                        Ok(ask) => ask,
+                        Err(message) => {
+                            let _ = send_response(stream, &Response::Error { message });
+                            return;
+                        }
+                    };
                     // `None`: the commit's program is gone, so there's no one
                     // to answer.
                     if let Some(response) = wait_for_answer(&ask, stream) {
@@ -684,6 +700,7 @@ fn join_or_open_request(
     intent: &str,
     terms: &agent_sign::lease::TermsText,
     reach: &BranchReach,
+    ends: &str,
 ) -> Result<Arc<PendingAsk>, String> {
     let key = pending_key(repo, branch);
     let mut st = state.lock().unwrap();
@@ -721,9 +738,9 @@ fn join_or_open_request(
     let state = Arc::clone(state);
     let asking = Arc::clone(&ask);
     let (repo, branch, intent) = (repo.to_string(), branch.to_string(), intent.to_string());
-    let (terms, reach) = (terms.clone(), reach.clone());
+    let (terms, reach, ends) = (terms.clone(), reach.clone(), ends.to_string());
     std::thread::spawn(move || {
-        let approval = request_human_approval(&repo, &reach, &asking.cancel);
+        let approval = request_human_approval(&repo, &reach, &ends, &asking.cancel);
         // Read the branch's tip before taking the lock: git runs in a
         // repository the agent controls, and mustn't stall the service.
         let work = match approval {
@@ -807,7 +824,12 @@ static PROMPT_LOCK: Mutex<()> = Mutex::new(());
 /// nobody is asked and the lease is refused: there is no terminal fallback,
 /// because an agent can drive its own pseudo-terminal or type into the
 /// person's, so a terminal answer proves nothing.
-fn request_human_approval(repo: &str, reach: &BranchReach, cancel: &AtomicBool) -> Approval {
+fn request_human_approval(
+    repo: &str,
+    reach: &BranchReach,
+    ends: &str,
+    cancel: &AtomicBool,
+) -> Approval {
     let Some(authenticator) = platform_authenticator() else {
         eprintln!(
             "[agent-signd] No way to confirm an approval on this machine; signing lease denied. There is no clickable or terminal fallback: anything that can click or type could approve its own lease."
@@ -843,10 +865,45 @@ fn request_human_approval(repo: &str, reach: &BranchReach, cancel: &AtomicBool) 
     let home = fs::canonicalize(agent_sign::paths::home_dir())
         .ok()
         .map(|p| p.to_string_lossy().into_owned());
+    // A linked worktree commits into another repository's object store: name
+    // that one, not just the folder the agent made.
+    let main = agent_sign::repo_info::main_repository(Path::new(&shown_repo))
+        .map(|p| p.to_string_lossy().into_owned());
+    let asked = match &main {
+        Some(main) => Asked {
+            repo: main,
+            worktree: Some(&shown_repo),
+            home: home.as_deref(),
+            reach,
+            ends,
+        },
+        None => Asked {
+            repo: &shown_repo,
+            worktree: None,
+            home: home.as_deref(),
+            reach,
+            ends,
+        },
+    };
     confirm(
         Coverage::Repository,
         authenticator.as_ref(),
-        &auth_reason(&shown_repo, home.as_deref(), reach),
+        &auth_reason(&asked),
         cancel,
     )
+}
+
+/// Whether `branch` may go into an approval prompt about `repo`: a valid git
+/// branch name made of plain characters, and the branch the repository has
+/// checked out (read from its `HEAD`; `HEAD` for a detached one, as the
+/// wrapper reports it). The error is sent to the agent.
+fn check_asked_branch(repo: &str, branch: &str) -> Result<(), String> {
+    agent_sign::repo_info::check_branch_name(branch)
+        .map_err(|why| format!("{why}, so no approval was asked for"))?;
+    match agent_sign::repo_info::current_branch(Path::new(repo)) {
+        Some(current) if current == branch => Ok(()),
+        _ => Err(format!(
+            "branch '{branch}' isn't the branch checked out in the repository, so no approval was asked for"
+        )),
+    }
 }

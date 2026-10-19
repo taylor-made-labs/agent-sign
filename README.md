@@ -45,9 +45,9 @@ no downloadable releases yet: you build it from source.
    service (`agent-signd`) for a lease covering this repository and branch.
 3. If there's no lease, you get one prompt: the Mac's own Touch ID (or login
    password) prompt, with the reason spelled out, such as "let an agent sign
-   commits on branch feat/parser in project (~/code/project)". There's
-   nothing to choose; the lease covers that branch of that repository. Only
-   then is the lease granted. agent-sign shows no dialog of its own, because
+   commits on branch “feat/parser” in project (~/code/project), until
+   merged". There's nothing to choose; the lease covers that branch of that
+   repository. Only then is the lease granted. agent-sign shows no dialog of its own, because
    a program that can click one (a computer-use agent, a System Events
    script) could approve a lease for itself, and none can answer Touch ID.
    Commits that ask while it's open (retries, or several agents at once) wait
@@ -57,8 +57,15 @@ no downloadable releases yet: you build it from source.
    one is refused (cancelled, failed or timed out) no new one opens for a
    while, 60 seconds at first and doubling with each refusal in a row (the
    agent is told how long). At most 4 requests wait at once. A request is
-   only asked about if its repository is a real, existing git working tree
-   and its path and branch have no control or invisible characters in them.
+   only asked about if its repository is a real, existing git working tree,
+   its path and branch have no control or invisible characters in them, and
+   the branch is the one the repository has checked out and a plain git
+   branch name (letters, digits and `/ - _ .`): the branch goes into the
+   prompt's sentence, and an agent picks what it sends, so a name like "typo
+   fix in scratch (~/tmp/scratch)" is refused rather than shown. A branch
+   with other characters (`#`, `@`, accents) gets no agent lease; rename it.
+   For a linked worktree the prompt names the repository the commits go
+   into, and the worktree.
    A commit that turns signing off (`--no-gpg-sign`, or `commit.gpgsign`
    set to false for that command or that repository, as test suites do for
    throwaway commits) never asks: it goes to plain git, unsigned.
@@ -160,8 +167,8 @@ program "agent-sign" and say what you're approving. It should read like this
 (the layout is the system's, and varies with your Mac and macOS):
 
 ```
-agent-sign is trying to let an agent sign commits on branch feat/parser in
-project (~/code/project).
+agent-sign is trying to let an agent sign commits on branch “feat/parser” in
+project (~/code/project), until merged.
 
 Touch ID or enter your password to allow this.
 ```
@@ -228,7 +235,7 @@ There is no prompt choice to widen a lease further: earlier versions offered
 a dialog, and those are no longer offered: the approval is one prompt with
 nothing to choose. A lease of either kind approved earlier still works
 (while `allow_branch_switching` is on, which they need to cover every branch)
-and can be revoked. To avoid a prompt for each new repository on a machine
+and can be revoked; `agent-sign leases` and `agent-sign doctor` point them out. To avoid a prompt for each new repository on a machine
 you trust, `auto_approve` grants every lease without asking (see
 [Headless machines](docs/INSTALL.md#headless-machines-servers-containers-ci)).
 

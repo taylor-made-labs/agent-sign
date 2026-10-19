@@ -79,7 +79,17 @@ fn path_with_only_git(dir: &Path) -> String {
     bin.display().to_string()
 }
 
+/// Makes the repository's `HEAD` name `branch`, as the service checks that
+/// the branch it is asked about is the one checked out.
+fn set_head(repo: &str, branch: &str) {
+    let git = Path::new(repo).join(".git");
+    if git.is_dir() {
+        let _ = fs::write(git.join("HEAD"), format!("ref: refs/heads/{branch}\n"));
+    }
+}
+
 fn ask_for_lease(socket: &Path, repo: &str) -> Response {
+    set_head(repo, "feat/x");
     send_request(
         socket,
         &Request::RequestLease {

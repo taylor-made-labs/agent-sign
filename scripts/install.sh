@@ -312,10 +312,13 @@ if [ ! -f "$CONFIG_FILE" ]; then
 # process yet; works as "timed")
 lease_mode = "identity"
 
-# Lease scope: "branch" (default) or "repo". With branch scope and
-# allow_branch_switching (default true), a lease covers every unprotected
-# branch of the repository, and the approval says so.
+# Lease scope: "branch" (default) or "repo". With branch scope, a lease covers
+# only the branch you approved, in that repository (allow_branch_switching =
+# false, the default and the narrowest). Set it to true, or lease_scope to
+# "repo", to cover every unprotected branch of the repository; the approval
+# prompt then says "any unprotected branch".
 lease_scope = "branch"
+allow_branch_switching = false
 
 # How long a "timed" lease lasts
 default_lease_duration = "2h"

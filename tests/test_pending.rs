@@ -83,6 +83,8 @@ impl Service {
     fn repo(&self, name: &str) -> String {
         let repo = self.home.join("w").join(name);
         fs::create_dir_all(repo.join(".git")).unwrap();
+        // The service checks that the branch asked about is the one checked out.
+        fs::write(repo.join(".git/HEAD"), "ref: refs/heads/feat/a\n").unwrap();
         repo.display().to_string()
     }
 

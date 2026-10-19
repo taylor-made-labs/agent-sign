@@ -28,6 +28,34 @@ pub struct LeaseInfo {
     pub ends: String,
 }
 
+impl LeaseInfo {
+    /// Whether the lease covers more than one repository (a folder or
+    /// everywhere). This version no longer grants those: ones approved in an
+    /// earlier version still work, so they are pointed out.
+    pub fn is_wide(&self) -> bool {
+        self.covers.starts_with("every repository")
+    }
+}
+
+/// A plain-words note about leases that cover more than one repository, or
+/// `None` when there are none. Shown by `agent-sign leases` and `doctor`, and
+/// logged by the service at start.
+pub fn wide_leases_note(leases: &[LeaseInfo]) -> Option<String> {
+    let wide: Vec<&LeaseInfo> = leases.iter().filter(|l| l.is_wide()).collect();
+    if wide.is_empty() {
+        return None;
+    }
+    let names: Vec<String> = wide
+        .iter()
+        .map(|l| format!("{} ({})", l.repo, l.covers))
+        .collect();
+    Some(format!(
+        "{} lease(s) from an earlier version cover more than one repository: {}. This version no longer grants those; they keep working until they end, and only follow the agent across branches if allow_branch_switching = true. End one with `agent-sign revoke <that folder, or everywhere>`.",
+        wide.len(),
+        names.join("; ")
+    ))
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum Request {

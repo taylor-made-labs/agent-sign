@@ -27,5 +27,6 @@ pub mod lease;
 pub mod multiplexer;
 pub mod paths;
 pub mod protocol;
+pub mod repo_info;
 pub mod ssh_sign;
 pub mod work;

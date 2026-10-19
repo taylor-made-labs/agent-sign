@@ -236,6 +236,22 @@ impl LeasePolicy {
         }
     }
 
+    /// How long a lease granted now lasts, in a few words for the approval
+    /// prompt. Every lease ends with its work, so that comes first; the
+    /// longest it can last (a ceiling, or a timed lease's term), or the idle
+    /// backstop, follows when there is one.
+    pub fn end_phrase(&self) -> String {
+        let cap = match self.mode {
+            LeaseMode::Identity => self.max_ceiling,
+            LeaseMode::Timed | LeaseMode::Process => Some(self.default_ttl),
+        };
+        match (cap, self.idle_limit) {
+            (Some(cap), _) => format!("until merged, at most {}", describe_duration(cap)),
+            (None, Some(idle)) => format!("until merged or {} idle", describe_duration(idle)),
+            (None, None) => "until merged".to_string(),
+        }
+    }
+
     /// The terms a lease granted now for `branch` would get.
     pub fn describe_terms(&self, branch: &str) -> TermsText {
         let covers = if self.scope == LeaseScope::Repo || self.allow_branch_switching {

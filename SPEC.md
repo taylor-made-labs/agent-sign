@@ -45,9 +45,10 @@ Each invariant says whether it holds today, and how that's checked.
 - **INV-4, approve once, on fixed terms.** If no lease covers a commit, the
   person is asked once, in a single prompt that says what is being approved:
   the branch (or, when the config lets leases follow the agent, that every
-  unprotected branch), and the repository's name and path. The rest of the
-  terms (when it ends) are in the README and shown by `agent-sign leases`, and
-  the service's log records them in full with each approval. A lease's terms
+  unprotected branch), the repository's name and path, and how long ("until
+  merged", with a ceiling or idle limit if the config sets one). Every ending
+  is listed in the README and shown by `agent-sign leases`, and the service's
+  log records the terms in full with each approval. A lease's terms
   are fixed at approval and never grow: using, moving, saving or reloading it
   never extends it, and a later config change can only narrow it. Leases are
   saved, so a crash, restart or sleep doesn't ask again. *Holds* (tests:
@@ -185,15 +186,28 @@ the agent key. `agent-sign` accepts the same arguments, as `agent-sign` did.
   (`src/device_owner.rs`; on macOS LocalAuthentication, so Touch ID or the
   login password), giving up as a denial after five minutes. The prompt's
   reason text (`auth_reason` in `src/approval.rs`) reads "let an agent sign
-  commits on branch <branch> in <repo name> (<path>)", or "on any unprotected
-  branch" when the config lets leases follow the agent. macOS builds the
+  commits on branch “<branch>” in <repo name> (<path>), <how long>", where
+  how long is "until merged", with ", at most <ceiling>" or " or <idle limit>
+  idle" when the config sets one (`LeasePolicy::end_phrase`); it says "on any
+  unprotected branch" when the config lets leases follow the agent. For a
+  linked worktree the name and path are those of the repository the commits go
+  into, and the parentheses add `worktree “<name>”`. The names and paths are
+  the agent's to choose, so unsafe characters are removed, the brackets and
+  quotes of the sentence itself and right-to-left letters are shown as `?`. macOS builds the
   prompt as "<name> is trying to <reason>." (that sentence is in the system's
   own string tables), so the reason starts lowercase and has no full stop.
-  The reason is at most 150 characters: macOS documents no limit on it, but
+  The reason is at most 200 characters: macOS documents no limit on it, but
   the Touch Bar form has to fit on one line, so the branch and the repository
-  name come first and are shortened only past 40 and 24 characters (cut in
-  the middle, so both ends show), and the path comes last, with the home
-  folder as `~`, shortened past 40.
+  name come first and are shortened only past 32 and 20 characters (cut in
+  the middle, so both ends show), and the path comes after, with the home
+  folder as `~`, shortened past 32.
+  Before asking, the service checks the branch (`src/repo_info.rs`, without
+  running git): a valid git branch name by `check-ref-format`'s rules, made
+  only of ASCII letters, digits and `/ - _ .`, and the branch the repository
+  has checked out, read from its `HEAD` (`HEAD` when detached, as the wrapper
+  reports it). Otherwise it refuses and nobody is asked. Without this an agent
+  could send the branch "typo fix in scratch (~/tmp/scratch)" and have the
+  prompt read as if for another place.
   If no authenticator can be used (no password set, no desktop session) it
   refuses and says it couldn't ask; the service's log says why. There is no
   terminal prompt and no Linux prompt, by design: a dialog any program can
@@ -261,7 +275,8 @@ Lease:
   and can be revoked, and a commit uses the most specific lease that covers
   its repository and branch, but nothing grants new ones. (They also need
   `allow_branch_switching = true` or `lease_scope = "repo"` to keep covering
-  every branch.) Unattended approval (`auto_approve`) grants this repository
+  every branch.) `agent-sign leases`, `agent-sign doctor` and the service's
+  log point them out. Unattended approval (`auto_approve`) grants this repository
   only.
 - Each lease is in force until the first of:
   - its effective end: the end recorded at approval, brought forward if the
@@ -397,7 +412,7 @@ the person's own user account, and agent-sign doesn't change that.
 | Runaway commit loops | `max_commits_per_minute` per repository. | No total cap per lease. |
 | Commits on protected branches | Refused on every token. | Detached HEAD isn't protected; `allow_main_branch` turns protection off. |
 | Changes to CI workflows or key files | `forbidden_paths` and `max_diff_lines` in the wrapper. | A repository's `.agent-sign.toml` or an environment variable, both writable by the agent, can loosen them. |
-| Approving by accident | One prompt states the branch and the repository's name and path; it covers the narrowest thing by default; there is no default button that approves, and cancelling refuses. | Touch ID is a reflex: the prompt can't stop someone who touches without reading. The terms beyond what the prompt says (when the lease ends) aren't in it. |
+| Approving by accident | One prompt states the branch and the repository's name and path; it covers the narrowest thing by default; there is no default button that approves, and cancelling refuses. | Touch ID is a reflex: the prompt can't stop someone who touches without reading. The prompt says "until merged"; the other ways a lease ends (deleted branch, idle limit, revoke) only shorten it and are in the README. |
 | Mixing agents' work | None. | One key and one set of leases per machine user; agents aren't told apart. |
 
 The release checklist (`docs/RELEASE_CHECKLIST.md`) tracks the work on these
@@ -415,7 +430,7 @@ installed agent-sign.
 | `test_human_isolation.rs` | Without a token, signing goes to the person's signer; a bad token is refused. |
 | `test_interceptor.rs` | Only `commit` is intercepted; `split` and `trailers` attribution. |
 | `test_lease_engine.rs` | Granting, commits under a lease, protected branches, rate limit, branch switching, revocation. |
-| `test_device_owner_approval.rs` | Without successful owner authentication nothing is approved (failure, cancel, timeout, unavailable); success approves this repository; `agent-sign deny` wins over a late yes; one prompt at a time; the hold-back after a refusal; the cap on waiting requests; a repository that doesn't exist, or a path or branch with control or invisible characters, is refused unasked; the reason text says branch, repository and path, stays within 150 characters keeping the branch and name, and can't be reshaped by the agent; an optimized build can't include the test stand-in; the installer refuses a program that does; no dialog, Linux dialog or terminal prompt in the source. |
+| `test_device_owner_approval.rs` | Without successful owner authentication nothing is approved (failure, cancel, timeout, unavailable); success approves this repository; `agent-sign deny` wins over a late yes; one prompt at a time; the hold-back after a refusal; the cap on waiting requests; a repository that doesn't exist, or a path or branch with control or invisible characters, is refused unasked; the reason text says branch, repository, path and how long, stays within 200 characters keeping the branch and name, and can't be reshaped by the agent; a branch that could pose as prompt text, or that isn't the one checked out, is refused unasked; a linked worktree is shown as its repository; an optimized build can't include the test stand-in; the installer refuses a program that does; no dialog, Linux dialog or terminal prompt in the source. |
 | `test_lease_terms.rs` | Terms fixed at approval; config narrows, never widens; the terms in plain words; the unreadable ceiling. |
 | `test_persistent_identity_leases.rs` | Leases survive restarts; revocation persists; ceiling; scope. |
 | `test_crypto_verification.rs` | Keys and signatures in OpenSSH format, verified by `ssh-keygen`. |

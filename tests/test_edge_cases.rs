@@ -825,7 +825,10 @@ fn a_commit_pointed_at_a_repository_with_dash_c_names_that_repository() {
     // The prompt names the repository -C pointed at, by name and by place (the
     // test's home folder is shown as "~").
     let shown = s.dialog_text();
-    assert!(shown.contains("branch feat/a in r (~/r)"), "{shown}");
+    assert!(
+        shown.contains("branch \u{201C}feat/a\u{201D} in r (~/r)"),
+        "{shown}"
+    );
     assert!(!shown.contains("default-repo"), "{shown}");
     assert!(!shown.contains("not-a-repo"), "{shown}");
     assert!(s.head_verifies(&repo));

@@ -298,8 +298,18 @@ fn start_service(home: &Path, owner: &str, extra_config: &str) -> Service {
     Service { child, socket }
 }
 
+/// Makes the repository's `HEAD` name `branch`, as the service checks that
+/// the branch it is asked about is the one checked out.
+fn set_head(repo: &str, branch: &str) {
+    let git = Path::new(repo).join(".git");
+    if git.is_dir() {
+        let _ = fs::write(git.join("HEAD"), format!("ref: refs/heads/{branch}\n"));
+    }
+}
+
 /// What the git wrapper does for one commit: ask for a lease, then a token.
 fn commit_through_service(socket: &Path, repo: &str, branch: &str) -> Result<(), String> {
+    set_head(repo, branch);
     let lease = send_request(
         socket,
         &Request::RequestLease {
@@ -441,6 +451,13 @@ fn leases_shows_what_a_saved_wide_lease_covers_and_revoke_takes_the_folder_or_ev
     let listed = String::from_utf8_lossy(&cli(&["leases"]).stdout).to_string();
     assert!(
         listed.contains(&format!("{dev}  (every repository under {dev})")),
+        "{listed}"
+    );
+
+    // Leases the service can no longer grant are pointed out, so they aren't
+    // forgotten about.
+    assert!(
+        listed.contains("lease(s) from an earlier version cover more than one repository"),
         "{listed}"
     );
 

@@ -19,9 +19,9 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use agent_sign::approval::{
-    Approval, AuthOutcome, Authenticator, BranchReach, MAX_PENDING_REQUESTS, MAX_REASON_CHARS,
-    NO_WAY_TO_ASK, RefusalBackoff, auth_reason, confirm, display_text, has_unsafe_display_chars,
-    short_path,
+    Approval, Asked, AuthOutcome, Authenticator, BranchReach, MAX_PENDING_REQUESTS,
+    MAX_REASON_CHARS, NO_WAY_TO_ASK, RefusalBackoff, auth_reason, confirm, display_text,
+    has_unsafe_display_chars, short_path,
 };
 use agent_sign::lease::Coverage;
 use agent_sign::protocol::{Request, Response, send_request};
@@ -118,16 +118,29 @@ fn withdrawing_during_authentication_is_not_an_approval() {
     assert_eq!(approval, Approval::Withdrawn);
 }
 
+/// The reason for a lease on one branch, asked from `repo`.
+fn reason_for(repo: &str, home: Option<&str>, branch: &str, ends: &str) -> String {
+    let reach = BranchReach::This(branch.to_string());
+    auth_reason(&Asked {
+        repo,
+        worktree: None,
+        home,
+        reach: &reach,
+        ends,
+    })
+}
+
 #[test]
-fn the_prompt_says_the_branch_the_repository_and_where_it_is() {
-    let reason = auth_reason(
+fn the_prompt_says_the_branch_the_repository_where_it_is_and_how_long() {
+    let reason = reason_for(
         "/Users/me/dev/suite",
         Some("/Users/me"),
-        &BranchReach::This("feat/parser".to_string()),
+        "feat/parser",
+        "until merged",
     );
     assert_eq!(
         reason,
-        "let an agent sign commits on branch feat/parser in suite (~/dev/suite)"
+        "let an agent sign commits on branch \u{201C}feat/parser\u{201D} in suite (~/dev/suite), until merged"
     );
     // The system writes "<name> is trying to <reason>.", so the reason is a
     // lowercase phrase with no full stop of its own.
@@ -135,20 +148,69 @@ fn the_prompt_says_the_branch_the_repository_and_where_it_is() {
     assert!(reason.starts_with(char::is_lowercase));
 
     // When the config lets the lease follow the agent, the reason says so.
-    let wide = auth_reason(
-        "/Users/me/dev/suite",
-        Some("/Users/me"),
-        &BranchReach::AnyUnprotected,
-    );
+    let wide = auth_reason(&Asked {
+        repo: "/Users/me/dev/suite",
+        worktree: None,
+        home: Some("/Users/me"),
+        reach: &BranchReach::AnyUnprotected,
+        ends: "until merged, at most 7 days",
+    });
     assert_eq!(
         wide,
-        "let an agent sign commits on any unprotected branch in suite (~/dev/suite)"
+        "let an agent sign commits on any unprotected branch in suite (~/dev/suite), until merged, at most 7 days"
     );
-    let all = auth_reason("/w/app", None, &BranchReach::Any);
+    let all = auth_reason(&Asked {
+        repo: "/w/app",
+        worktree: None,
+        home: None,
+        reach: &BranchReach::Any,
+        ends: "until merged",
+    });
     assert_eq!(
         all,
-        "let an agent sign commits on any branch in app (/w/app)"
+        "let an agent sign commits on any branch in app (/w/app), until merged"
     );
+}
+
+#[test]
+fn a_linked_worktree_names_the_repository_it_commits_into() {
+    let reach = BranchReach::This("feat/x".to_string());
+    let reason = auth_reason(&Asked {
+        repo: "/Users/me/dev/suite",
+        worktree: Some("/Users/me/tmp/scratch-notes"),
+        home: Some("/Users/me"),
+        reach: &reach,
+        ends: "until merged",
+    });
+    assert_eq!(
+        reason,
+        "let an agent sign commits on branch \u{201C}feat/x\u{201D} in suite (~/dev/suite, worktree \u{201C}scratch-notes\u{201D}), until merged"
+    );
+}
+
+#[test]
+fn the_lease_policy_says_how_long_it_lasts() {
+    use agent_sign::config::LeaseMode;
+    use agent_sign::lease::LeasePolicy;
+    let p = LeasePolicy::default();
+    assert_eq!(p.end_phrase(), "until merged");
+    let idle = LeasePolicy {
+        idle_limit: Some(Duration::from_secs(7 * 86400)),
+        ..LeasePolicy::default()
+    };
+    assert_eq!(idle.end_phrase(), "until merged or 7 days idle");
+    let ceiling = LeasePolicy {
+        max_ceiling: Some(Duration::from_secs(86400)),
+        idle_limit: Some(Duration::from_secs(7 * 86400)),
+        ..LeasePolicy::default()
+    };
+    assert_eq!(ceiling.end_phrase(), "until merged, at most 1 day");
+    let timed = LeasePolicy {
+        mode: LeaseMode::Timed,
+        default_ttl: Duration::from_secs(7200),
+        ..LeasePolicy::default()
+    };
+    assert_eq!(timed.end_phrase(), "until merged, at most 2 hours");
 }
 
 #[test]
@@ -172,14 +234,10 @@ fn only_a_whole_leading_folder_is_shown_as_the_home_folder() {
 fn a_long_reason_is_cut_but_keeps_the_branch_and_the_repository_name() {
     // Ordinary names are never cut, however deep the folder is.
     let deep = "/Users/me/a/very/long/way/down/through/many/folders/to/the/project";
-    let reason = auth_reason(
-        deep,
-        Some("/Users/me"),
-        &BranchReach::This("feat/parser".to_string()),
-    );
+    let reason = reason_for(deep, Some("/Users/me"), "feat/parser", "until merged");
     assert!(reason.chars().count() <= MAX_REASON_CHARS, "{reason}");
     assert!(
-        reason.contains("branch feat/parser in project ("),
+        reason.contains("branch \u{201C}feat/parser\u{201D} in project ("),
         "{reason}"
     );
     // The path gave way, in the middle, so its start and end still show.
@@ -190,11 +248,19 @@ fn a_long_reason_is_cut_but_keeps_the_branch_and_the_repository_name() {
     // start and end of the branch and of the name still show.
     let long_branch = format!("feat/{}/the-end", "b".repeat(300));
     let long_repo = format!("/w/{}/proj-end", "r".repeat(300));
-    let worst = auth_reason(&long_repo, None, &BranchReach::This(long_branch));
+    let reach = BranchReach::This(long_branch);
+    let worst = auth_reason(&Asked {
+        repo: &long_repo,
+        worktree: Some(&format!("/t/{}/wt-end", "w".repeat(300))),
+        home: None,
+        reach: &reach,
+        ends: &"until merged, at most 100 days ".repeat(10),
+    });
     assert!(worst.chars().count() <= MAX_REASON_CHARS, "{worst}");
-    assert!(worst.contains("branch feat/"), "{worst}");
-    assert!(worst.contains("/the-end in "), "{worst}");
+    assert!(worst.contains("branch \u{201C}feat/"), "{worst}");
+    assert!(worst.contains("/the-end\u{201D} in "), "{worst}");
     assert!(worst.contains("proj-end ("), "{worst}");
+    assert!(worst.contains("wt-end\u{201D})"), "{worst}");
 }
 
 #[test]
@@ -202,14 +268,30 @@ fn text_the_agent_supplies_cannot_reshape_the_prompt() {
     // Newlines, direction overrides and zero-width characters are removed...
     let evil = "/w/app (and everything else)\n\n\n\u{202e}\u{200b}x";
     assert!(has_unsafe_display_chars(evil));
-    let reason = auth_reason(evil, None, &BranchReach::This("feat/\u{2028}a".to_string()));
+    let reason = reason_for(evil, None, "feat/\u{2028}a", "until merged");
     assert!(!has_unsafe_display_chars(&reason), "{reason:?}");
     assert!(!reason.contains('\n'));
+    // ...a folder named like a second place can't close or open the
+    // sentence's own brackets...
+    assert_eq!(
+        reason.matches('(').count(),
+        1,
+        "a folder name added a bracket: {reason}"
+    );
+    assert_eq!(reason.matches(')').count(), 1, "{reason}");
     // ...and what is approved still leads, in the service's own words.
     assert!(
-        reason.starts_with("let an agent sign commits on branch feat/a in "),
+        reason.starts_with("let an agent sign commits on branch \u{201C}feat/a\u{201D} in "),
         "{reason}"
     );
+
+    // Blank fillers that pass for spaces, and right-to-left letters next to
+    // the prompt's punctuation, are removed or replaced in names too.
+    let tricky = "/w/\u{3164}\u{2800}x\u{5d0}\u{5d1}y\u{0627}";
+    assert!(has_unsafe_display_chars("\u{3164}"));
+    assert!(has_unsafe_display_chars("\u{2800}"));
+    let shown = reason_for(tricky, None, "feat/a", "until merged");
+    assert!(shown.contains("in x??y? (/w/x??y?)"), "{shown}");
 
     // Long text is cut in the middle, so the start and the end both show.
     let long = format!("/start/{}/the-real-end", "x".repeat(500));
@@ -379,7 +461,18 @@ fn start_service(dir: &Path, auth: Option<&str>) -> Service {
 fn fake_repo(root: &Path, rel: &str) -> String {
     let repo = root.join(rel);
     fs::create_dir_all(repo.join(".git")).unwrap();
-    repo.display().to_string()
+    let repo = repo.display().to_string();
+    set_head(&repo, "feat/a");
+    repo
+}
+
+/// Makes the repository's `HEAD` name `branch`: the service checks that the
+/// branch it is asked about is the one checked out.
+fn set_head(repo: &str, branch: &str) {
+    let git = Path::new(repo).join(".git");
+    if git.is_dir() {
+        let _ = fs::write(git.join("HEAD"), format!("ref: refs/heads/{branch}\n"));
+    }
 }
 
 /// How many prompts the owner was shown.
@@ -390,6 +483,7 @@ fn times_shown(dir: &Path) -> usize {
 }
 
 fn ask_about(svc: &Service, repo: &str, branch: &str) -> Response {
+    set_head(repo, branch);
     send_request(
         &svc.socket,
         &Request::RequestLease {
@@ -615,10 +709,12 @@ fn requests_waiting_for_an_answer_are_capped() {
             ..Setup::default()
         },
     );
-    let repo = fake_repo(dir.path(), "w/app");
     let _waiting: Vec<_> = (0..MAX_PENDING_REQUESTS)
         .map(|i| {
-            let (socket, repo) = (svc.socket.clone(), repo.clone());
+            // One repository each: a repository has one branch checked out.
+            let repo = fake_repo(dir.path(), &format!("w/app{i}"));
+            set_head(&repo, &format!("feat/{i}"));
+            let socket = svc.socket.clone();
             std::thread::spawn(move || {
                 send_request(
                     &socket,
@@ -645,6 +741,7 @@ fn requests_waiting_for_an_answer_are_capped() {
         );
         std::thread::sleep(Duration::from_millis(50));
     }
+    let repo = fake_repo(dir.path(), "w/one-too-many");
     let message = message_of(ask_about(&svc, &repo, "feat/one-too-many"));
     assert!(message.contains("approval requests waiting"), "{message}");
 }
@@ -718,7 +815,7 @@ fn the_owner_is_shown_the_branch_the_repository_and_where_it_is() {
     // real one, not the spelling the agent used.
     assert_eq!(
         shown.trim_end(),
-        "let an agent sign commits on branch feat/shown in app (~/w/app)"
+        "let an agent sign commits on branch \u{201C}feat/shown\u{201D} in app (~/w/app), until merged or 7 days idle"
     );
 }
 
@@ -741,7 +838,140 @@ fn the_owner_is_told_when_a_lease_will_follow_the_agent_between_branches() {
     let shown = fs::read_to_string(dir.path().join("auth.log")).unwrap();
     assert_eq!(
         shown.trim_end(),
-        "let an agent sign commits on any unprotected branch in app (~/w/app)"
+        "let an agent sign commits on any unprotected branch in app (~/w/app), until merged or 7 days idle"
+    );
+}
+
+#[test]
+fn a_branch_that_could_pose_as_prompt_text_is_refused_before_anyone_is_asked() {
+    let dir = tempdir().unwrap();
+    let svc = start_service(dir.path(), Some("allow"));
+    let app = fake_repo(dir.path(), "w/app");
+    let spoofs = [
+        "typo fix in scratch (~/tmp/scratch)",
+        "feat/\u{3164}scratch",
+        "feat/\u{115f}x",
+        "feat/\u{2800}x",
+        "feat/\u{5d0}\u{5d1}\u{5d2}",
+        "feat/\u{627}\u{644}",
+        "feat/\u{201c}x\u{201d}",
+        "a..b",
+        "-x",
+        "x.lock",
+    ];
+    for branch in spoofs {
+        let message = message_of(ask_about(&svc, &app, branch));
+        assert!(
+            message.contains("no approval was asked for"),
+            "{branch:?}: {message}"
+        );
+    }
+    assert_eq!(
+        times_shown(dir.path()),
+        0,
+        "someone was asked about a spoof"
+    );
+    assert_eq!(lease_count(&svc), 0);
+}
+
+#[test]
+fn a_branch_the_repository_is_not_on_is_refused_before_anyone_is_asked() {
+    let dir = tempdir().unwrap();
+    let svc = start_service(dir.path(), Some("allow"));
+    let app = fake_repo(dir.path(), "w/app");
+    // The agent asks about a plain, valid name, but the repository is on
+    // another branch: ask_about would set HEAD, so send the request directly.
+    set_head(&app, "feat/real");
+    let response = send_request(
+        &svc.socket,
+        &Request::RequestLease {
+            repo: app.clone(),
+            branch: "feat/other".to_string(),
+            intent: "t".to_string(),
+            duration_secs: None,
+        },
+    )
+    .unwrap();
+    let message = message_of(response);
+    assert!(
+        message.contains("isn't the branch checked out"),
+        "{message}"
+    );
+    // A repository whose HEAD can't be read is refused too.
+    fs::remove_file(Path::new(&app).join(".git/HEAD")).unwrap();
+    let response = send_request(
+        &svc.socket,
+        &Request::RequestLease {
+            repo: app.clone(),
+            branch: "feat/real".to_string(),
+            intent: "t".to_string(),
+            duration_secs: None,
+        },
+    )
+    .unwrap();
+    assert!(message_of(response).contains("isn't the branch checked out"));
+    assert_eq!(times_shown(dir.path()), 0);
+    // The branch it is on is asked about, and a detached HEAD is asked as HEAD.
+    set_head(&app, "feat/real");
+    assert!(matches!(
+        ask_about(&svc, &app, "feat/real"),
+        Response::LeaseGranted { .. }
+    ));
+    let detached = fake_repo(dir.path(), "w/detached");
+    fs::write(
+        Path::new(&detached).join(".git/HEAD"),
+        "0123456789abcdef0123456789abcdef01234567\n",
+    )
+    .unwrap();
+    let response = send_request(
+        &svc.socket,
+        &Request::RequestLease {
+            repo: detached,
+            branch: "HEAD".to_string(),
+            intent: "t".to_string(),
+            duration_secs: None,
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(response, Response::LeaseGranted { .. }),
+        "{response:?}"
+    );
+}
+
+#[test]
+fn a_linked_worktree_is_shown_as_the_repository_it_commits_into() {
+    let dir = tempdir().unwrap();
+    let svc = start_service(dir.path(), Some("allow"));
+    // The layout git makes: <main>/.git/worktrees/<name>/{HEAD,commondir},
+    // and a `.git` file in the worktree pointing at that folder.
+    let main = fake_repo(dir.path(), "dev/suite");
+    let wt_meta = Path::new(&main).join(".git/worktrees/scratch-notes");
+    fs::create_dir_all(&wt_meta).unwrap();
+    fs::write(wt_meta.join("HEAD"), "ref: refs/heads/feat/x\n").unwrap();
+    fs::write(wt_meta.join("commondir"), "../..\n").unwrap();
+    let wt = dir.path().join("tmp/scratch-notes");
+    fs::create_dir_all(&wt).unwrap();
+    fs::write(wt.join(".git"), format!("gitdir: {}\n", wt_meta.display())).unwrap();
+
+    let response = send_request(
+        &svc.socket,
+        &Request::RequestLease {
+            repo: wt.display().to_string(),
+            branch: "feat/x".to_string(),
+            intent: "t".to_string(),
+            duration_secs: None,
+        },
+    )
+    .unwrap();
+    assert!(
+        matches!(response, Response::LeaseGranted { .. }),
+        "{response:?}"
+    );
+    let shown = fs::read_to_string(dir.path().join("auth.log")).unwrap();
+    assert_eq!(
+        shown.trim_end(),
+        "let an agent sign commits on branch \u{201C}feat/x\u{201D} in suite (~/dev/suite, worktree \u{201C}scratch-notes\u{201D}), until merged or 7 days idle"
     );
 }
 

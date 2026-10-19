@@ -123,9 +123,9 @@ pub fn confirm(
 
 /// Whether `c` is invisible or can reshape text around it: a control
 /// character (Unicode Cc), a format character such as the bidirectional
-/// overrides and isolates and the zero-width characters (Cf), or a line or
-/// paragraph separator (Zl, Zp). Text with any of these must not reach a
-/// prompt the person relies on.
+/// overrides and isolates and the zero-width characters (Cf), a line or
+/// paragraph separator (Zl, Zp), or a blank filler that passes for a space.
+/// Text with any of these must not reach a prompt the person relies on.
 pub fn is_unsafe_display_char(c: char) -> bool {
     c.is_control()
         || matches!(c,
@@ -134,7 +134,12 @@ pub fn is_unsafe_display_char(c: char) -> bool {
             | '\u{2028}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{206F}'
             | '\u{FEFF}' | '\u{FFF9}'..='\u{FFFB}' | '\u{110BD}' | '\u{110CD}'
             | '\u{13430}'..='\u{1343F}' | '\u{1BCA0}'..='\u{1BCA3}' | '\u{1D173}'..='\u{1D17A}'
-            | '\u{E0001}' | '\u{E0020}'..='\u{E007F}')
+            | '\u{E0001}' | '\u{E0020}'..='\u{E007F}'
+            // Characters that draw nothing but aren't format characters:
+            // the Hangul fillers, Khmer inherent vowels and the blank braille
+            // pattern, which pass for spaces.
+            | '\u{115F}' | '\u{1160}' | '\u{17B4}' | '\u{17B5}' | '\u{2800}'
+            | '\u{3164}' | '\u{FFA0}')
 }
 
 /// Whether `text` contains anything [`is_unsafe_display_char`] names. A
@@ -184,13 +189,15 @@ pub enum BranchReach {
 /// the prompt, but the Touch Bar form ("Touch ID to <reason>") has to fit in
 /// one line. So the reason is kept short and ordered by importance: the
 /// branch and the repository's name come first and are only shortened when
-/// they are unusually long, and the path, which comes last, gives way first.
-const MAX_BRANCH_CHARS: usize = 40;
-const MAX_NAME_CHARS: usize = 24;
-const MAX_PATH_CHARS: usize = 40;
+/// they are unusually long, and the path, which comes later, gives way first.
+const MAX_BRANCH_CHARS: usize = 32;
+const MAX_NAME_CHARS: usize = 20;
+const MAX_PATH_CHARS: usize = 32;
+const MAX_WORKTREE_CHARS: usize = 16;
+const MAX_ENDS_CHARS: usize = 32;
 
 /// The longest reason [`auth_reason`] ever produces.
-pub const MAX_REASON_CHARS: usize = 150;
+pub const MAX_REASON_CHARS: usize = 200;
 
 /// `path` with the start of `home` replaced by `~`, the way a person writes
 /// it. Only a whole leading folder is replaced: `/Users/me2/x` is not under
@@ -221,29 +228,84 @@ fn repo_name(path: &str) -> &str {
     }
 }
 
+/// Whether `c` is a right-to-left letter (Hebrew, Arabic, Syriac, Thaana,
+/// N'Ko and their presentation forms). Next to the prompt's own punctuation
+/// these can make the bidirectional algorithm reorder it.
+fn is_rtl_letter(c: char) -> bool {
+    matches!(c,
+        '\u{0590}'..='\u{08FF}' | '\u{FB1D}'..='\u{FDFF}' | '\u{FE70}'..='\u{FEFF}'
+        | '\u{10800}'..='\u{10FFF}' | '\u{1E800}'..='\u{1EFFF}')
+}
+
+/// A folder name or path made to sit inside the prompt's sentence: unsafe
+/// characters removed and the text shortened by [`display_text`], then the
+/// characters that could close or open the sentence's own brackets and quotes
+/// ( `(` `)` `"` and the curly quotes), and right-to-left letters, shown as
+/// `?`. Folder names are the agent's to choose, and a repository named
+/// `x (~/dev/suite)` must not read as two places.
+fn plain(text: &str, max: usize) -> String {
+    display_text(text, max)
+        .chars()
+        .map(|c| {
+            if matches!(c, '(' | ')' | '"' | '\u{201C}' | '\u{201D}') || is_rtl_letter(c) {
+                '?'
+            } else {
+                c
+            }
+        })
+        .collect()
+}
+
+/// What the approval prompt is about, all of it verified by the service
+/// before it asks.
+#[derive(Debug, Clone)]
+pub struct Asked<'a> {
+    /// The repository whose object store the commits go into: the canonical
+    /// path, or, for a linked worktree, the main repository's.
+    pub repo: &'a str,
+    /// For a linked worktree, the worktree's own canonical path.
+    pub worktree: Option<&'a str>,
+    /// The person's home folder, shown as `~`.
+    pub home: Option<&'a str>,
+    /// Which branches the lease will cover.
+    pub reach: &'a BranchReach,
+    /// How long it lasts, in a few words ("until merged"); see
+    /// `LeasePolicy::end_phrase`.
+    pub ends: &'a str,
+}
+
 /// The text the system shows as the reason in its authentication prompt. It
 /// is the one statement of what is being approved that the agent can't alter
 /// after the fact, so it says it plainly, in fixed wording from the service:
-/// "let an agent sign commits on branch <branch> in <repo name> (<path>)".
-/// On macOS the prompt reads "agent-sign is trying to <reason>.", so the
-/// reason starts lowercase and has no full stop.
+/// `let an agent sign commits on branch “<branch>” in <repo name> (<path>),
+/// until merged`. On macOS the prompt reads "agent-sign is trying to
+/// <reason>.", so the reason starts lowercase and has no full stop.
 ///
-/// `repo` is the verified, canonical path and `branch` the verified branch,
-/// both already refused if they held control or invisible characters; they
-/// are cleaned and shortened again here by [`display_text`], so they can never
-/// reshape the prompt. `home` is the person's home folder, shown as `~`.
-/// The result is at most [`MAX_REASON_CHARS`] characters.
-pub fn auth_reason(repo: &str, home: Option<&str>, reach: &BranchReach) -> String {
-    let name = display_text(repo_name(repo), MAX_NAME_CHARS);
-    let path = display_text(&short_path(repo, home), MAX_PATH_CHARS);
-    let on = match reach {
+/// The branch is checked before this (valid, plain characters, the one the
+/// repository has checked out: see [`crate::repo_info`]) and set in curly
+/// quotes so it reads as a name. The names and paths are the agent's to
+/// choose, so they are cleaned by [`plain`]. For a linked worktree the
+/// parentheses also say `worktree “<name>”`. The result is at most
+/// [`MAX_REASON_CHARS`] characters.
+pub fn auth_reason(asked: &Asked) -> String {
+    let name = plain(repo_name(asked.repo), MAX_NAME_CHARS);
+    let path = plain(&short_path(asked.repo, asked.home), MAX_PATH_CHARS);
+    let on = match asked.reach {
         BranchReach::This(branch) => {
-            format!("branch {}", display_text(branch, MAX_BRANCH_CHARS))
+            format!("branch \u{201C}{}\u{201D}", plain(branch, MAX_BRANCH_CHARS))
         }
         BranchReach::AnyUnprotected => "any unprotected branch".to_string(),
         BranchReach::Any => "any branch".to_string(),
     };
-    format!("let an agent sign commits on {on} in {name} ({path})")
+    let place = match asked.worktree {
+        Some(worktree) => format!(
+            "{path}, worktree \u{201C}{}\u{201D}",
+            plain(repo_name(worktree), MAX_WORKTREE_CHARS)
+        ),
+        None => path,
+    };
+    let ends = plain(asked.ends, MAX_ENDS_CHARS);
+    format!("let an agent sign commits on {on} in {name} ({place}), {ends}")
 }
 
 /// The most approval requests that may be open at once. A request holds a

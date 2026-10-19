@@ -105,6 +105,7 @@ fn run_leases() -> ExitCode {
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
 
+            let wide_note = agent_sign::protocol::wide_leases_note(&leases);
             let mut endings: Vec<(String, String)> = Vec::new();
             for lease in leases {
                 let granted_desc = format_relative_time(now.saturating_sub(lease.granted_at_epoch));
@@ -148,6 +149,9 @@ fn run_leases() -> ExitCode {
                 for (repo, ends) in endings {
                     println!("  {}: {}", repo, ends);
                 }
+            }
+            if let Some(note) = wide_note {
+                println!("Note: {note}");
             }
             println!();
             ExitCode::SUCCESS
@@ -565,6 +569,14 @@ fn run_doctor() -> ExitCode {
             println!("    Hint: Start the service with `agent-signd`");
             failures += 1;
         }
+    }
+
+    // Leases from an earlier version that cover more than one repository.
+    if let Ok(Response::LeaseList { leases }) = send_request(&socket_path, &Request::ListLeases)
+        && let Some(note) = agent_sign::protocol::wide_leases_note(&leases)
+    {
+        println!("  \x1b[33m⚠\x1b[0m {note}");
+        warnings += 1;
     }
 
     // 6. Check GitHub CLI registration
