@@ -13,7 +13,7 @@
 > | Finding | Now |
 > |---|---|
 > | 1. Branch-switching deadlock | Fixed: leases can cover every unprotected branch, and revocation works. |
-> | 2. "Touch ID" is an AppleScript dialog | The docs no longer claim Touch ID. The dialog is still a confirmation with Approve as its default button (open; release checklist M9). |
+> | 2. "Touch ID" is an AppleScript dialog | The docs no longer claim Touch ID. Fixed on macOS on 19 Oct 2026: the dialog only picks the coverage (nothing preselected, Continue or Deny), and the lease is granted only after Touch ID or the login password through LocalAuthentication. No Approve default remains. Linux has no dialog and no authenticator (release checklist F10). |
 > | 3. `trailers` mode never applied | Fixed for messages given with `-m` or `--message`; `-F` and editor messages are left as they are. |
 > | 4. Repository config never loaded | Fixed for the wrapper's rules and attribution, merged over the person's config. The service deliberately reads only the person's own config. |
 > | 5. Service blocks during dialogs | Fixed: a thread per connection, and the lock isn't held during a dialog. |

@@ -31,9 +31,9 @@ ends) before you approve. The terms are fixed when you approve and never grow.
 | 5 | Agent commits never land on protected branches. | **Kept** for `main` and `master` by default, checked on every commit; not for a detached HEAD. | `test_lease_engine.rs`, `test_lease_terms.rs`. |
 | 6 | If anything is wrong, the commit is refused, never signed some other way. | **Kept.** | `test_human_isolation.rs`, `test_refusals_and_revoke.rs`. |
 | 7 | Agent work is attributed to the agent, not to you. | **Not yet.** The key is registered under your email and account. A separate machine account is the planned fix. | Release checklist, M5 and N4. |
-| 8 | An agent can't approve its own lease or take the key. | **Not yet.** Agents run as your user, so they can read the key and edit the config. A separate service user is the planned fix. | Release checklist, N1 and N2. |
+| 8 | An agent can't approve its own lease or take the key. | **Partly.** On macOS a program that clicks the dialog can no longer approve: Touch ID or the login password is also required (promise 10). But agents run as your user, so they can still read the key and edit the config (`auto_approve`). A separate service user is the planned fix. | Release checklist, F10, N1 and N2. |
 | 9 | Merges, rebases and cherry-picks are agent-signed too. | **Not yet.** They use your own signing. | Release checklist, M2. |
-| 10 | The approval can't be given by accident. | **Not yet.** It's a confirmation dialog, not a biometric check, and Approve is its default button. | Release checklist, M9. |
+| 10 | The approval can't be given by a click alone, or by accident. | **Kept on macOS.** You pick the coverage (nothing is preselected, Deny is the default), then the system asks for Touch ID or your login password; cancel, failure or timeout denies. **Not on Linux:** there is no platform authenticator, so no dialog either; the service asks only at its own terminal. Approving from another device is planned, not built. | `test_device_owner_approval.rs`; the real Touch ID prompt is a manual check (F10). |
 
 ## Who it's for today
 
@@ -47,7 +47,9 @@ ends) before you approve. The terms are fixed when you approve and never grow.
   signatures, so verifying them needs an `allowed_signers` file (the
   installer sets one up) and, on GitHub, the agent key as a signing key.
 - **Linux desktops:** builds and passes its tests on x86_64 and ARM64; little
-  daily use yet. The approval dialog needs `zenity` or `kdialog`.
+  daily use yet. It has no approval dialog (a dialog any program can click
+  would let an agent approve its own lease), so the service asks only at its
+  own terminal, or you turn on `auto_approve`.
 - **Servers and containers:** with no screen, agent-sign can't ask you. You can
   turn on `auto_approve`, which grants every lease without asking; that's
   only safe where every process that can reach the service is trusted.

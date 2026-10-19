@@ -38,7 +38,8 @@ The wrapper prints why, starting `[agent-git]`.
 | `No signing lease: Branch 'main' is protected` | Agents never commit on `main` or `master` (`block_branches`). | Have the agent work on another branch. |
 | `No signing lease: the person denied the signing lease` | You pressed Deny. | Commit again to be asked again. |
 | You're asked again when the agent changes branch | The lease covers only the branch it was approved on (`allow_branch_switching = false`, or leases approved that way). | Approve, or set `allow_branch_switching = true` for future leases. |
-| `No signing lease: agent-sign couldn't ask you to approve a lease` | No dialog could be shown and the service has no terminal: a server, a container, an SSH session, or a Linux desktop without `zenity` or `kdialog`. | See "No dialog appears" and "Machines with no screen" below. |
+| `No signing lease: agent-sign couldn't ask you to approve a lease` | The service couldn't confirm it was you: no desktop session on macOS, or Linux (which has no approval dialog), or a server, container or SSH session with no terminal. | See "Linux has no approval dialog" and "Machines with no screen" below. |
+| `No signing lease: the signing lease was not approved: agent-sign could not confirm it was you (...)` | You picked a coverage but the Touch ID / password check was cancelled, failed, or timed out (five minutes). | Commit again and authenticate. If the Mac offers no check (no password set, no desktop session), the reason says so. |
 | `Token issuance failed: Rate limit exceeded` | More than `max_commits_per_minute` agent commits in a minute in this repository. | Wait a minute, or raise the limit in `~/.agent-sign/config.toml` and restart the service. |
 | `Security Policy Violation: ... forbidden path` | The commit changes a path in `forbidden_paths` (CI workflows, key files). | Commit that change yourself from your terminal. |
 | `Agent commit changes N lines, more than the limit you set` | You set `max_diff_lines`, and the commit changes more lines than that. (There's no limit by default.) | Split the commit, or commit with `AGENT_SIGN_ALLOW_LARGE_DIFF=1`. |
@@ -66,20 +67,23 @@ Developer, turn on "Use the SSH agent".
 
 Agent commits are signed with the agent's file key, so they need no touch.
 Your own commits still use your key and still need a touch. Your hardware
-key isn't used to approve leases: that's the dialog.
+key isn't used to approve leases: that's the dialog, then Touch ID or your
+login password on the Mac.
 
-## No dialog appears (Linux)
+## Linux has no approval dialog
 
-On Linux, agent-sign shows its dialog with `zenity` or `kdialog`, and only when
-the service's environment has `DISPLAY` or `WAYLAND_DISPLAY`. Install one of
-them (`sudo apt-get install zenity`, `sudo dnf install zenity`,
-`sudo pacman -S zenity`). If your desktop session doesn't pass `DISPLAY` to
-user services, run `systemctl --user import-environment DISPLAY
-WAYLAND_DISPLAY` and restart the service.
+On Linux, agent-sign no longer shows a `zenity` or `kdialog` dialog: Linux has
+no platform authenticator in agent-sign yet, and a dialog any program can click
+would let an agent approve its own lease. The service asks only at its own
+terminal, and only when it really has one (you started `agent-signd run` by
+hand in a terminal). The systemd user service has none, so it refuses new
+leases; to grant them anyway see the next section. Approving from another
+device, such as a passkey on your phone, is planned, not built.
 
 ## Machines with no screen (servers, containers, CI)
 
-With no screen and no terminal, agent-sign can't ask you, so it refuses leases.
+With no screen and no terminal (or on Linux, which has no approval dialog),
+agent-sign can't ask you, so it refuses leases.
 To grant every lease without asking, set in `~/.agent-sign/config.toml`:
 
 ```toml
@@ -125,5 +129,6 @@ lease.
   requests (one per repository and branch, however many commits are
   waiting on it), and `agent-sign deny --all` (or `agent-sign deny <id>`)
   answers no and closes their dialogs.
-- **Left open after a program stopped:** a dialog closes by itself within
-  about a second once every commit waiting on it has gone.
+- **Left open after a program stopped:** a dialog (or the Touch ID prompt)
+  closes by itself within about a second once every commit waiting on it
+  has gone.

@@ -293,6 +293,8 @@ fn start_service(home: &Path, fakebin: &Path) -> Service {
         .arg(&socket)
         .env("HOME", home)
         .env("PATH", format!("{}:{}", fakebin.display(), real_git_dir()))
+        // The stand-in dialog picks the coverage; this stands in for the owner.
+        .env("AGENT_SIGN_TEST_AUTH", "allow")
         .env("DISPLAY", ":99")
         .env_remove("WAYLAND_DISPLAY")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")

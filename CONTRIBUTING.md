@@ -25,7 +25,8 @@ cargo test --locked
 ```
 
 The end-to-end tests start their own service in a temporary home with its
-own socket and stand-in dialogs, so they never touch an installed agent-sign.
+own socket, stand-in dialogs and a stand-in owner (`AGENT_SIGN_TEST_AUTH`, which
+only test builds have), so they never touch an installed agent-sign.
 
 ## Sending changes
 

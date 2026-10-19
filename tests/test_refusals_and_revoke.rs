@@ -44,6 +44,8 @@ fn start_service(home: &Path, path: &str, auto_approve: bool, display: bool) -> 
         .arg(&socket)
         .env("HOME", home)
         .env("PATH", path)
+        // The stand-in dialog picks the coverage; this stands in for the owner.
+        .env("AGENT_SIGN_TEST_AUTH", "allow")
         .env_remove("DISPLAY")
         .env_remove("WAYLAND_DISPLAY")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")

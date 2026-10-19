@@ -72,7 +72,7 @@ tell an aim from a guarantee.
   integration tests over a real socket; end-to-end tests with real git,
   verified by `ssh-keygen` and `git log --show-signature`. The end-to-end
   tests start their own service in a temporary home with its own socket and
-  stand-in dialogs, so they never touch an installed agent-sign or show a real
+  stand-in dialogs and a stand-in owner (`AGENT_SIGN_TEST_AUTH`, test builds only), so they never touch an installed agent-sign or show a real
   dialog.
 - Every fix comes with a test that fails without it.
 - *Today:* 72 tests. Not covered automatically: the wrapper's terminal check,

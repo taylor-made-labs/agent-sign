@@ -6,9 +6,12 @@
 //! `agent-sign` (the command line). Their state lives in `~/.agent-sign` (see
 //! [`paths`]).
 
+pub mod approval;
 pub mod attribution;
 pub mod config;
 pub mod crypto;
+#[cfg(target_os = "macos")]
+pub mod device_owner;
 pub mod interceptor;
 pub mod lease;
 pub mod multiplexer;

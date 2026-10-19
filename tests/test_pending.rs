@@ -77,6 +77,8 @@ fn start() -> Service {
         .arg(&socket)
         .env("HOME", &home)
         .env("PATH", &fakebin)
+        // The stand-in dialog picks the coverage; this stands in for the owner.
+        .env("AGENT_SIGN_TEST_AUTH", "allow")
         .env("DISPLAY", ":99")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .stdin(Stdio::null())

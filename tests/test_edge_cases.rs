@@ -123,6 +123,8 @@ impl Setup {
             .arg(&self.socket)
             .env("HOME", &self.home)
             .env("PATH", &self.fakebin)
+            // The stand-in dialog picks the coverage; this stands in for the owner.
+            .env("AGENT_SIGN_TEST_AUTH", "allow")
             .env("DISPLAY", ":99")
             .env_remove("WAYLAND_DISPLAY")
             .env_remove("AGENT_SIGN_AUTO_APPROVE")
