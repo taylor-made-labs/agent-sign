@@ -159,7 +159,12 @@ pub struct SecurityConfig {
     pub block_branches: Vec<String>,
     #[serde(default)]
     pub allow_main_branch: bool,
-    #[serde(default = "default_true")]
+    /// Whether a lease follows the agent from branch to branch. Off by
+    /// default: the narrowest approval, one branch of one repository, is the
+    /// safe one, and the approval prompt says exactly that. Turn it on (or
+    /// set `lease_scope = "repo"`) to approve a repository's unprotected
+    /// branches at once.
+    #[serde(default)]
     pub allow_branch_switching: bool,
     #[serde(default = "default_max_commits_per_minute")]
     pub max_commits_per_minute: u32,
@@ -228,7 +233,7 @@ impl Default for SecurityConfig {
             refusal_backoff: default_refusal_backoff(),
             block_branches: default_block_branches(),
             allow_main_branch: false,
-            allow_branch_switching: true,
+            allow_branch_switching: false,
             max_commits_per_minute: default_max_commits_per_minute(),
             auto_approve: false,
             forbidden_paths: default_forbidden_paths(),

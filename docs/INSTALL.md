@@ -14,7 +14,7 @@ service). There are no prebuilt releases yet, so you build it from source.
 - `python3` (the installer uses it to update editor settings)
 - On macOS, to approve leases: a desktop session, and Touch ID or a login
   password on the Mac.
-- On Linux there is no approval dialog (see
+- On Linux there is no way to approve a lease (see
   [Headless machines](#headless-machines-servers-containers-ci)).
 - Optional: the GitHub CLI (`gh`), logged in, so the installer can register
   the agent's signing key on your account
@@ -47,7 +47,7 @@ It checks every piece and says how to fix anything that's wrong.
 
 To see it work end to end, run `./scripts/demo-sandbox.sh` from the `agent-sign`
 directory. It makes two signed agent commits in a throwaway repository
-(you'll see the lease dialog and the Touch ID or password prompt once), shows one refused by a local rule, then
+(you'll see the Touch ID or password prompt once), shows one refused by a local rule, then
 deletes the repository and revokes its lease.
 
 When you try it in your own repository, have the agent work on a branch
@@ -63,10 +63,11 @@ account's key, as noted below.
 | Where | What |
 |---|---|
 | `~/.agent-sign/bin` | The programs: `agent-signd`, `agent-sign`, `agent-ssh-sign`, `agent-git`, and a copy of `agent-git` named `git`. |
+| `~/.agent-sign/agent-sign.app` | macOS only. A tiny app bundle holding a copy of `agent-signd` and an `Info.plist` that names it "agent-sign". The service runs from here, so the Touch ID prompt says "agent-sign is trying to ..." instead of "agent-signd is trying to ...". It is signed ad hoc (no developer account), and rebuilt each time you run the installer, so after `brew upgrade` run the installer again to refresh it. |
 | `~/.agent-sign/keys` | A new ed25519 key for the agent, readable only by your user (and so by any agent running as you). It is not encrypted. |
 | `~/.agent-sign/config.toml` | Settings, with your existing SSH signing program detected (git's `gpg.ssh.program`, 1Password's `op-ssh-sign`, or `ssh-keygen`). Only written if missing. |
 | git's `allowed_signers` file (the list of SSH keys git trusts when it checks signatures) | One line with the agent's public key, **under your git email** (and `gpg.ssh.allowedSignersFile` set globally, to `~/.config/git/allowed_signers`, if it wasn't set; the uninstaller leaves that setting). This is what makes `git log --show-signature` report agent commits as good, and it attributes them to you. |
-| launchd or systemd | A user service that runs `agent-signd` and restarts it if it stops (`~/Library/LaunchAgents/com.agentsign.agent-signd.plist`, or `~/.config/systemd/user/agent-signd.service`). Before installing it, the installer stops a service installed earlier, and any `agent-signd` or `agent-signd` process of yours started by hand. |
+| launchd or systemd | A user service that runs `agent-signd` and restarts it if it stops (on macOS the copy in `agent-sign.app`; `~/Library/LaunchAgents/com.agentsign.agent-signd.plist`, or `~/.config/systemd/user/agent-signd.service`). Before installing it, the installer stops a service installed earlier, and any `agent-signd` or `agent-signd` process of yours started by hand. |
 | `~/.zshrc`, `~/.zprofile`, `~/.bashrc`, `~/.bash_profile` | A marked block putting `~/.agent-sign/bin` first on `PATH` (once), in each of these files that exists, so every program started from your shell, agents included, gets the wrapper as `git`. |
 | Cursor, VS Code and Windsurf `settings.json` | The same `PATH` for their built-in terminals, if those editors are installed. |
 | `~/.gemini/config/rules/agent-sign.md` | A rule for Google Antigravity, if it's installed. |

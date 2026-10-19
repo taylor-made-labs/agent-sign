@@ -8,7 +8,7 @@ set -euo pipefail
 # Run it after installing. The lease it asks for is revoked at the end.
 #
 # The service decides whether to ask you: with auto_approve off (the default)
-# you'll see the lease dialog once. On a machine with no screen, see
+# you'll see the Touch ID prompt once. On a machine with no screen, see
 # "Headless machines" in docs/INSTALL.md.
 # =============================================================================
 
@@ -78,7 +78,7 @@ echo -e "\n${GREEN}✓ First agent commit signed!${NC}"
 echo -e "  Signature verification:"
 git log -1 --show-signature | grep -E "Good|Author|Date" || true
 
-echo -e "\n${CYAN}3. A second agent commit, under the same lease (no dialog)...${NC}"
+echo -e "\n${CYAN}3. A second agent commit, under the same lease (no prompt)...${NC}"
 echo "module.exports = { add };" >> math.js
 git add math.js
 

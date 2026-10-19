@@ -6,9 +6,9 @@ If you sign your git commits with a hardware key, 1Password, or a passkey,
 an AI agent making twenty small commits stops twenty times for your
 fingerprint. The usual workarounds are worse: turning signing off, or
 handing the agent your own key. agent-sign gives agents a separate
-signing key, held by a small background service, and asks you once instead:
-for one repository, every repository in a folder, or all of them, as you
-choose. After that, agent commits are signed without interrupting you, and
+signing key, held by a small background service, and asks you once instead,
+with one Touch ID prompt that says which branch of which repository it is
+for. After that, agent commits there are signed without interrupting you, and
 your own key is never handed to an agent.
 
 What it is, plainly: it removes the interruption, and adds local guardrails
@@ -18,12 +18,14 @@ identity for agents on GitHub: the agent key is registered on your account,
 so agent commits show as Verified for you, with the agent's name as author.
 See [what it protects against, and what it doesn't](#what-it-protects-against-and-what-it-doesnt).
 
-The approval is a **lease**, and you see its terms before you approve: what
-it covers, which branches, and when it ends. No lease lasts forever: it ends
+The approval is a **lease**. The prompt says what it covers (by default, one
+branch of one repository), and it is as narrow as it can be unless you widen
+it in the config (see [Leases](#leases)). No lease lasts forever: it ends
 when the branch it was approved for is merged or deleted, after a week with
 no agent commits, or when you turn it off, whichever comes first. The terms
-are fixed when you approve and never grow on their own. Commits you
-make yourself in a terminal go through your normal signing.
+are fixed when you approve and never grow on their own; `agent-sign leases`
+shows them. Commits you make yourself in a terminal go through your normal
+signing.
 
 **Status: pre-release (0.1.0).** Its author uses it daily on macOS for every
 agent commit. Linux builds and passes its tests, but has had little daily
@@ -40,23 +42,23 @@ no downloadable releases yet: you build it from source.
    changes to CI workflows (`.github/workflows/`, `.circleci/`) or key files
    (`*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`). There's no limit on a
    commit's size unless you set one (`max_diff_lines`). Then it asks the
-   service (`agent-signd`) for a lease covering this repository.
-3. If there's no lease, you get one dialog showing the repository, the
-   branch, which branches the lease would cover, and when it ends. You pick
-   what the approval covers and press Continue (or Deny), and then the Mac
-   asks you to prove it's you: Touch ID, or your login password. Only then
-   is the lease granted. A click alone approves nothing, so a program that
-   can click the dialog (a computer-use agent, a System Events script)
-   can't approve a lease for itself. Commits that ask while it's open
-   (retries, or several agents at once) wait for the same answer instead of
-   opening more dialogs, and the request closes by itself if every commit
-   waiting on it has gone (a test that timed out, say). Only one approval
-   prompt is shown at a time, and after one is refused (Deny, or a Touch ID
-   that is cancelled, fails or times out) no new one opens for a while, 60
-   seconds at first and doubling with each refusal in a row (the agent is
-   told how long). At most 4 requests wait at once. A request is only asked
-   about if its repository is a real, existing git working tree and its path
-   and branch have no control or invisible characters in them.
+   service (`agent-signd`) for a lease covering this repository and branch.
+3. If there's no lease, you get one prompt: the Mac's own Touch ID (or login
+   password) prompt, with the reason spelled out, such as "let an agent sign
+   commits on branch feat/parser in project (~/code/project)". There's
+   nothing to choose; the lease covers that branch of that repository. Only
+   then is the lease granted. agent-sign shows no dialog of its own, because
+   a program that can click one (a computer-use agent, a System Events
+   script) could approve a lease for itself, and none can answer Touch ID.
+   Commits that ask while it's open (retries, or several agents at once) wait
+   for the same answer instead of opening more prompts, and the request
+   closes by itself if every commit waiting on it has gone (a test that
+   timed out, say). Only one approval prompt is shown at a time, and after
+   one is refused (cancelled, failed or timed out) no new one opens for a
+   while, 60 seconds at first and doubling with each refusal in a row (the
+   agent is told how long). At most 4 requests wait at once. A request is
+   only asked about if its repository is a real, existing git working tree
+   and its path and branch have no control or invisible characters in them.
    A commit that turns signing off (`--no-gpg-sign`, or `commit.gpgsign`
    set to false for that command or that repository, as test suites do for
    throwaway commits) never asks: it goes to plain git, unsigned.
@@ -83,10 +85,10 @@ It does:
 - keep your own signing key away from agents (they never talk to it)
 - refuse agent commits on protected branches (`main` and `master` by
   default), checked on every commit
-- ask you before the first signed commit that no lease covers, showing the
-  lease's terms and letting you choose how far it reaches, and (on macOS)
-  require Touch ID or your login password to approve it. Cancel, a failed
-  or timed-out check, or no way to run the check all deny
+- ask you before the first signed commit that no lease covers, saying which
+  branch of which repository it would cover, and (on macOS) require Touch ID
+  or your login password to approve it. Cancel, a failed or timed-out check,
+  or no way to run the check all deny
 - stop runaway commit loops (and oversized diffs, if you set a size limit), and block edits to CI
   workflows and key files
 - fail closed: for a commit through the wrapper, if the service is down,
@@ -113,10 +115,9 @@ It does not, yet:
   commands they run; others can be started with `AGENT_SIGN_AGENT_NAME`),
   but that's a label: any program can set those variables
 - stop an agent running as your user from approving its own lease by other
-  means than the dialog: it can edit the config (`auto_approve`), start its
+  means than the prompt: it can edit the config (`auto_approve`), start its
   own service, or, if it knows your login password, type it into the
-  system's prompt. The dialog and Touch ID close the screen-clicking route,
-  not those
+  system's prompt. Touch ID closes the screen-clicking route, not those
 - approve anything on Linux: it has no platform authenticator yet, so every
   request there is refused (see [Linux](#linux))
 - keep agent work apart from yours on GitHub: the agent key goes on your
@@ -154,38 +155,31 @@ agent-sign doctor
 
 Start your agent from a new terminal, so the wrapper is on its `PATH`, and
 let it commit on a branch other than `main` or `master` (agents never commit
-on those). You'll see one dialog, titled "agent-sign":
+on those). You'll see one prompt, from the Mac itself, that should name the
+program "agent-sign" and say what you're approving. It should read like this
+(the layout is the system's, and varies with your Mac and macOS):
 
 ```
-An AI agent asks to sign git commits as the agent without asking you again.
+agent-sign is trying to let an agent sign commits on branch feat/parser in
+project (~/code/project).
 
-Repository: /Users/you/code/project
-Branch now: feat/parser
-Branches: every branch except protected ones (main, master)
-Ends: when the work on branch 'feat/parser' is merged or the branch is deleted,
-  after 7 days with no agent commits, or when you turn it off (agent-sign revoke)
-
-Choose what this approval covers, then Continue. You will then be asked to
-confirm that it is you (Touch ID or your password); nothing is approved until
-you do. These terms are fixed when you approve. They never grow.
-
-    This repository only
-    Every repository under /Users/you/code
-    Every repository on this computer
-
-                                         [Deny]  [Continue]
+Touch ID or enter your password to allow this.
 ```
 
-Nothing is selected to begin with, and Continue stays greyed out until you
-pick one; Deny (or Escape) refuses. After Continue, the system's own prompt
-asks for Touch ID or your login password, and waits up to five minutes; if
-you cancel, get it wrong, or it times out, the lease is refused and the agent
-sees that agent-sign could not confirm it was you. Choose a wider scope if
-you start new repositories often and don't want to be asked for each. Agent
-commits in what you chose are signed from then on without asking. Check one
-with `git log -1 --show-signature`. (With `allow_branch_switching = false`,
-only "This repository only" is offered: a wider lease can't be held to one
-branch.)
+Touch ID, or your login password, approves it; cancelling refuses. The Mac
+waits up to five minutes; if you cancel, get it wrong, or it times out, the
+lease is refused and the agent sees that agent-sign could not confirm it was
+you. Agent commits on that branch of that repository are signed from then on
+without asking. Check one with `git log -1 --show-signature`. The lease is
+the narrowest there is, so an agent that moves to another branch, or a
+different repository, asks again. If that's more prompts than you want, widen
+it: see [Leases](#leases).
+
+The installer runs the service from a small app bundle
+(`~/.agent-sign/agent-sign.app`) named "agent-sign" so that the prompt says
+that; started bare, macOS names the prompt after the program, `agent-signd`.
+If your prompt still says `agent-signd`, the service isn't running from the
+bundle: run the installer again and tell us.
 
 In a brand-new repository, make the first commit yourself (agents can't
 commit on `main`), then have the agent work on a branch.
@@ -218,7 +212,7 @@ belongs to the agentic-credentials work; it isn't built.
 | `end_after_idle` | `"7d"` | A lease ends after this long with no agent commit under it, so one whose branch is never merged or deleted still ends. `"none"` turns this off. A value agent-sign can't read stops the service rather than being ignored. |
 | `max_lease_ceiling` | `"none"` | Longest life of an `identity` lease, such as `"7d"`. It also shortens leases already granted. A value agent-sign can't read stops the service rather than being ignored. |
 | `default_lease_duration` | `"2h"` | Life of a `timed` lease. |
-| `allow_branch_switching` | `true` | With `lease_scope = "branch"` (the default), `true` makes a lease cover every unprotected branch of the repository, following the agent between them; `false` limits it to the branch it was approved on. `lease_scope = "repo"` always covers every unprotected branch. |
+| `allow_branch_switching` | `false` | With `lease_scope = "branch"` (the default), `false` limits a lease to the branch it was approved on, in the repository it was asked from: the narrowest approval, and the default for safety. `true` makes it cover every unprotected branch of the repository, following the agent between them, and the prompt then says "any unprotected branch". `lease_scope = "repo"` always covers every unprotected branch. |
 | `block_branches` | `["main", "master"]` | Branches no lease covers (a name, or a prefix ending in `*`). |
 | `allow_main_branch` | `false` | `true` turns that protection off. |
 | `max_commits_per_minute` | `10` | Commit rate limit per repository. |
@@ -228,6 +222,15 @@ Every lease also ends with its work: when the branch it was approved for is
 merged into `main` or `master` (counting only commits made since the
 approval, and a merge on GitHub once you've fetched it) or deleted. Detached
 HEAD has no branch to follow, so there only the other endings apply.
+
+There is no prompt choice to widen a lease further: earlier versions offered
+"every repository under a folder" and "every repository on this computer" in
+a dialog, and those are no longer offered: the approval is one prompt with
+nothing to choose. A lease of either kind approved earlier still works
+(while `allow_branch_switching` is on, which they need to cover every branch)
+and can be revoked. To avoid a prompt for each new repository on a machine
+you trust, `auto_approve` grants every lease without asking (see
+[Headless machines](docs/INSTALL.md#headless-machines-servers-containers-ci)).
 
 Changing these only ever narrows leases already granted: a shorter ceiling
 ends older leases sooner, and a longer one doesn't extend them. The service
@@ -242,7 +245,7 @@ agent-sign revoke <folder>   # end a lease covering every repository under a fol
 agent-sign revoke everywhere # end a lease covering every repository
 agent-sign revoke --all      # end every lease
 agent-sign pending           # approval requests waiting for your answer
-agent-sign deny --all        # answer no to all of them and close their dialogs
+agent-sign deny --all        # answer no to all of them and close their prompts
 agent-sign status            # is the service running
 agent-sign doctor            # check the whole setup, with fixes
 ```
@@ -262,7 +265,10 @@ keys yourself.
 ## Upgrading
 
 Run the installer again from the new version. Your key, leases and config
-carry over, with no new approval. What changed since the first agent-sign:
+carry over, with no new approval. One change to know about: `allow_branch_switching`
+now defaults to `false`, so a lease that followed the agent between branches
+(approved under the old default) now covers only its own branch, until you set
+`allow_branch_switching = true` in `config.toml` and restart the service. What changed since the first agent-sign:
 [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## More

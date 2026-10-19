@@ -17,6 +17,7 @@
 //! Branch rules sit beside leases: a lease never covers a protected branch,
 //! and that is checked whenever a commit token is issued.
 
+use crate::approval::BranchReach;
 use crate::config::{LeaseMode, LeaseScope};
 use crate::protocol::LeaseInfo;
 use serde::{Deserialize, Serialize};
@@ -26,9 +27,12 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
 
-/// What one approval covers. The person picks it in the approval dialog:
-/// asking once per repository is right for some people, and a needless
-/// interruption for someone who starts a new repository every day.
+/// What one approval covers. The service now only ever asks for
+/// [`Coverage::Repository`] (the narrowest: one branch of one repository, or
+/// every unprotected branch of it when the config lets leases follow the
+/// agent); folder and everywhere leases are no longer offered, but the engine
+/// still honours them, so a lease saved earlier keeps working and can be
+/// revoked.
 ///
 /// A folder covers every repository whose path is inside it, compared by
 /// whole path components, so `/w/dev` covers `/w/dev/app` but never
@@ -191,15 +195,18 @@ impl Default for LeasePolicy {
             max_ceiling: None,
             block_branches: vec!["main".to_string(), "master".to_string()],
             allow_main_branch: false,
-            allow_branch_switching: true,
+            allow_branch_switching: false,
             max_commits_per_minute: 10,
             idle_limit: None,
         }
     }
 }
 
-/// A new lease's terms in plain words, for the approval prompt: what the
-/// person approves is exactly what the lease will be.
+/// A new lease's terms in plain words: what the person approves is exactly
+/// what the lease will be. The system's prompt is too short to carry them
+/// (it says what is being approved: see [`BranchReach`]), so they are written
+/// to the service's log with each approval, and `agent-sign leases` shows the
+/// ones in force.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TermsText {
     /// Which branches it covers.
@@ -216,31 +223,17 @@ impl LeasePolicy {
         self.scope == LeaseScope::Repo || self.allow_branch_switching
     }
 
-    /// The scopes to offer when an agent asks from `repo`, each with the
-    /// label the dialog shows. The folder offered is the one holding the
-    /// repository, named in full so the person sees exactly what it reaches.
-    /// When the config keeps leases to one branch, only this repository is
-    /// offered.
-    pub fn scope_choices(&self, repo: &str) -> Vec<(Coverage, String)> {
-        let mut choices = vec![(Coverage::Repository, "This repository only".to_string())];
+    /// Which branches a lease approved now for `branch` would reach, for the
+    /// approval prompt to say: only `branch` unless the config lets leases
+    /// follow the agent between branches.
+    pub fn branch_reach(&self, branch: &str) -> BranchReach {
         if !self.follows_branches() {
-            return choices;
+            BranchReach::This(branch.to_string())
+        } else if self.allow_main_branch || self.block_branches.is_empty() {
+            BranchReach::Any
+        } else {
+            BranchReach::AnyUnprotected
         }
-        if let Some(parent) = std::path::Path::new(repo)
-            .parent()
-            .filter(|p| p.is_absolute() && p.parent().is_some())
-        {
-            let folder = parent.to_string_lossy().to_string();
-            choices.push((
-                Coverage::Folder(folder.clone()),
-                format!("Every repository under {folder}"),
-            ));
-        }
-        choices.push((
-            Coverage::Everywhere,
-            "Every repository on this computer".to_string(),
-        ));
-        choices
     }
 
     /// The terms a lease granted now for `branch` would get.

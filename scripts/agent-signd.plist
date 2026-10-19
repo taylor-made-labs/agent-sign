@@ -4,6 +4,11 @@
   The LaunchAgent that keeps agent-signd running while you're logged in.
   scripts/install.sh copies it to ~/Library/LaunchAgents and loads it;
   scripts/uninstall.sh removes it.
+
+  It starts the copy of agent-signd inside ~/.agent-sign/agent-sign.app, not
+  the one in ~/.agent-sign/bin: the system's Touch ID prompt names the
+  program that asked, and from the app bundle that name is "agent-sign"
+  instead of "agent-signd" (see scripts/agent-sign.Info.plist).
 -->
 <plist version="1.0">
 <dict>
@@ -13,7 +18,7 @@
     <array>
         <string>/bin/sh</string>
         <string>-c</string>
-        <string>exec "$HOME/.agent-sign/bin/agent-signd"</string>
+        <string>exec "$HOME/.agent-sign/agent-sign.app/Contents/MacOS/agent-signd"</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

@@ -104,6 +104,7 @@ fn using_a_lease_never_moves_its_end() {
             default_ttl: Duration::from_secs(3600),
             max_ceiling: Some(Duration::from_secs(7 * 86400)),
             max_commits_per_minute: 100,
+            allow_branch_switching: true,
             ..Default::default()
         };
         let mut engine = LeaseEngine::new_with_storage(policy.clone(), Some(file.clone()));
@@ -207,7 +208,10 @@ fn branch_following_is_fixed_at_approval_and_only_narrowed() {
         allow_branch_switching: false,
         ..Default::default()
     };
-    let follows = LeasePolicy::default();
+    let follows = LeasePolicy {
+        allow_branch_switching: true,
+        ..Default::default()
+    };
     assert!(follows.allow_branch_switching);
 
     // Approved for one branch, then the config allows switching.
@@ -278,7 +282,12 @@ fn leases_saved_before_this_change_keep_working_unchanged() {
         ),
     )
     .unwrap();
-    let mut engine = LeaseEngine::new_with_storage(LeasePolicy::default(), Some(file.clone()));
+    // The config these leases were approved under let them follow branches.
+    let following = LeasePolicy {
+        allow_branch_switching: true,
+        ..LeasePolicy::default()
+    };
+    let mut engine = LeaseEngine::new_with_storage(following, Some(file.clone()));
     let l = engine.get_active_lease("/r").expect("still in force");
     assert_eq!(l.follows_branches, None);
     assert!(engine.switch_branch("/r", "feat/b").is_ok());
@@ -386,16 +395,24 @@ fn service_refuses_to_start_with_an_unreadable_ceiling() {
     assert!(socket.exists(), "the existing socket was left alone");
 }
 
-// --- What the person is shown when asked ------------------------------------
+// --- The terms, in plain words -----------------------------------------------
 
-/// The approval prompt states the lease's scope and end, in plain words, and
-/// never calls a lease that ends on a timer "process-bound".
+/// A new lease's scope and end are stated in plain words (the service's log
+/// records them with each approval), and a lease that ends on a timer is never
+/// called "process-bound".
 #[test]
-fn the_approval_prompt_states_the_fixed_terms() {
+fn a_new_leases_terms_are_stated_in_plain_words() {
+    // By default a lease covers only its own branch...
     let lifetime = LeasePolicy::default();
     let t = lifetime.describe_terms("feat/a");
+    assert_eq!(t.covers, "only branch 'feat/a'");
+    // ...and the terms say so when the config lets it follow the agent.
+    let following = LeasePolicy {
+        allow_branch_switching: true,
+        ..LeasePolicy::default()
+    };
     assert_eq!(
-        t.covers,
+        following.describe_terms("feat/a").covers,
         "every branch except protected ones (main, master)"
     );
     assert_eq!(

@@ -1,17 +1,17 @@
-//! A click is not an approval: choosing what a lease covers only counts if the
-//! device's owner then authenticates (on macOS, Touch ID or the login
-//! password), and anything short of success denies.
+//! A click is not an approval: a lease is granted only if the device's owner
+//! authenticates (on macOS, Touch ID or the login password) in one prompt
+//! whose reason says what is being approved, and anything short of success
+//! denies.
 //!
 //! The decision tests use a stand-in [`Authenticator`] so every outcome can be
-//! forced. The service tests run the real `agent-signd` with a stand-in
-//! dialog that always picks the widest coverage (as a program clicking
-//! through it would) and a stand-in owner chosen by `AGENT_SIGN_TEST_AUTH`;
-//! that variable exists only in test builds (feature `test-authenticator`).
-//! The one thing no test can do is press a real finger on the sensor: that is
-//! the manual check in the release checklist (and the ignored test below).
+//! forced. The service tests run the real `agent-signd` with a stand-in owner
+//! chosen by `AGENT_SIGN_TEST_AUTH`; that variable exists only in test builds
+//! (feature `test-authenticator`). The one thing no test can do is press a
+//! real finger on the sensor, or see the wording the system puts around the
+//! reason: that is the manual check in the release checklist (and the ignored
+//! test below).
 
 use std::fs;
-use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
@@ -19,8 +19,9 @@ use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use agent_sign::approval::{
-    Approval, AuthOutcome, Authenticator, MAX_PENDING_REQUESTS, NO_WAY_TO_ASK, RefusalBackoff,
-    auth_reason, confirm, display_text, has_unsafe_display_chars,
+    Approval, AuthOutcome, Authenticator, BranchReach, MAX_PENDING_REQUESTS, MAX_REASON_CHARS,
+    NO_WAY_TO_ASK, RefusalBackoff, auth_reason, confirm, display_text, has_unsafe_display_chars,
+    short_path,
 };
 use agent_sign::lease::Coverage;
 use agent_sign::protocol::{Request, Response, send_request};
@@ -53,24 +54,32 @@ impl Authenticator for Fake {
     }
 }
 
-fn decide(selection: Option<Coverage>, outcome: AuthOutcome) -> (Approval, usize) {
+fn decide(outcome: AuthOutcome) -> (Approval, usize) {
     let fake = Fake::new(outcome);
-    let approval = confirm(selection, &fake, "reason", &AtomicBool::new(false));
+    let approval = confirm(
+        Coverage::Repository,
+        &fake,
+        "reason",
+        &AtomicBool::new(false),
+    );
     (approval, fake.times_asked())
 }
 
 #[test]
-fn a_selection_without_authentication_is_denied() {
-    // Every way authentication can fail to happen denies the selection.
+fn without_authentication_nothing_is_approved() {
+    // Every way authentication can fail to happen refuses.
     let failures = [
         AuthOutcome::Failed("cancelled".to_string()),
         AuthOutcome::TimedOut,
         AuthOutcome::Unavailable("no authenticator".to_string()),
     ];
     for failure in failures {
-        let (approval, _) = decide(Some(Coverage::Everywhere), failure.clone());
+        let (approval, _) = decide(failure.clone());
         assert!(
-            matches!(approval, Approval::NotAuthenticated(_)),
+            matches!(
+                approval,
+                Approval::NotAuthenticated(_) | Approval::NoWayToAsk
+            ),
             "{failure:?} gave {approval:?}"
         );
         assert!(approval.refusal().is_some(), "{failure:?} must refuse");
@@ -79,10 +88,7 @@ fn a_selection_without_authentication_is_denied() {
 
 #[test]
 fn authentication_failure_denies_and_says_why_it_was_not_the_persons_no() {
-    let (approval, _) = decide(
-        Some(Coverage::Repository),
-        AuthOutcome::Failed("Authentication failed".to_string()),
-    );
+    let (approval, _) = decide(AuthOutcome::Failed("Authentication failed".to_string()));
     let refusal = approval.refusal().unwrap();
     assert!(
         refusal.contains("could not confirm it was you"),
@@ -93,80 +99,115 @@ fn authentication_failure_denies_and_says_why_it_was_not_the_persons_no() {
 }
 
 #[test]
-fn success_approves_with_the_chosen_coverage() {
-    for coverage in [
-        Coverage::Repository,
-        Coverage::Folder("/w/dev".to_string()),
-        Coverage::Everywhere,
-    ] {
-        let (approval, asked) = decide(Some(coverage.clone()), AuthOutcome::Authenticated);
-        assert_eq!(approval, Approval::Approved(coverage));
-        assert_eq!(asked, 1);
-    }
+fn a_mac_that_cannot_ask_says_so_instead_of_blaming_the_person() {
+    let (approval, _) = decide(AuthOutcome::Unavailable("no password set".to_string()));
+    assert_eq!(approval, Approval::NoWayToAsk);
+    assert_eq!(approval.refusal().as_deref(), Some(NO_WAY_TO_ASK));
 }
 
 #[test]
-fn deny_never_asks_for_authentication() {
-    // Nothing selected (Deny, closed, nothing picked): denied, and the owner
-    // isn't bothered, and a stand-in that would succeed changes nothing.
-    let (approval, asked) = decide(None, AuthOutcome::Authenticated);
-    assert_eq!(approval, Approval::Denied);
-    assert_eq!(asked, 0);
-}
-
-#[test]
-fn an_answer_matching_no_choice_selects_nothing() {
-    let choices = vec![
-        (Coverage::Repository, "This repository only".to_string()),
-        (
-            Coverage::Everywhere,
-            "Every repository on this computer".to_string(),
-        ),
-    ];
-    assert_eq!(Approval::selection_from_answer("false", &choices), None);
-    assert_eq!(Approval::selection_from_answer("", &choices), None);
-    assert_eq!(
-        Approval::selection_from_answer("Every repository under /elsewhere", &choices),
-        None
-    );
-    assert_eq!(
-        Approval::selection_from_answer("  Every repository on this computer\n", &choices),
-        Some(Coverage::Everywhere)
-    );
+fn success_approves_once_with_the_narrowest_coverage_asked_for() {
+    let (approval, asked) = decide(AuthOutcome::Authenticated);
+    assert_eq!(approval, Approval::Approved(Coverage::Repository));
+    assert_eq!(asked, 1);
 }
 
 #[test]
 fn withdrawing_during_authentication_is_not_an_approval() {
-    let (approval, _) = decide(Some(Coverage::Repository), AuthOutcome::Withdrawn);
+    let (approval, _) = decide(AuthOutcome::Withdrawn);
     assert_eq!(approval, Approval::Withdrawn);
 }
 
 #[test]
-fn the_prompt_leads_with_the_coverage_then_names_the_repository_and_branch() {
-    let reason = auth_reason("/w/dev/app", "feat/a", "Every repository on this computer");
+fn the_prompt_says_the_branch_the_repository_and_where_it_is() {
+    let reason = auth_reason(
+        "/Users/me/dev/suite",
+        Some("/Users/me"),
+        &BranchReach::This("feat/parser".to_string()),
+    );
+    assert_eq!(
+        reason,
+        "let an agent sign commits on branch feat/parser in suite (~/dev/suite)"
+    );
+    // The system writes "<name> is trying to <reason>.", so the reason is a
+    // lowercase phrase with no full stop of its own.
+    assert!(!reason.ends_with('.'));
+    assert!(reason.starts_with(char::is_lowercase));
+
+    // When the config lets the lease follow the agent, the reason says so.
+    let wide = auth_reason(
+        "/Users/me/dev/suite",
+        Some("/Users/me"),
+        &BranchReach::AnyUnprotected,
+    );
+    assert_eq!(
+        wide,
+        "let an agent sign commits on any unprotected branch in suite (~/dev/suite)"
+    );
+    let all = auth_reason("/w/app", None, &BranchReach::Any);
+    assert_eq!(
+        all,
+        "let an agent sign commits on any branch in app (/w/app)"
+    );
+}
+
+#[test]
+fn only_a_whole_leading_folder_is_shown_as_the_home_folder() {
+    assert_eq!(short_path("/Users/me/dev/x", Some("/Users/me")), "~/dev/x");
+    assert_eq!(short_path("/Users/me", Some("/Users/me")), "~");
+    assert_eq!(short_path("/Users/me/", Some("/Users/me/")), "~/");
+    // A different folder that starts the same way is not under home.
+    assert_eq!(
+        short_path("/Users/me2/dev/x", Some("/Users/me")),
+        "/Users/me2/dev/x"
+    );
+    assert_eq!(short_path("/opt/x", Some("/Users/me")), "/opt/x");
+    assert_eq!(short_path("/opt/x", None), "/opt/x");
+    // A home of "/" or empty would turn every path into "~...".
+    assert_eq!(short_path("/opt/x", Some("/")), "/opt/x");
+    assert_eq!(short_path("/opt/x", Some("")), "/opt/x");
+}
+
+#[test]
+fn a_long_reason_is_cut_but_keeps_the_branch_and_the_repository_name() {
+    // Ordinary names are never cut, however deep the folder is.
+    let deep = "/Users/me/a/very/long/way/down/through/many/folders/to/the/project";
+    let reason = auth_reason(
+        deep,
+        Some("/Users/me"),
+        &BranchReach::This("feat/parser".to_string()),
+    );
+    assert!(reason.chars().count() <= MAX_REASON_CHARS, "{reason}");
     assert!(
-        reason
-            .starts_with("allow AI agents to sign git commits: Every repository on this computer"),
+        reason.contains("branch feat/parser in project ("),
         "{reason}"
     );
-    assert!(
-        reason.contains("/w/dev/app") && reason.contains("feat/a"),
-        "{reason}"
-    );
+    // The path gave way, in the middle, so its start and end still show.
+    assert!(reason.contains("(~/a/very"), "{reason}");
+    assert!(reason.contains("to/the/project)"), "{reason}");
+
+    // The worst case: huge names everywhere stays within the limit, and the
+    // start and end of the branch and of the name still show.
+    let long_branch = format!("feat/{}/the-end", "b".repeat(300));
+    let long_repo = format!("/w/{}/proj-end", "r".repeat(300));
+    let worst = auth_reason(&long_repo, None, &BranchReach::This(long_branch));
+    assert!(worst.chars().count() <= MAX_REASON_CHARS, "{worst}");
+    assert!(worst.contains("branch feat/"), "{worst}");
+    assert!(worst.contains("/the-end in "), "{worst}");
+    assert!(worst.contains("proj-end ("), "{worst}");
 }
 
 #[test]
 fn text_the_agent_supplies_cannot_reshape_the_prompt() {
     // Newlines, direction overrides and zero-width characters are removed...
-    let evil = "/w/app (This repository only)\n\n\n\u{202e}\u{200b}x";
+    let evil = "/w/app (and everything else)\n\n\n\u{202e}\u{200b}x";
     assert!(has_unsafe_display_chars(evil));
-    let reason = auth_reason(evil, "feat/\u{2028}a", "Every repository on this computer");
+    let reason = auth_reason(evil, None, &BranchReach::This("feat/\u{2028}a".to_string()));
     assert!(!has_unsafe_display_chars(&reason), "{reason:?}");
     assert!(!reason.contains('\n'));
-    // ...and the coverage the person chose still comes first, so nothing the
-    // agent wrote can push it out of view.
+    // ...and what is approved still leads, in the service's own words.
     assert!(
-        reason.contains("sign git commits: Every repository on this computer ("),
+        reason.starts_with("let an agent sign commits on branch feat/a in "),
         "{reason}"
     );
 
@@ -178,7 +219,6 @@ fn text_the_agent_supplies_cannot_reshape_the_prompt() {
         shown.starts_with("/start/") && shown.ends_with("/the-real-end"),
         "{shown}"
     );
-    assert!(auth_reason(&long, &long, "Everywhere").chars().count() < 400);
 
     // Ordinary text is untouched.
     assert_eq!(
@@ -243,7 +283,7 @@ fn this_mac_can_authenticate_its_owner() {
     agent_sign::device_owner::DeviceOwner::is_available().unwrap();
 }
 
-// --- The running service, with a stand-in dialog and a stand-in owner -----
+// --- The running service, with a stand-in owner -------------------------------
 
 struct Service {
     child: Child,
@@ -257,31 +297,31 @@ impl Drop for Service {
     }
 }
 
-fn write_script(path: &Path, body: &str) {
-    fs::write(path, format!("#!/bin/sh\n{body}\n")).unwrap();
-    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-}
-
-/// The widest coverage, picked by a stand-in dialog: what a program clicking
-/// through the real one could do.
-const WIDEST: &str = "Every repository on this computer";
-
 /// How a test service is set up.
+#[derive(Default)]
 struct Setup<'a> {
-    /// What the stand-in dialog does (a shell snippet); `None` for no dialog.
-    dialog: Option<String>,
     /// `AGENT_SIGN_TEST_AUTH`; `None` leaves it unset.
     auth: Option<&'a str>,
-    /// `refusal_backoff` (`AGENT_SIGN_REFUSAL_BACKOFF`).
+    /// `refusal_backoff` (`AGENT_SIGN_REFUSAL_BACKOFF`); empty means "none".
     backoff: &'a str,
-}
-
-fn picks(label: &str) -> Option<String> {
-    Some(format!("echo '{label}'"))
+    /// Each prompt stays open this long (`AGENT_SIGN_TEST_AUTH_DELAY_MS`).
+    delay_ms: Option<u64>,
+    /// Each prompt stays open until this file exists
+    /// (`AGENT_SIGN_TEST_AUTH_ANSWER`).
+    answer_file: Option<PathBuf>,
+    /// Added under `[security]` in the config.
+    config: &'a str,
 }
 
 fn start(dir: &Path, setup: Setup) -> Service {
     let socket = dir.join("svc.sock");
+    let state = dir.join(".agent-sign");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(
+        state.join("config.toml"),
+        format!("[security]\n{}", setup.config),
+    )
+    .unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
     cmd.arg("--socket")
         .arg(&socket)
@@ -289,22 +329,28 @@ fn start(dir: &Path, setup: Setup) -> Service {
         .env("PATH", "/usr/bin:/bin")
         .env_remove("AGENT_SIGN_AUTO_APPROVE")
         .env_remove("AGENT_SIGN_TEST_AUTH")
-        .env_remove("AGENT_SIGN_TEST_DIALOG")
-        .env("AGENT_SIGN_REFUSAL_BACKOFF", setup.backoff)
+        .env_remove("AGENT_SIGN_TEST_AUTH_ANSWER")
+        .env_remove("AGENT_SIGN_TEST_AUTH_DELAY_MS")
+        .env(
+            "AGENT_SIGN_REFUSAL_BACKOFF",
+            if setup.backoff.is_empty() {
+                "none"
+            } else {
+                setup.backoff
+            },
+        )
         .env("AGENT_SIGN_TEST_AUTH_LOG", dir.join("auth.log"))
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    if let Some(body) = &setup.dialog {
-        let dialog = dir.join("dialog");
-        write_script(
-            &dialog,
-            &format!("echo shown >> '{}'\n{body}", dir.join("shown").display()),
-        );
-        cmd.env("AGENT_SIGN_TEST_DIALOG", &dialog);
-    }
     if let Some(auth) = setup.auth {
         cmd.env("AGENT_SIGN_TEST_AUTH", auth);
+    }
+    if let Some(ms) = setup.delay_ms {
+        cmd.env("AGENT_SIGN_TEST_AUTH_DELAY_MS", ms.to_string());
+    }
+    if let Some(file) = &setup.answer_file {
+        cmd.env("AGENT_SIGN_TEST_AUTH_ANSWER", file);
     }
     let child = cmd.spawn().expect("Failed to start agent-signd");
     let start = Instant::now();
@@ -318,14 +364,13 @@ fn start(dir: &Path, setup: Setup) -> Service {
     Service { child, socket }
 }
 
-/// A service whose dialog always picks the widest coverage.
+/// A service whose stand-in owner answers `auth`.
 fn start_service(dir: &Path, auth: Option<&str>) -> Service {
     start(
         dir,
         Setup {
-            dialog: picks(WIDEST),
             auth,
-            backoff: "none",
+            ..Setup::default()
         },
     )
 }
@@ -337,8 +382,9 @@ fn fake_repo(root: &Path, rel: &str) -> String {
     repo.display().to_string()
 }
 
+/// How many prompts the owner was shown.
 fn times_shown(dir: &Path) -> usize {
-    fs::read_to_string(dir.join("shown"))
+    fs::read_to_string(dir.join("auth.log"))
         .map(|s| s.lines().count())
         .unwrap_or(0)
 }
@@ -371,10 +417,10 @@ fn lease_count(svc: &Service) -> usize {
 }
 
 #[test]
-fn a_click_through_the_dialog_without_the_owner_grants_nothing() {
-    // A stand-in owner that fails, one that times out, one that is
-    // unavailable, and one that was never configured: none approves.
-    for auth in [Some("fail"), Some("timeout"), Some("unavailable"), None] {
+fn without_the_owner_authenticating_nothing_is_granted() {
+    // A stand-in owner that fails, one that times out, and one that was never
+    // configured: none approves, and each says it couldn't confirm it was you.
+    for auth in [Some("fail"), Some("timeout"), None] {
         let dir = tempdir().unwrap();
         let svc = start_service(dir.path(), auth);
         let app = fake_repo(dir.path(), "w/app");
@@ -385,10 +431,18 @@ fn a_click_through_the_dialog_without_the_owner_grants_nothing() {
         );
         assert_eq!(lease_count(&svc), 0, "{auth:?} left a lease");
     }
+    // One that can't be used here (no password set, no desktop session)
+    // says nobody could be asked.
+    let dir = tempdir().unwrap();
+    let svc = start_service(dir.path(), Some("unavailable"));
+    let app = fake_repo(dir.path(), "w/app");
+    let message = message_of(ask_about(&svc, &app, "feat/a"));
+    assert!(message.contains("couldn't ask you"), "{message}");
+    assert_eq!(lease_count(&svc), 0);
 }
 
 #[test]
-fn the_owner_authenticating_approves_the_coverage_that_was_chosen() {
+fn the_owner_authenticating_approves_this_branch_of_this_repository_only() {
     let dir = tempdir().unwrap();
     let svc = start_service(dir.path(), Some("allow"));
     let app = fake_repo(dir.path(), "w/app");
@@ -397,25 +451,76 @@ fn the_owner_authenticating_approves_the_coverage_that_was_chosen() {
         ask_about(&svc, &app, "feat/a"),
         Response::LeaseGranted { .. }
     ));
-    // The widest coverage was chosen, so another repository is covered too.
-    let other = ask_about(&svc, &elsewhere, "feat/z");
-    assert!(matches!(other, Response::LeaseGranted { .. }), "{other:?}");
-    assert_eq!(lease_count(&svc), 1);
+    assert_eq!(times_shown(dir.path()), 1);
+    // The same branch again is covered...
+    assert!(matches!(
+        ask_about(&svc, &app, "feat/a"),
+        Response::LeaseGranted { .. }
+    ));
+    assert_eq!(times_shown(dir.path()), 1);
+    // ...but another branch, and another repository, are asked about.
+    assert!(matches!(
+        ask_about(&svc, &app, "feat/z"),
+        Response::LeaseGranted { .. }
+    ));
+    assert_eq!(times_shown(dir.path()), 2);
+    assert!(matches!(
+        ask_about(&svc, &elsewhere, "feat/a"),
+        Response::LeaseGranted { .. }
+    ));
+    assert_eq!(times_shown(dir.path()), 3);
+    // A repository holds one lease at a time, so the new branch's approval
+    // took the place of the old one.
+    assert_eq!(lease_count(&svc), 2);
 }
 
 #[test]
-fn deny_in_the_dialog_is_a_denial_even_if_the_owner_would_authenticate() {
+fn agent_sign_deny_while_the_prompt_is_open_is_a_denial_even_if_the_owner_then_authenticates() {
     let dir = tempdir().unwrap();
+    let answer = dir.path().join("answer");
     let svc = start(
         dir.path(),
         Setup {
-            dialog: Some("echo false".to_string()),
-            auth: Some("allow"),
-            backoff: "none",
+            answer_file: Some(answer.clone()),
+            ..Setup::default()
         },
     );
     let app = fake_repo(dir.path(), "w/app");
-    let message = message_of(ask_about(&svc, &app, "feat/a"));
+    let socket = svc.socket.clone();
+    let waiting = std::thread::spawn({
+        let app = app.clone();
+        move || {
+            send_request(
+                &socket,
+                &Request::RequestLease {
+                    repo: app,
+                    branch: "feat/a".to_string(),
+                    intent: "test".to_string(),
+                    duration_secs: None,
+                },
+            )
+            .unwrap()
+        }
+    });
+    let start = Instant::now();
+    while times_shown(dir.path()) == 0 {
+        assert!(start.elapsed() < Duration::from_secs(10), "no prompt");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    assert!(matches!(
+        send_request(
+            &svc.socket,
+            &Request::DenyPending {
+                id: None,
+                all: true
+            }
+        )
+        .unwrap(),
+        Response::Success
+    ));
+    // A late "yes" changes nothing.
+    fs::write(&answer, "allow").unwrap();
+    let message = message_of(waiting.join().unwrap());
     assert!(message.contains("the person denied"), "{message}");
     assert_eq!(lease_count(&svc), 0);
 }
@@ -424,54 +529,45 @@ fn deny_in_the_dialog_is_a_denial_even_if_the_owner_would_authenticate() {
 
 #[test]
 fn after_a_refused_prompt_the_service_does_not_ask_again_straight_away() {
-    // Once for a Deny, once for a Touch ID that fails.
-    for (dialog, auth) in [
-        ("echo false", "allow"),
-        (&format!("echo '{WIDEST}'")[..], "fail"),
-    ] {
-        let dir = tempdir().unwrap();
-        let svc = start(
-            dir.path(),
-            Setup {
-                dialog: Some(dialog.to_string()),
-                auth: Some(auth),
-                backoff: "60s",
-            },
-        );
-        let app = fake_repo(dir.path(), "w/app");
-        let first = message_of(ask_about(&svc, &app, "feat/a"));
-        assert!(!first.contains("not asking again"), "{first}");
-        assert_eq!(times_shown(dir.path()), 1);
+    let dir = tempdir().unwrap();
+    // A Touch ID that fails (cancelled, say).
+    let svc = start(
+        dir.path(),
+        Setup {
+            auth: Some("fail"),
+            backoff: "60s",
+            ..Setup::default()
+        },
+    );
+    let app = fake_repo(dir.path(), "w/app");
+    let first = message_of(ask_about(&svc, &app, "feat/a"));
+    assert!(!first.contains("not asking again"), "{first}");
+    assert_eq!(times_shown(dir.path()), 1);
 
-        // Another branch, another repository: still held back, and no dialog.
-        let other = fake_repo(dir.path(), "w/other");
-        for (repo, branch) in [(&app, "feat/b"), (&other, "feat/a")] {
-            let held = message_of(ask_about(&svc, repo, branch));
-            assert!(held.contains("not asking again"), "{held}");
-        }
-        assert_eq!(
-            times_shown(dir.path()),
-            1,
-            "a held-back request opened a dialog"
-        );
+    // Another branch, another repository: still held back, and no prompt.
+    let other = fake_repo(dir.path(), "w/other");
+    for (repo, branch) in [(&app, "feat/b"), (&other, "feat/a")] {
+        let held = message_of(ask_about(&svc, repo, branch));
+        assert!(held.contains("not asking again"), "{held}");
     }
+    assert_eq!(
+        times_shown(dir.path()),
+        1,
+        "a held-back request opened a prompt"
+    );
 }
 
 #[test]
 fn only_one_approval_prompt_is_shown_at_a_time() {
     let dir = tempdir().unwrap();
-    let log = dir.path().join("overlap.log");
-    // Each stand-in dialog records when it starts and ends, and takes a moment.
-    let body = format!(
-        "echo start >> '{log}'\n/bin/sleep 0.4\necho end >> '{log}'\necho '{WIDEST}'",
-        log = log.display()
-    );
+    // Each prompt takes a moment, and the stand-in records when it starts and
+    // ends.
     let svc = start(
         dir.path(),
         Setup {
-            dialog: Some(body),
             auth: Some("fail"),
-            backoff: "none",
+            delay_ms: Some(400),
+            ..Setup::default()
         },
     );
     let repos: Vec<String> = (0..3)
@@ -499,7 +595,7 @@ fn only_one_approval_prompt_is_shown_at_a_time() {
     for h in handles {
         h.join().unwrap();
     }
-    let lines: Vec<String> = fs::read_to_string(&log)
+    let lines: Vec<String> = fs::read_to_string(dir.path().join("auth.log.events"))
         .unwrap()
         .lines()
         .map(str::to_string)
@@ -511,17 +607,12 @@ fn only_one_approval_prompt_is_shown_at_a_time() {
 #[test]
 fn requests_waiting_for_an_answer_are_capped() {
     let dir = tempdir().unwrap();
-    // A dialog that stays open until the test's home is gone.
-    let body = format!(
-        "while [ -d '{}' ]; do /bin/sleep 0.1 || exit 1; done",
-        dir.path().display()
-    );
+    // A prompt that stays open: the answer file is never written.
     let svc = start(
         dir.path(),
         Setup {
-            dialog: Some(body),
-            auth: Some("allow"),
-            backoff: "none",
+            answer_file: Some(dir.path().join("never")),
+            ..Setup::default()
         },
     );
     let repo = fake_repo(dir.path(), "w/app");
@@ -614,7 +705,7 @@ fn control_and_invisible_characters_in_the_path_or_branch_are_refused() {
 }
 
 #[test]
-fn the_owner_is_shown_the_chosen_coverage_the_real_path_and_the_branch() {
+fn the_owner_is_shown_the_branch_the_repository_and_where_it_is() {
     let dir = tempdir().unwrap();
     let svc = start_service(dir.path(), Some("allow"));
     let app = fake_repo(dir.path(), "w/app");
@@ -623,13 +714,34 @@ fn the_owner_is_shown_the_chosen_coverage_the_real_path_and_the_branch() {
         Response::LeaseGranted { .. }
     ));
     let shown = fs::read_to_string(dir.path().join("auth.log")).unwrap();
-    assert!(
-        shown.starts_with("allow AI agents to sign git commits: Every repository on this computer"),
-        "{shown}"
+    // The home folder (this test's) is shown as "~", and the path is the
+    // real one, not the spelling the agent used.
+    assert_eq!(
+        shown.trim_end(),
+        "let an agent sign commits on branch feat/shown in app (~/w/app)"
     );
-    assert!(
-        shown.contains("w/app") && shown.contains("feat/shown"),
-        "{shown}"
+}
+
+#[test]
+fn the_owner_is_told_when_a_lease_will_follow_the_agent_between_branches() {
+    let dir = tempdir().unwrap();
+    let svc = start(
+        dir.path(),
+        Setup {
+            auth: Some("allow"),
+            config: "allow_branch_switching = true\n",
+            ..Setup::default()
+        },
+    );
+    let app = fake_repo(dir.path(), "w/app");
+    assert!(matches!(
+        ask_about(&svc, &app, "feat/shown"),
+        Response::LeaseGranted { .. }
+    ));
+    let shown = fs::read_to_string(dir.path().join("auth.log")).unwrap();
+    assert_eq!(
+        shown.trim_end(),
+        "let an agent sign commits on any unprotected branch in app (~/w/app)"
     );
 }
 
@@ -672,7 +784,7 @@ fn the_installer_refuses_programs_that_contain_a_test_stand_in() {
     .unwrap();
     assert!(check(dir.path()).status.success());
 
-    for marker in ["AGENT_SIGN_TEST_AUTH", "AGENT_SIGN_TEST_DIALOG"] {
+    for marker in ["AGENT_SIGN_TEST_AUTH", "AGENT_SIGN_TEST_AUTH_ANSWER"] {
         let dirty = tempdir().unwrap();
         fs::write(
             dirty.path().join("agent-signd"),
@@ -689,15 +801,26 @@ fn the_installer_refuses_programs_that_contain_a_test_stand_in() {
     assert_eq!(installer.matches("check-binary-clean.sh").count(), 2);
 }
 
-// --- No clickable or terminal fallback, no Approve default --------------------
+// --- No clickable or terminal fallback ------------------------------------------
 
 #[test]
-fn there_is_no_approve_button_no_preselection_no_terminal_prompt_and_no_linux_dialog() {
+fn there_is_no_dialog_of_our_own_no_terminal_prompt_and_no_linux_dialog() {
     let root = env!("CARGO_MANIFEST_DIR");
     let daemon = fs::read_to_string(format!("{root}/src/bin/agent_signd.rs")).unwrap();
-    assert!(!daemon.contains("OK button name \\\"Approve\\\""));
-    assert!(!daemon.contains("default items"));
-    assert!(daemon.contains("OK button name \\\"Continue\\\""));
+    // The service shows no dialog: not AppleScript, not a list, not a button.
+    for forbidden in [
+        "osascript",
+        "choose from list",
+        "display dialog",
+        "OK button name",
+        "Command::new",
+        "AGENT_SIGN_TEST_DIALOG",
+    ] {
+        assert!(
+            !daemon.contains(forbidden),
+            "agent_signd.rs still mentions {forbidden}"
+        );
+    }
     // Linux: no zenity or kdialog, and nothing reads a terminal.
     for forbidden in ["zenity", "kdialog", "is_terminal", "IsTerminal"] {
         assert!(
@@ -717,7 +840,7 @@ fn there_is_no_approve_button_no_preselection_no_terminal_prompt_and_no_linux_di
             "{file} has a fake Linux dialog"
         );
     }
-    // The README example doesn't show a reason the dialog doesn't show.
+    // The README example doesn't show a reason the prompt doesn't show.
     let readme = fs::read_to_string(format!("{root}/README.md")).unwrap();
     assert!(!readme.contains("Reason given by the agent"));
 }
