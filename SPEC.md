@@ -34,10 +34,22 @@ Each invariant says whether it holds today, and how that's checked.
   in a real terminal (`script`) by `tests/test_edge_cases.rs`.
 - **INV-2, interception doesn't depend on the agent.** An agent that runs
   `git commit` through the wrapper is handled without remembering flags or
-  commands. *Holds for `commit` only*; `merge`, `rebase`, `cherry-pick`,
-  `revert`, `pull` and `am` pass through to the real git and the person's own
-  signing. An agent can also bypass the wrapper by calling the real git by
-  path.
+  commands. *Holds for `commit`.* Every other command from an agent (`merge`,
+  `rebase`, `cherry-pick`, `revert`, `pull`, `am`, shell aliases) runs with
+  signing off for commits, tags and pushes, agent-sign's signing program as
+  `gpg.ssh.program`, `gpg.program` and `gpg.openpgp.program`, X.509's set to
+  fail, and `AGENT_SIGN_AGENT_RUN=1` in its environment: the commits git
+  makes are unsigned, never signed with the person's key (26 Oct 2026). The
+  signing program refuses a signing request without a token when that mark
+  or an agent's own mark is set, and checks signatures with plain
+  `ssh-keygen` or `gpg`. The wrapper reads no config on this path, finds the
+  real git without `PATH` (`paths::real_git`), and stops at 8 nested
+  wrappers (`AGENT_SIGN_DEPTH`) rather than call itself without end. An
+  agent can still bypass the wrapper by calling the real git by path, and
+  git clears the `-c` settings for hooks of a repository on the same
+  machine; with the person's `gpg.ssh.program` set to `agent-ssh-sign`, a
+  marked one is refused there too. Checked by
+  `tests/test_agent_ops_never_persons_key.rs`.
 - **INV-3, no agent signature without a lease.** The service signs only with
   a single-use token, issued only under a lease that is in force and covers
   the repository and branch. *Holds* (tests: `test_lease_engine.rs`,

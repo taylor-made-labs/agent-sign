@@ -1,10 +1,13 @@
 //! `agent-git`: agent-sign's git wrapper, installed first on
 //! agents' `PATH` as `git`.
 //!
-//! Every command except `commit` goes straight to the real git. A commit from
-//! an agent is checked against the local rules, gets a lease and a single-use
-//! token from the service, and runs the real git with agent-sign's signing program
-//! and the configured author and committer.
+//! The person's own commands go straight to the real git. A commit from an
+//! agent is checked against the local rules, gets a lease and a single-use
+//! token from the service, and runs the real git with agent-sign's signing
+//! program and the configured author and committer. Any other command from an
+//! agent (merge, rebase, cherry-pick, pull, a shell alias...) runs with
+//! signing off and the person's signer out of reach, so nothing git creates
+//! for an agent is ever signed with the person's own key.
 
 use std::env;
 use std::io::IsTerminal;
@@ -18,8 +21,22 @@ use agent_sign::paths;
 use agent_sign::protocol::{Request, Response, client_socket_path, send_request};
 use agent_sign::ssh_sign::EVENT_TOKEN_VAR;
 
+/// How many wrappers deep a run may go before the wrapper stops. A git run
+/// for an agent can start git again (a hook, an alias, agent-sign's own
+/// lookups), but never this deep: reaching it means the wrapper is calling
+/// itself, and stopping fails closed instead of filling the process table.
+const MAX_DEPTH: u32 = 8;
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
+    let depth = current_depth();
+    if depth >= MAX_DEPTH {
+        eprintln!(
+            "[agent-git] agent-sign's git wrapper is calling itself ({depth} deep), so it stopped \
+             without running git. Please report this: https://github.com/taylor-made-labs/agent-sign/issues"
+        );
+        return ExitCode::from(1);
+    }
     let interceptor = CommandInterceptor::new();
     let mut decision = interceptor.inspect_command(&args[1..]);
     let real_git = find_system_git();
@@ -35,9 +52,25 @@ fn main() -> ExitCode {
         decision.commit_index = Some(at);
     }
 
+    // Human isolation [INV-1]: a command typed in an interactive terminal
+    // (stdin and stdout both terminals) goes to the person's own git and
+    // signing, unless AGENT_SIGN_FORCE / _SESSION is set or an agent has
+    // marked the command as its own (see attribution::KNOWN_AGENTS). The
+    // wrapper's own mark (AGENT_RUN_VAR) doesn't count here: it reaches
+    // whatever git starts, such as an editor, and a terminal opened from that
+    // later is still the person's. Only the signing program reads it.
+    let is_interactive_human = agent_sign::attribution::is_persons_own_commit(
+        std::io::stdin().is_terminal(),
+        std::io::stdout().is_terminal(),
+        paths::env_var_os("FORCE").is_some() || paths::env_var_os("SESSION").is_some(),
+        agent_sign::attribution::agent_mark_present_with(|k| env::var(k).ok()),
+    );
+
     if !decision.is_commit {
-        // Non-commit command: execute real git immediately
-        return exec_system_git(&real_git, &args[1..], &[]);
+        if is_interactive_human {
+            return exec_persons_git(&real_git, &args[1..]);
+        }
+        return exec_for_agent(&real_git, &args[1..]);
     }
 
     // A commit that asks not to be signed (--no-gpg-sign, or commit.gpgsign
@@ -48,19 +81,8 @@ fn main() -> ExitCode {
         return exec_unsigned(&real_git, &args[1..]);
     }
 
-    // Human isolation [INV-1]: a commit typed in an interactive terminal
-    // (stdin and stdout both terminals) goes to the person's own git and
-    // signing, unless AGENT_SIGN_FORCE / _SESSION is set or an agent has
-    // marked the command as its own (see attribution::KNOWN_AGENTS).
-    let is_interactive_human = agent_sign::attribution::is_persons_own_commit(
-        std::io::stdin().is_terminal(),
-        std::io::stdout().is_terminal(),
-        paths::env_var_os("FORCE").is_some() || paths::env_var_os("SESSION").is_some(),
-        agent_sign::attribution::agent_mark_present_with(|k| env::var(k).ok()),
-    );
-
     if is_interactive_human {
-        return exec_system_git(&real_git, &args[1..], &[]);
+        return exec_persons_git(&real_git, &args[1..]);
     }
 
     // Commit command detected: prepare autonomous signing context
@@ -80,7 +102,7 @@ fn signing_declined(real_git: &Path, args: &[String], commit_index: Option<usize
     // or `-C dir`) apply to the config lookup too.
     // GIT_CONFIG is read by `git config` but not by `git commit`, so it
     // mustn't decide what the commit will do.
-    Command::new(real_git)
+    git_command(real_git)
         .args(&args[..at])
         .args([
             "config",
@@ -107,7 +129,7 @@ fn alias_is_commit(real_git: &Path, global: &[String], name: &str) -> bool {
     let interceptor = CommandInterceptor::new();
     let mut name = name.to_string();
     for _ in 0..16 {
-        let Some(expansion) = Command::new(real_git)
+        let Some(expansion) = git_command(real_git)
             .args(global)
             .args(["config", "--get", &format!("alias.{name}")])
             // GIT_CONFIG is read by `git config` but not when git expands an
@@ -145,10 +167,7 @@ fn alias_is_commit(real_git: &Path, global: &[String], name: &str) -> bool {
 /// an agent setting its own signing program is going around agent-sign on
 /// purpose, which it could also do by calling git directly.)
 fn exec_unsigned(real_git: &Path, args: &[String]) -> ExitCode {
-    let fails = ["/usr/bin/false", "/bin/false"]
-        .into_iter()
-        .find(|p| Path::new(p).exists())
-        .unwrap_or("false");
+    let fails = failing_program();
     let mut unsigned: Vec<String> = Vec::new();
     for key in [
         "gpg.program",
@@ -163,67 +182,94 @@ fn exec_unsigned(real_git: &Path, args: &[String]) -> ExitCode {
     exec_system_git(real_git, &unsigned, &[])
 }
 
-fn find_system_git() -> PathBuf {
-    if let Some(path) = paths::env_var("REAL_GIT") {
-        let p = PathBuf::from(path);
-        if p.exists() {
-            return p;
-        }
-    }
+/// A program that always fails, for signing programs that must never run.
+fn failing_program() -> &'static str {
+    ["/usr/bin/false", "/bin/false"]
+        .into_iter()
+        .find(|p| Path::new(p).exists())
+        .unwrap_or("false")
+}
 
-    let current_exe = env::current_exe().ok();
-
-    if let Ok(paths) = env::var("PATH") {
-        for dir in env::split_paths(&paths) {
-            // Skip agent-sign's own bin directories (old and new names)
-            if is_agent_sign_bin_dir(&dir) {
-                continue;
-            }
-            let candidate = dir.join("git");
-            if candidate.is_file() {
-                if let Some(ref cur) = current_exe
-                    && let (Ok(c1), Ok(c2)) = (candidate.canonicalize(), cur.canonicalize())
-                    && c1 == c2
-                {
-                    continue;
-                }
-                return candidate;
-            }
-        }
-    }
-
-    // Standard fallback candidate paths
-    let standard_candidates = [
-        "/opt/homebrew/bin/git",
-        "/usr/local/bin/git",
-        "/usr/bin/git",
-        "/bin/git",
+/// Runs a command other than `commit` for an agent. Git creates commits for
+/// merge, pull, rebase, cherry-pick, revert and am, and inside shell aliases
+/// and hooks, and without this it signs them with whatever the person's
+/// global config says: their own key. So here:
+/// - signing is off for commits, tags and pushes, so those commits are
+///   unsigned (signing them with the agent's own key comes with per-agent
+///   identities);
+/// - every signing program is agent-sign's, which refuses to sign for an
+///   agent without a commit token, and checks signatures with plain
+///   `ssh-keygen` or `gpg`, so verifying still works (X.509's program always
+///   fails, so X.509 signatures read as unchecked);
+/// - [`AGENT_RUN_VAR`] marks the run, so the signing program knows an agent
+///   is behind git's nested copies of itself (`-c` settings reach those
+///   too, through git's own `GIT_CONFIG_PARAMETERS`).
+///
+/// An explicit request to sign (`tag -s`, `merge -S`) then fails rather than
+/// using the person's key. Author and committer are git's own, as before.
+/// As with commits, an agent that sets its own signing program after these
+/// settings is going around agent-sign on purpose, which it could also do
+/// by calling git directly.
+///
+/// Nothing here reads agent-sign's config: this runs for every git command an
+/// agent makes, including agent-sign's own lookups when the wrapper is first
+/// on `PATH`.
+///
+/// [`AGENT_RUN_VAR`]: agent_sign::attribution::AGENT_RUN_VAR
+fn exec_for_agent(real_git: &Path, args: &[String]) -> ExitCode {
+    let ssh_sign_bin = find_ssh_sign_bin().display().to_string();
+    let settings = [
+        ("commit.gpgsign", "false"),
+        ("tag.gpgSign", "false"),
+        ("push.gpgSign", "false"),
+        ("gpg.ssh.program", ssh_sign_bin.as_str()),
+        ("gpg.program", ssh_sign_bin.as_str()),
+        ("gpg.openpgp.program", ssh_sign_bin.as_str()),
+        ("gpg.x509.program", failing_program()),
     ];
-
-    for candidate in &standard_candidates {
-        let p = PathBuf::from(candidate);
-        if p.is_file() {
-            return p;
-        }
+    let mut agent_args: Vec<String> = Vec::new();
+    for (key, value) in settings {
+        agent_args.push("-c".to_string());
+        agent_args.push(format!("{key}={value}"));
     }
-
-    PathBuf::from("git")
+    agent_args.extend(args.iter().cloned());
+    exec_system_git(
+        real_git,
+        &agent_args,
+        &[(agent_sign::attribution::AGENT_RUN_VAR, "1")],
+    )
 }
 
-/// Whether a `PATH` entry is agent-sign's bin directory, which holds the
-/// wrapper itself: any path with a `.agent-sign` component.
-fn is_agent_sign_bin_dir(dir: &Path) -> bool {
-    dir.components()
-        .any(|c| c.as_os_str() == paths::STATE_DIR_NAME)
+fn find_system_git() -> PathBuf {
+    paths::real_git()
 }
 
-fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]) -> ExitCode {
+/// The suffix of the variable that counts how many wrappers deep a run is
+/// (see [`MAX_DEPTH`]).
+const DEPTH_SUFFIX: &str = "DEPTH";
+
+/// How many wrappers deep this run is: 0 unless a wrapper started it.
+fn current_depth() -> u32 {
+    paths::env_var(DEPTH_SUFFIX)
+        .and_then(|d| d.trim().parse().ok())
+        .unwrap_or(0)
+}
+
+/// A command for the real git, one wrapper deeper. Every git the wrapper
+/// starts, its own lookups included, goes through here, so that if the
+/// "real" git ever turns out to be a wrapper too (a misconfigured
+/// `AGENT_SIGN_REAL_GIT`, a copy of the wrapper elsewhere on `PATH`), the
+/// chain stops at [`MAX_DEPTH`] instead of growing without end.
+fn git_command(real_git: &Path) -> Command {
     let mut cmd = Command::new(real_git);
-    cmd.args(args);
-    for (k, v) in extra_envs {
-        cmd.env(k, v);
-    }
+    cmd.env(
+        format!("{}{DEPTH_SUFFIX}", paths::ENV_PREFIX),
+        (current_depth() + 1).to_string(),
+    );
+    cmd
+}
 
+fn run_git(mut cmd: Command, real_git: &Path) -> ExitCode {
     match cmd.status() {
         Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
         Err(e) => {
@@ -237,6 +283,26 @@ fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]
     }
 }
 
+fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]) -> ExitCode {
+    let mut cmd = git_command(real_git);
+    cmd.args(args);
+    for (k, v) in extra_envs {
+        cmd.env(k, v);
+    }
+    run_git(cmd, real_git)
+}
+
+/// Runs the person's own command on the real git. The wrapper's agent mark
+/// is removed first: it can reach the person's terminal through an editor an
+/// agent's git started, and the signing program would then refuse the
+/// person's own signature.
+fn exec_persons_git(real_git: &Path, args: &[String]) -> ExitCode {
+    let mut cmd = git_command(real_git);
+    cmd.args(args)
+        .env_remove(agent_sign::attribution::AGENT_RUN_VAR);
+    run_git(cmd, real_git)
+}
+
 /// The repository and branch a commit is for, asked of git with the same
 /// global options (`-C`, `--git-dir`, `--work-tree`, `-c`) the commit itself
 /// gets, and the same environment (`GIT_DIR`, `GIT_WORK_TREE`), so a commit
@@ -246,7 +312,7 @@ fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]
 /// invites approving everything.
 fn get_repo_and_branch(real_git: &Path, global: &[String]) -> Option<(String, String)> {
     let ask = |args: &[&str]| -> Option<String> {
-        let out = Command::new(real_git)
+        let out = git_command(real_git)
             .args(global)
             .args(args)
             .output()
@@ -445,6 +511,8 @@ fn handle_agent_commit(
 
     let mut env_pairs: Vec<(&str, &str)> = Vec::new();
     env_pairs.push((EVENT_TOKEN_VAR, &token));
+    // Hooks the commit runs, and any git they start, are the agent's too.
+    env_pairs.push((agent_sign::attribution::AGENT_RUN_VAR, "1"));
 
     let author_name = attr_envs
         .get("GIT_AUTHOR_NAME")
@@ -483,7 +551,7 @@ fn handle_agent_commit(
 /// it sees the same repository the commit will. `None` if git fails: the
 /// rules can't be checked, so the commit is refused rather than let through.
 fn git_lines(real_git: &Path, global: &[String], args: &[&str]) -> Option<String> {
-    let out = Command::new(real_git)
+    let out = git_command(real_git)
         .args(global)
         .args(args)
         .output()

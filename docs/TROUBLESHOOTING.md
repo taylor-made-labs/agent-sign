@@ -59,8 +59,10 @@ command -v git     # should end in .agent-sign/bin/git
 If it doesn't, start the agent from a new terminal (the installer changed
 your shell profiles), or run `source ~/.zshrc` / `source ~/.bashrc` first.
 
-Merges, rebases, cherry-picks, reverts and pulls aren't intercepted, so they
-use your own signing and still ask for your fingerprint.
+An agent's merges, rebases, cherry-picks, reverts and pulls make unsigned
+commits: agent-sign keeps your own signer out of them, so they never ask
+for your fingerprint. If one does, the agent called the real git directly;
+see the README's limits.
 
 ## 1Password: `op-ssh-sign` can't connect
 

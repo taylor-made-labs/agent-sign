@@ -111,11 +111,30 @@ It does not, yet:
 - apply its rules to a commit that turns signing off (`--no-gpg-sign`, or
   `commit.gpgsign = false` for that command or repository): it goes to
   plain git unsigned, as calling the real git directly would
-- intercept `merge`, `rebase`, `cherry-pick`, `revert` or `pull`, or a
-  commit run from inside one of your git shell aliases (`alias.x = "!git
-  commit ..."`): git runs its own copy of itself there, not the wrapper, so
-  those go to your normal signing. If that's set up to sign, you'll see your
-  own signer's prompt (Touch ID, for example)
+- sign the commits git makes for an agent's `merge`, `rebase`,
+  `cherry-pick`, `revert`, `am` or `pull`, or inside a git shell alias
+  (`alias.x = "!git ..."`), with the agent key. They're made **unsigned**
+  instead, never with your key: the wrapper runs every agent command other
+  than `commit` with signing off and your signer out of reach, and git's
+  nested copies of itself (in aliases and hooks) inherit that. An explicit
+  request to sign (`tag -s`, `merge -S`) from an agent fails. Agents can
+  still check SSH and OpenPGP signatures (X.509 ones read as unchecked).
+  Their author and committer are git's own, as before. The same applies to
+  git you run yourself without a terminal (an editor's merge button, a
+  script): agent-sign can't tell it from an agent's, so those merges are
+  unsigned too
+- catch git that runs without the wrapper's settings: an agent calling the
+  real git directly, a tool that clears the environment (`env -i`), or a
+  hook in a repository on the same machine that the agent pushes to (git
+  clears the settings at that boundary). You can close most of that: set
+  your own `gpg.ssh.program` to `~/.agent-sign/bin/agent-ssh-sign` (with
+  your signer as `fallback_program` in `config.toml`). Your commits still
+  go to your signer, and a signing request from a process an agent marked
+  (`CLAUDECODE`, `GEMINI_CLI`, `CODEX_THREAD_ID`, or the wrapper's own
+  `AGENT_SIGN_AGENT_RUN`) is refused. An unmarked program that clears its
+  environment still reaches your signer. This covers SSH signing
+  (`gpg.format = ssh`) only: if you sign with OpenPGP, a hook in a local
+  repository an agent pushes to can still reach your `gpg`
 - tell agents apart for security: there is one agent key per machine, and a
   lease belongs to the machine, not to a particular agent. Commits do name
   the agent when it can be told (Claude Code, Gemini CLI and Codex mark the

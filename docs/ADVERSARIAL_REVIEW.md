@@ -23,7 +23,7 @@
 > | Usability 1. Terminal commits treated as the agent's | Fixed: commits with a terminal on standard input and output are the person's. An editor's commit button is still treated as an agent's. |
 > | Usability 2. No service management | Fixed: launchd and systemd user services. |
 > | Usability 3. `status` says little | Fixed: it lists leases. |
-> | Usability 4. Merge, rebase, cherry-pick not intercepted | Open (release checklist M2). |
+> | Usability 4. Merge, rebase, cherry-pick not intercepted | Fixed 26 Oct 2026: an agent's merges, rebases, cherry-picks, reverts, pulls and aliases make unsigned commits, never signed with the person's key. Signing them with the agent key waits for per-agent identities. |
 > | Usability 5. `alias` mode shows Unverified | Still true with the default `.internal` email; documented in SPEC.md. |
 >
 > The review's praise of a "zero blast radius" key needs a correction: the key
