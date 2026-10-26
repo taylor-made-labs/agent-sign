@@ -54,6 +54,53 @@ pub fn env_var_os(suffix: &str) -> Option<OsString> {
     env_var_with(suffix, |name| std::env::var_os(name))
 }
 
+/// Whether a `PATH` entry is agent-sign's bin directory, which holds the git
+/// wrapper: any path with a `.agent-sign` component.
+pub fn is_agent_sign_bin_dir(dir: &Path) -> bool {
+    dir.components().any(|c| c.as_os_str() == STATE_DIR_NAME)
+}
+
+/// The first `name` on `PATH` outside agent-sign's bin directory (and not
+/// this program itself).
+pub fn find_on_path_outside_agent_sign(name: &str) -> Option<PathBuf> {
+    let current_exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.canonicalize().ok());
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .filter(|dir| !is_agent_sign_bin_dir(dir))
+        .map(|dir| dir.join(name))
+        .find(|candidate| {
+            candidate.is_file() && candidate.canonicalize().ok().as_ref() != current_exe.as_ref()
+        })
+}
+
+/// The real git, never the wrapper: `AGENT_SIGN_REAL_GIT` if it exists, else
+/// the first `git` on `PATH` outside agent-sign's bin directory, else a
+/// standard location. agent-sign's own programs run git through this, never
+/// through `PATH`: when the wrapper is first on `PATH`, `git` is the wrapper,
+/// and a lookup from inside the wrapper would call the wrapper again.
+pub fn real_git() -> PathBuf {
+    if let Some(path) = env_var("REAL_GIT").map(PathBuf::from)
+        && path.exists()
+    {
+        return path;
+    }
+    if let Some(found) = find_on_path_outside_agent_sign("git") {
+        return found;
+    }
+    [
+        "/opt/homebrew/bin/git",
+        "/usr/local/bin/git",
+        "/usr/bin/git",
+        "/bin/git",
+    ]
+    .into_iter()
+    .map(PathBuf::from)
+    .find(|p| p.is_file())
+    .unwrap_or_else(|| PathBuf::from("git"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -1,6 +1,7 @@
 //! The reverse leak: commits that git makes by itself for an agent (merge,
 //! pull, rebase, cherry-pick, revert, am, a shell alias) must never be signed
-//! with the person's own key, and must not be attributed to the person.
+//! with the person's own key. (Their author and committer are left to the
+//! per-agent identity change: see the two ignored tests in group 3.)
 //!
 //! The wrapper handles only `git commit`; every other command goes to the
 //! real git unchanged, so git signs the commits it creates itself with
@@ -520,6 +521,7 @@ fn assert_authored_by_agent(w: &World, repo: &Path, what: &str) {
 }
 
 #[test]
+#[ignore = "moved to the per-agent identity change (26 Oct): giving agent merges the agent's name through GIT_AUTHOR_* made the wrapper call itself and relabelled the person's own merges from editors and scripts (security review), so author and committer are designed there"]
 fn agent_merge_commit_is_not_authored_as_the_person() {
     let w = World::new(PersonSigner::Fake, true);
     let repo = w.repo();
@@ -538,6 +540,7 @@ fn agent_merge_commit_is_not_authored_as_the_person() {
 }
 
 #[test]
+#[ignore = "moved to the per-agent identity change (26 Oct): giving agent merges the agent's name through GIT_AUTHOR_* made the wrapper call itself and relabelled the person's own merges from editors and scripts (security review), so author and committer are designed there"]
 fn agent_revert_commit_is_not_authored_as_the_person() {
     let w = World::new(PersonSigner::Fake, true);
     let repo = w.repo();
@@ -698,5 +701,375 @@ fn agent_can_still_verify_an_agent_signed_commit() {
     assert!(
         all.contains("Good \"git\" signature"),
         "expected a good signature:\n{all}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 7. Added after the security review of the fix (26 Oct 2026), one test per
+//    confirmed finding.
+// ---------------------------------------------------------------------------
+
+/// Runs `cmd` and waits at most `limit`; a run that doesn't finish in time
+/// is killed and fails the test. A wrapper that calls itself never finishes.
+fn run_within(mut cmd: Command, limit: Duration, what: &str) -> Output {
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let start = Instant::now();
+    loop {
+        if child.try_wait().unwrap().is_some() {
+            return child.wait_with_output().unwrap();
+        }
+        if start.elapsed() > limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!("{what} didn't finish within {limit:?}: the wrapper may be calling itself");
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+/// The wrapper installed the way the installer does it: as `git` in a
+/// `.agent-sign/bin` folder first on `PATH`, with no `AGENT_SIGN_REAL_GIT`,
+/// so agent-sign has to find the real git itself.
+fn wrapper_first_on_path(w: &World, repo: &Path, mark: Mark, args: &[&str]) -> Command {
+    let bin = w.home.join(".agent-sign/bin");
+    fs::create_dir_all(&bin).unwrap();
+    let git = bin.join("git");
+    if !git.exists() {
+        std::os::unix::fs::symlink(env!("CARGO_BIN_EXE_agent-git"), &git).unwrap();
+    }
+    let mut path = vec![bin];
+    path.extend(std::env::split_paths(&w.path));
+    let mut cmd = w.cmd(&git);
+    cmd.env_remove("AGENT_SIGN_REAL_GIT")
+        .env("PATH", std::env::join_paths(path).unwrap())
+        .args(args)
+        .current_dir(repo);
+    World::mark(&mut cmd, mark);
+    cmd
+}
+
+#[test]
+fn wrapper_first_on_path_never_calls_itself() {
+    let w = World::new(PersonSigner::Fake, true);
+    let repo = w.repo();
+    let limit = Duration::from_secs(20);
+    for (mark, args) in [
+        (Mark::ClaudeCode, vec!["status", "--short"]),
+        (Mark::Unmarked, vec!["rev-parse", "HEAD"]),
+        (
+            Mark::ClaudeCode,
+            vec!["merge", "--no-ff", "-m", "merge feature", "feature"],
+        ),
+    ] {
+        let what = format!("{mark:?} git {args:?}");
+        let out = run_within(wrapper_first_on_path(&w, &repo, mark, &args), limit, &what);
+        assert!(out.status.success(), "{what} failed:\n{}", text(&out));
+    }
+    // An agent commit loads agent-sign's config, which looks up the person's
+    // git name: that lookup must reach the real git, not the wrapper.
+    fs::write(repo.join("agent.txt"), "agent work\n").unwrap();
+    w.git_ok(&repo, &["add", "agent.txt"]);
+    let what = "agent commit with the wrapper first on PATH";
+    let out = run_within(
+        wrapper_first_on_path(&w, &repo, Mark::ClaudeCode, &["commit", "-m", "feat: x"]),
+        limit,
+        what,
+    );
+    assert!(out.status.success(), "{what} failed:\n{}", text(&out));
+    assert_eq!(
+        w.signer_calls(),
+        0,
+        "{what}: the person's signer was called"
+    );
+}
+
+#[test]
+fn the_wrapper_stops_when_it_is_calling_itself() {
+    let w = World::new(PersonSigner::Fake, false);
+    let repo = w.repo();
+    let mut cmd = w.cmd(Path::new(env!("CARGO_BIN_EXE_agent-git")));
+    cmd.env("AGENT_SIGN_DEPTH", "8")
+        .args(["status"])
+        .current_dir(&repo);
+    let out = run_within(cmd, Duration::from_secs(10), "wrapper at depth 8");
+    assert!(
+        !out.status.success(),
+        "the wrapper should stop:\n{}",
+        text(&out)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("calling itself"),
+        "{}",
+        text(&out)
+    );
+}
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_terminal_carrying_the_wrappers_mark_is_still_the_persons() {
+    // The wrapper's mark reaches whatever git starts (an editor, say), and a
+    // terminal opened from that is the person's.
+    let w = World::new(PersonSigner::Fake, true);
+    let repo = w.repo();
+    let out = w
+        .cmd(Path::new("/usr/bin/script"))
+        .args(["-q", "/dev/null", env!("CARGO_BIN_EXE_agent-git")])
+        .args(["merge", "--no-ff", "-m", "merge feature", "feature"])
+        .env("TERM", "dumb")
+        .env("AGENT_SIGN_AGENT_RUN", "1")
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(
+        w.signer_calls() >= 1,
+        "the person's merge in a terminal should reach their signer:\n{}",
+        text(&out)
+    );
+}
+
+/// A throwaway GnuPG home with one signing key, or `None` when gpg isn't
+/// installed. Returns the home and the key's fingerprint.
+fn gpg_home(w: &World) -> Option<(PathBuf, PathBuf, String)> {
+    let gpg = std::env::split_paths(&w.path)
+        .map(|d| d.join("gpg"))
+        .find(|p| p.is_file())?;
+    let home = w.home.join("gnupg");
+    fs::create_dir_all(&home).unwrap();
+    fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
+    let out = w
+        .cmd(&gpg)
+        .env("GNUPGHOME", &home)
+        .args(["--batch", "--pinentry-mode", "loopback", "--passphrase", ""])
+        .args([
+            "--quick-gen-key",
+            "Signer <signer@example.com>",
+            "ed25519",
+            "sign",
+            "never",
+        ])
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "gpg key: {}", text(&out));
+    let listing = w
+        .cmd(&gpg)
+        .env("GNUPGHOME", &home)
+        .args(["--batch", "--with-colons", "--list-secret-keys"])
+        .output()
+        .unwrap();
+    let fpr = String::from_utf8_lossy(&listing.stdout)
+        .lines()
+        .find(|l| l.starts_with("fpr:"))
+        .and_then(|l| l.split(':').nth(9).map(str::to_string))
+        .expect("a fingerprint");
+    Some((gpg, home, fpr))
+}
+
+fn stop_gpg_agent(w: &World, gnupg: &Path) {
+    if let Some(gpgconf) = std::env::split_paths(&w.path)
+        .map(|d| d.join("gpgconf"))
+        .find(|p| p.is_file())
+    {
+        let _ = w
+            .cmd(&gpgconf)
+            .env("GNUPGHOME", gnupg)
+            .args(["--kill", "gpg-agent"])
+            .output();
+    }
+}
+
+#[test]
+fn agent_can_still_verify_an_openpgp_signature() {
+    let w = World::new(PersonSigner::Fake, false);
+    let Some((gpg, gnupg, fpr)) = gpg_home(&w) else {
+        eprintln!("gpg isn't installed; skipped");
+        return;
+    };
+    let repo = w.repo();
+    fs::write(repo.join("pgp.txt"), "pgp\n").unwrap();
+    w.git_ok(&repo, &["add", "pgp.txt"]);
+    let mut setup = w.cmd(&w.real_git);
+    let out = setup
+        .env("GNUPGHOME", &gnupg)
+        .args(["-c", "gpg.format=openpgp", "-c"])
+        .arg(format!("gpg.program={}", gpg.display()))
+        .args(["-c", &format!("user.signingkey={fpr}")])
+        .args(["commit", "-q", "-S", "-m", "pgp signed"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "pgp setup commit: {}", text(&out));
+
+    let mut cmd = w.cmd(Path::new(env!("CARGO_BIN_EXE_agent-git")));
+    let out = cmd
+        .env("GNUPGHOME", &gnupg)
+        .env("CLAUDECODE", "1")
+        .args(["log", "-1", "--format=%G?"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    stop_gpg_agent(&w, &gnupg);
+    assert_eq!(
+        String::from_utf8_lossy(&out.stdout).trim(),
+        "G",
+        "an agent should see a good OpenPGP signature:\n{}",
+        text(&out)
+    );
+}
+
+#[test]
+fn agent_openpgp_signing_request_is_refused() {
+    let w = World::new(PersonSigner::Fake, false);
+    let repo = w.repo();
+    let out = w.agent(
+        &repo,
+        Mark::ClaudeCode,
+        &["-c", "gpg.format=openpgp", "tag", "-s", "-m", "v1", "v1"],
+    );
+    assert!(
+        !out.status.success(),
+        "signing should be refused:\n{}",
+        text(&out)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("Refused"),
+        "{}",
+        text(&out)
+    );
+    w.assert_no_person_signer("openpgp tag -s", &out);
+}
+
+#[test]
+fn local_push_hook_commit_never_reaches_the_person_when_signing_is_routed() {
+    // Pushing to a repository on the same machine runs its hooks with git's
+    // configuration from the environment cleared, so the wrapper's settings
+    // don't reach them. With the person's gpg.ssh.program routed through
+    // agent-sign (as the README recommends), the signing program still sees
+    // the agent's mark and refuses.
+    let w = World::new(PersonSigner::ThroughAgentSshSign, true);
+    let repo = w.repo();
+    let bare = w.path().join("remote.git");
+    w.git_ok(w.path(), &["init", "-q", "--bare", bare.to_str().unwrap()]);
+    let deploy = w.path().join("deploy");
+    w.git_ok(
+        w.path(),
+        &["init", "-q", "-b", "work", deploy.to_str().unwrap()],
+    );
+    let hook = bare.join("hooks/post-receive");
+    fs::write(
+        &hook,
+        format!(
+            "#!/bin/sh\nunset GIT_DIR\ncd '{}' || exit 0\ngit commit -q --allow-empty -m 'from the hook' 2> '{}'\necho $? > '{}'\n",
+            deploy.display(),
+            w.home.join("hook.err").display(),
+            w.home.join("hook.status").display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&hook, fs::Permissions::from_mode(0o755)).unwrap();
+    let out = w.agent(
+        &repo,
+        Mark::ClaudeCode,
+        &["push", "-q", bare.to_str().unwrap(), "work"],
+    );
+    w.assert_no_person_signer_and_success(
+        "push to a local repository with a committing hook",
+        &out,
+    );
+    // The hook did try to commit, and agent-sign's signing program refused.
+    let status = fs::read_to_string(w.home.join("hook.status")).expect("the hook ran");
+    assert_ne!(
+        status.trim(),
+        "0",
+        "the hook's commit should have been refused"
+    );
+    let err = fs::read_to_string(w.home.join("hook.err")).unwrap_or_default();
+    assert!(err.contains("Refused"), "hook's commit error: {err}");
+}
+
+// ---------------------------------------------------------------------------
+// 8. Added after checking the review fixes (26 Oct 2026).
+// ---------------------------------------------------------------------------
+
+#[cfg(target_os = "macos")]
+#[test]
+fn a_leaked_wrapper_mark_never_blocks_the_persons_routed_terminal_commit() {
+    // With the person's signing routed through agent-sign, a terminal that
+    // inherited the wrapper's mark (from an editor an agent's git started)
+    // must still sign the person's own commit with their signer.
+    let w = World::new(PersonSigner::ThroughAgentSshSign, true);
+    let repo = w.repo();
+    fs::write(repo.join("mine.txt"), "mine\n").unwrap();
+    w.git_ok(&repo, &["add", "mine.txt"]);
+    let out = w
+        .cmd(Path::new("/usr/bin/script"))
+        .args(["-q", "/dev/null", env!("CARGO_BIN_EXE_agent-git")])
+        .args(["commit", "-m", "my own work"])
+        .env("TERM", "dumb")
+        .env("AGENT_SIGN_AGENT_RUN", "1")
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(
+        w.signer_calls() >= 1,
+        "the person's commit in a terminal should reach their signer:\n{}",
+        text(&out)
+    );
+}
+
+#[test]
+fn a_signing_request_disguised_as_a_check_is_refused() {
+    // git asks gpg to sign with `-bsau <key>`; a key named `--verify` must
+    // not make that look like a request to check a signature.
+    let w = World::new(PersonSigner::Fake, false);
+    let repo = w.repo();
+    let out = w.agent(
+        &repo,
+        Mark::ClaudeCode,
+        &[
+            "-c",
+            "gpg.format=openpgp",
+            "-c",
+            "user.signingkey=--verify",
+            "commit-tree",
+            "-S",
+            "-m",
+            "x",
+            "HEAD^{tree}",
+        ],
+    );
+    assert!(
+        !out.status.success(),
+        "signing should be refused:\n{}",
+        text(&out)
+    );
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("Refused"),
+        "{}",
+        text(&out)
+    );
+}
+
+#[test]
+fn a_real_git_that_is_really_the_wrapper_stops_instead_of_looping() {
+    // Misconfigured: agent-sign is told the wrapper is the real git. Every
+    // git the wrapper starts, its alias lookup included, counts one level
+    // deeper, so the chain stops rather than filling the process table.
+    let w = World::new(PersonSigner::Fake, false);
+    let repo = w.repo();
+    let mut cmd = w.cmd(Path::new(env!("CARGO_BIN_EXE_agent-git")));
+    cmd.env("AGENT_SIGN_REAL_GIT", env!("CARGO_BIN_EXE_agent-git"))
+        .env("CLAUDECODE", "1")
+        .args(["status"])
+        .current_dir(&repo);
+    let out = run_within(cmd, Duration::from_secs(30), "wrapper as its own real git");
+    assert!(!out.status.success(), "{}", text(&out));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("calling itself"),
+        "{}",
+        text(&out)
     );
 }

@@ -82,8 +82,10 @@ pub struct HumanConfig {
     pub github_username: String,
 }
 
+// git is the real git (see paths::real_git): through PATH it could be the
+// wrapper, which loads this config, which would call the wrapper again.
 fn detect_git_user_name() -> String {
-    let out = Command::new("git")
+    let out = Command::new(paths::real_git())
         .args(["config", "--get", "user.name"])
         .output();
     if let Ok(o) = out {
@@ -96,7 +98,7 @@ fn detect_git_user_name() -> String {
 }
 
 fn detect_git_user_email() -> String {
-    let out = Command::new("git")
+    let out = Command::new(paths::real_git())
         .args(["config", "--get", "user.email"])
         .output();
     if let Ok(o) = out {

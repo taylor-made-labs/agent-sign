@@ -61,6 +61,22 @@ pub fn agent_mark_present_with(get: impl Fn(&str) -> Option<String>) -> bool {
         .any(|(var, _)| get(var).is_some_and(|v| !v.is_empty() && v != "0"))
 }
 
+/// Set by the git wrapper on every git it runs for an agent. Git's own nested
+/// runs (a shell alias `!...`, a hook, the commits a rebase replays) use git's
+/// internal copy of itself, not the wrapper, and the signing program they call
+/// sees only the environment: this mark is how the signing program still
+/// knows an agent is behind them, so the person's own key is never used for
+/// them. The wrapper's terminal test ignores it (it reaches editors git
+/// starts, and terminals opened from those are the person's).
+pub const AGENT_RUN_VAR: &str = "AGENT_SIGN_AGENT_RUN";
+
+/// Whether an agent is behind this process, from the environment `get`
+/// reads: the wrapper's [`AGENT_RUN_VAR`], or one of the [`KNOWN_AGENTS`]
+/// marks (set and not empty or `0`).
+pub fn agent_run_with(get: impl Fn(&str) -> Option<String>) -> bool {
+    get(AGENT_RUN_VAR).is_some_and(|v| !v.is_empty() && v != "0") || agent_mark_present_with(get)
+}
+
 /// Whether a commit is the person's own, to be passed to their normal git
 /// and signing untouched: standard input and output are both terminals,
 /// nothing forces agent handling (`AGENT_SIGN_FORCE`, `_SESSION`), and no
@@ -147,5 +163,32 @@ impl AttributionEngine {
             }
             _ => message.to_string(),
         }
+    }
+}
+
+#[cfg(test)]
+mod agent_run_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn env(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        move |k| map.get(k).cloned()
+    }
+
+    #[test]
+    fn the_wrappers_mark_or_an_agents_own_mark_means_an_agent_is_behind_it() {
+        assert!(agent_run_with(env(&[(AGENT_RUN_VAR, "1")])));
+        assert!(agent_run_with(env(&[("CLAUDECODE", "1")])));
+        assert!(agent_run_with(env(&[("CODEX_THREAD_ID", "t")])));
+        assert!(!agent_run_with(env(&[])));
+        assert!(!agent_run_with(env(&[(AGENT_RUN_VAR, "0")])));
+        assert!(!agent_run_with(env(&[(AGENT_RUN_VAR, "")])));
+        // Naming an agent's commits isn't a mark: it may be set in a
+        // terminal the person also types in.
+        assert!(!agent_run_with(env(&[("AGENT_SIGN_AGENT_NAME", "Cursor")])));
     }
 }

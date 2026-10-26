@@ -4,7 +4,10 @@
 //! and expects `<file>.sig` to be written. When the git wrapper has set an
 //! `AGENT_EVENT_TOKEN`, the buffer is sent to the service, which signs it with
 //! the agent key. Without a token the arguments are passed unchanged to the
-//! configured `fallback_program` (the person's own signer).
+//! configured `fallback_program` (the person's own signer), unless an agent is
+//! behind the call (see [`crate::attribution::agent_run_with`]): then a request
+//! to sign is refused, since agent work is never signed with the person's key,
+//! and a request to verify goes to plain `ssh-keygen`, which needs no key.
 //!
 //! It lives in the library so that `agent-ssh-sign` and `agent-sign` (which
 //! also accepts git's signing arguments, as it always has) run exactly the
@@ -28,6 +31,23 @@ pub const EVENT_TOKEN_VAR: &str = "AGENT_EVENT_TOKEN";
 /// Runs the signing program with git's arguments (without the program name)
 /// and returns the exit code to report to git.
 pub fn run(args: &[String]) -> ExitCode {
+    // Called with gpg's arguments: the git wrapper names this program as
+    // `gpg.program` for agents' commands, so that checking an OpenPGP
+    // signature still works while making one never reaches the person's key.
+    if !args.iter().any(|a| a == "-Y") {
+        if is_gpg_verify(args) {
+            let gpg = crate::paths::find_on_path_outside_agent_sign("gpg")
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "gpg".to_string());
+            return delegate_to_system_ssh_keygen(args, &gpg);
+        }
+        eprintln!(
+            "[agent-ssh-sign] Refused: an agent's git asked for an OpenPGP signature, which would \
+             have used your own key. Agent work is never signed with your key."
+        );
+        return ExitCode::from(1);
+    }
+
     let config = Config::load(None);
     let fallback_prog = config.ssh.fallback_program.clone();
     let multiplexer = Multiplexer::new(config);
@@ -36,6 +56,18 @@ pub fn run(args: &[String]) -> ExitCode {
     let action = multiplexer.determine_action(token_var.as_deref());
 
     match action {
+        SigningAction::DelegateToSystemSshKeygen
+            if crate::attribution::agent_run_with(|k| env::var(k).ok()) =>
+        {
+            if is_signing_request(args) {
+                eprintln!(
+                    "[agent-ssh-sign] Refused: an agent's git asked to sign outside agent-sign's commit \
+                     path, which would have used your own key. Agent work is never signed with your key."
+                );
+                return ExitCode::from(1);
+            }
+            delegate_to_system_ssh_keygen(args, &plain_ssh_keygen())
+        }
         SigningAction::DelegateToSystemSshKeygen => {
             // Forward directly to configured fallback program (e.g. 1Password op-ssh-sign or ssh-keygen)
             delegate_to_system_ssh_keygen(args, &fallback_prog)
@@ -49,6 +81,51 @@ pub fn run(args: &[String]) -> ExitCode {
             sign_with_agent_daemon(args, &token)
         }
     }
+}
+
+/// Whether gpg's arguments only check a signature: `--verify`, and nothing
+/// that could sign. git asks gpg to sign with `-bsau <key>`, and the key is
+/// whatever `user.signingkey` says (even `--verify`), so any bundle of short
+/// options with `s`, `b`, `u`, `a`, `e` or `c`, or a long signing or
+/// encrypting option, makes it not a check. git checks with
+/// `--keyid-format=long --status-fd=1 --verify <file> -`.
+pub fn is_gpg_verify(args: &[String]) -> bool {
+    let could_sign = args.iter().any(|a| {
+        if let Some(long) = a.strip_prefix("--") {
+            matches!(
+                long.split('=').next().unwrap_or(""),
+                "sign"
+                    | "detach-sign"
+                    | "clearsign"
+                    | "clear-sign"
+                    | "local-user"
+                    | "encrypt"
+                    | "symmetric"
+            )
+        } else if let Some(short) = a.strip_prefix('-') {
+            short
+                .chars()
+                .any(|c| matches!(c, 's' | 'b' | 'u' | 'a' | 'e' | 'c'))
+        } else {
+            false
+        }
+    });
+    args.iter().any(|a| a == "--verify") && !could_sign
+}
+
+/// Whether git is asking for a signature (`-Y sign`), as opposed to checking
+/// one (`-Y verify`, `find-principals`, `check-novalidate`).
+pub fn is_signing_request(args: &[String]) -> bool {
+    args.windows(2).any(|w| w[0] == "-Y" && w[1] == "sign")
+}
+
+/// The system's `ssh-keygen`, for checking signatures on an agent's behalf.
+fn plain_ssh_keygen() -> String {
+    ["/usr/bin/ssh-keygen", "/usr/local/bin/ssh-keygen"]
+        .into_iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .unwrap_or("ssh-keygen")
+        .to_string()
 }
 
 fn delegate_to_system_ssh_keygen(args: &[String], fallback_program: &str) -> ExitCode {
@@ -157,5 +234,42 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
             );
             ExitCode::from(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_signing_request;
+
+    fn args(s: &str) -> Vec<String> {
+        s.split_whitespace().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn a_gpg_check_is_told_apart_from_a_disguised_signing_request() {
+        assert!(super::is_gpg_verify(&args(
+            "--keyid-format=long --status-fd=1 --verify /tmp/sig -"
+        )));
+        assert!(!super::is_gpg_verify(&args("--status-fd=2 -bsau --verify")));
+        assert!(!super::is_gpg_verify(&args("--verify --sign x")));
+        assert!(!super::is_gpg_verify(&args("--verify --local-user=k x")));
+        assert!(!super::is_gpg_verify(&args("--status-fd=2 -bsau KEY")));
+    }
+
+    #[test]
+    fn a_request_to_sign_is_told_apart_from_a_check() {
+        assert!(is_signing_request(&args("-Y sign -n git -f key.pub buf")));
+        assert!(is_signing_request(&args(
+            "-Y sign -n git -f key.pub -U buf"
+        )));
+        assert!(!is_signing_request(&args(
+            "-Y verify -n git -f signers -I p -s s"
+        )));
+        assert!(!is_signing_request(&args(
+            "-Y find-principals -f signers -s s"
+        )));
+        assert!(!is_signing_request(&args(
+            "-Y check-novalidate -n git -s s"
+        )));
     }
 }
