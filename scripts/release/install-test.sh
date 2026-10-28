@@ -4,8 +4,9 @@
 # what they leave behind, for four cases:
 #
 #   1. a fresh install, ending in a verified agent commit
-#   2. installing again over an install (an upgrade): the same key, the lease
-#      kept (no new approval), one service, one PATH block
+#   2. installing again over an install (an upgrade): the earlier authority
+#      still trusted (a new one is made at each start), the lease kept (no
+#      new approval), one service, one PATH block
 #   3. ~/.agent-sign linked to a folder kept elsewhere: used in place, not
 #      moved, and left in place by the uninstaller
 #   4. uninstalling: nothing left but what the docs say is left
@@ -138,23 +139,29 @@ allow_unattended "$H1"
 R1="$(new_repo "$H1" work)"
 check "agent commit succeeds"                 agent_commit "$H1" "$R1" a.txt
 check "agent commit verifies (G)"             verified "$H1" "$R1"
+check "no authority private key stored"       test ! -e "$H1/.agent-sign/keys/agents_ca_ed25519"
+check "own signing routed through agent-sign" test "$(in_home "$H1" git config --global gpg.ssh.program)" = "$H1/.agent-sign/bin/agent-ssh-sign"
+check "agent-sign's block in allowed_signers"  grep -qxF "# agent-sign: agents' certificate authorities, managed; do not edit" "$H1/.config/git/allowed_signers"
 
 echo "== 2. Installing again over an install (an upgrade)"
 H2="$(new_home upgrade)"
 install "$H2"; allow_unattended "$H2"
 R2="$(new_repo "$H2" work)"
 agent_commit "$H2" "$R2" a.txt
-KEY_BEFORE="$(cat "$H2/.agent-sign/keys/agent_ed25519.pub")"
-# Auto-approve off, so a new lease can't be granted: the old one must carry over.
-sed -i 's/^auto_approve = true/auto_approve = false/' "$H2/.agent-sign/config.toml"
+KEY_BEFORE="$(awk '{print $2}' "$H2/.agent-sign/keys/agents_ca_ed25519.pub")"
+# Approval by the device owner, with auto-approve off, so a new lease can't be
+# granted: the old one must carry over.
+sed -i -e 's/^auto_approve = true/auto_approve = false/' \
+    -e 's/^approval = "none"/approval = "device-owner"/' "$H2/.agent-sign/config.toml"
 check "installer finishes"                    install "$H2"
-check "same agent key"                        test "$KEY_BEFORE" = "$(cat "$H2/.agent-sign/keys/agent_ed25519.pub")"
+check "earlier authority still recorded"      grep -qF "$KEY_BEFORE" "$H2/.agent-sign/keys/agents_cas.pub"
 check "config kept (auto_approve still off)"  grep -q '^auto_approve = false' "$H2/.agent-sign/config.toml"
 check "one unit"                              test "$(ls "$H2/.config/systemd/user" | grep -c agent)" = 1
 check "one PATH block"                        test "$(grep -c '# >>> agent-sign >>>' "$H2/.bashrc")" = 1
 check "service answering"                     wait_for_service "$H2"
 check "lease carried over: commit, no asking" agent_commit "$H2" "$R2" b.txt
 check "commit verifies (G)"                   verified "$H2" "$R2"
+check "commit from before verifies (G)"       test "$(cd "$R2" && in_home "$H2" /usr/bin/git log -1 --format=%G? HEAD~1)" = "G"
 
 echo "== 3. ~/.agent-sign linked to a folder kept elsewhere"
 H3="$(new_home linked)"
@@ -168,7 +175,7 @@ check "~/.agent-sign still links to it"       test "$(readlink "$H3/.agent-sign"
 check "the folder wasn't moved"               test -d "$H3/elsewhere/state/keys"
 check "uninstaller finishes"                  uninstall "$H3"
 check "link removed"                          test ! -e "$H3/.agent-sign" -a ! -L "$H3/.agent-sign"
-check "the folder elsewhere is left"          test -f "$H3/elsewhere/state/keys/agent_ed25519"
+check "the folder elsewhere is left"          test -f "$H3/elsewhere/state/keys/agents_cas.pub"
 
 echo "== 4. Uninstall"
 check "uninstaller finishes"                  uninstall "$H1"
@@ -176,6 +183,7 @@ check "~/.agent-sign removed"              test ! -e "$H1/.agent-sign"
 check "PATH block removed"                    bash -c "! grep -q 'agent-sign' '$H1/.bashrc'"
 check "unit removed"                          test ! -e "$H1/.config/systemd/user/agent-signd.service"
 check "service stopped"                       bash -c "! pgrep -u $(id -u) -f '^$H1/.agent-sign/bin/agent-signd'"
+check "gpg.ssh.program put back (unset)"      bash -c "! env -i HOME='$H1' GIT_CONFIG_NOSYSTEM=1 /usr/bin/git config --global gpg.ssh.program"
 
 echo
 if [ "$FAILS" -eq 0 ]; then echo "All checks passed."; else echo "$FAILS check(s) failed. Logs are in each home's install.log."; fi

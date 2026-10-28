@@ -14,7 +14,6 @@ struct Bins {
     git: PathBuf,
     sign: PathBuf,
     env_prefix: &'static str,
-    repo_config: &'static str,
 }
 
 impl Bins {
@@ -24,7 +23,6 @@ impl Bins {
             git: PathBuf::from(env!("CARGO_BIN_EXE_agent-git")),
             sign: PathBuf::from(env!("CARGO_BIN_EXE_agent-ssh-sign")),
             env_prefix: "AGENT_SIGN_",
-            repo_config: ".agent-sign.toml",
         }
     }
 
@@ -134,6 +132,10 @@ fn scenario_agent_git_commit_and_verification(bins: &Bins) {
         .env_remove("CLAUDECODE")
         .env_remove("GEMINI_CLI")
         .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_SESSION_ID")
+        // The agent says who it is: since the identity review (28 Oct 2026)
+        // an unmarked commit with no terminal is left to git, unsigned.
+        .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
         .args(["commit", "-m", "feat: first agent commit"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -162,22 +164,29 @@ fn scenario_agent_git_commit_and_verification(bins: &Bins) {
     let log_str = String::from_utf8_lossy(&log_output.stdout);
     println!("Commit Log: {}", log_str);
 
-    // Attribution verified: split mode sets Author to Agent, Committer to dynamically detected Git user
-    assert!(log_str.contains("Agent <agent@local.internal>"));
-    assert!(log_str.contains("Human Developer <dev@example.com>"));
-
-    // 6. Verify signature using system ssh-keygen
-    let pub_key_path = dir.path().join(".agent-sign/keys/agent_ed25519.pub");
-    assert!(
-        pub_key_path.exists(),
-        "Public key must exist after daemon setup"
+    // Attribution verified: the agent (named "Test Agent", with no session
+    // id) is both author and committer, never the person.
+    assert_eq!(
+        log_str.trim(),
+        "Test Agent <test-agent.nosession@agents.local> | Test Agent <test-agent.nosession@agents.local>"
     );
-    let pub_key = fs::read_to_string(&pub_key_path).unwrap();
+    assert!(!log_str.contains("Human Developer <dev@example.com>"));
+
+    // 6. Verify the signature under the agents' trust line
+    let ca_path = dir.path().join(".agent-sign/keys/agents_ca_ed25519.pub");
+    assert!(
+        ca_path.exists(),
+        "The agents' certificate authority must exist after the service starts"
+    );
+    let ca = fs::read_to_string(&ca_path).unwrap();
 
     let allowed_signers = dir.path().join("allowed_signers");
     fs::write(
         &allowed_signers,
-        format!("dev@example.com {}\n", pub_key.trim()),
+        format!(
+            "*@agents.local cert-authority,namespaces=\"git\" {}\n",
+            ca.trim()
+        ),
     )
     .unwrap();
 
@@ -260,6 +269,10 @@ fn scenario_multi_commit_headless_session_flow(bins: &Bins) {
             .env_remove("CLAUDECODE")
             .env_remove("GEMINI_CLI")
             .env_remove("CODEX_THREAD_ID")
+            .env_remove("CODEX_SESSION_ID")
+            // The agent says who it is: since the identity review (28 Oct 2026)
+            // an unmarked commit with no terminal is left to git, unsigned.
+            .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
             .args(["commit", "-m", &format!("feat: agent commit number {}", i)])
             .current_dir(&test_repo)
             .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -276,14 +289,18 @@ fn scenario_multi_commit_headless_session_flow(bins: &Bins) {
         );
     }
 
-    // Verify all 3 commits exist and are cryptographically verified
-    let pub_key_path = dir.path().join(".agent-sign/keys/agent_ed25519.pub");
-    let pub_key = fs::read_to_string(&pub_key_path).unwrap();
+    // Verify all 3 commits exist and are cryptographically verified, under
+    // the agents' trust line
+    let ca_path = dir.path().join(".agent-sign/keys/agents_ca_ed25519.pub");
+    let ca = fs::read_to_string(&ca_path).unwrap();
 
     let allowed_signers = dir.path().join("allowed_signers");
     fs::write(
         &allowed_signers,
-        format!("multidev@example.com {}\n", pub_key.trim()),
+        format!(
+            "*@agents.local cert-authority,namespaces=\"git\" {}\n",
+            ca.trim()
+        ),
     )
     .unwrap();
 
@@ -374,6 +391,10 @@ fn scenario_allow_main_branch_when_configured(bins: &Bins) {
         .env_remove("CLAUDECODE")
         .env_remove("GEMINI_CLI")
         .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_SESSION_ID")
+        // The agent says who it is: since the identity review (28 Oct 2026)
+        // an unmarked commit with no terminal is left to git, unsigned.
+        .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
         .args(["commit", "-m", "feat: commit directly to main"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &socket_path)
@@ -456,6 +477,10 @@ fn scenario_branch_switching_in_active_session(bins: &Bins) {
         .env_remove("CLAUDECODE")
         .env_remove("GEMINI_CLI")
         .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_SESSION_ID")
+        // The agent says who it is: since the identity review (28 Oct 2026)
+        // an unmarked commit with no terminal is left to git, unsigned.
+        .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
         .args(["commit", "-m", "feat: step 1 commit"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -495,6 +520,10 @@ fn scenario_branch_switching_in_active_session(bins: &Bins) {
         .env_remove("CLAUDECODE")
         .env_remove("GEMINI_CLI")
         .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_SESSION_ID")
+        // The agent says who it is: since the identity review (28 Oct 2026)
+        // an unmarked commit with no terminal is left to git, unsigned.
+        .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
         .args(["commit", "-m", "feat: step 2 commit on new branch"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -553,14 +582,21 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
             .success()
     );
 
-    // Write repo-level config (.agent-sign.toml, or the old .agent-sign.toml) setting mode = "trailers"
-    let repo_config = test_repo.join(bins.repo_config);
-    fs::write(&repo_config, "[attribution]\nmode = \"trailers\"\n").unwrap();
+    // mode = "trailers" in the person's own config: since the identity
+    // review (28 Oct 2026) a repository's file can't set the attribution
+    // mode (it may only tighten [security] rules).
+    let state_dir = dir.path().join(".agent-sign");
+    fs::create_dir_all(&state_dir).unwrap();
+    fs::write(
+        state_dir.join("config.toml"),
+        "[attribution]\nmode = \"trailers\"\n",
+    )
+    .unwrap();
 
     fs::write(test_repo.join("work.txt"), "Important work\n").unwrap();
     assert!(
         Command::new("git")
-            .args(["add", "work.txt", bins.repo_config])
+            .args(["add", "work.txt"])
             .current_dir(&test_repo)
             .status()
             .unwrap()
@@ -575,6 +611,10 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
         .env_remove("CLAUDECODE")
         .env_remove("GEMINI_CLI")
         .env_remove("CODEX_THREAD_ID")
+        .env_remove("CODEX_SESSION_ID")
+        // The agent says who it is: since the identity review (28 Oct 2026)
+        // an unmarked commit with no terminal is left to git, unsigned.
+        .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
         .args(["commit", "-m", "feat: implement enterprise compliance"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -599,7 +639,7 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
     let full_message = String::from_utf8_lossy(&log_msg.stdout);
     println!("Commit message with trailers:\n{}", full_message);
 
-    assert!(full_message.contains("Co-Authored-By: Agent <agent@local.internal>"));
+    assert!(full_message.contains("Co-Authored-By: Test Agent <agent@local.internal>"));
     assert!(full_message.contains("X-Agent-Signer: agent-sign/v0.1"));
     assert!(full_message.contains("X-Agent-Lease:"));
 }

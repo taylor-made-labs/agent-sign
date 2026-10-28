@@ -81,10 +81,13 @@ fn git_dir(repo: &Path) -> Option<PathBuf> {
 }
 
 /// The branch `repo` has checked out, read from `HEAD`: the branch's name,
-/// or `HEAD` when detached (as the git wrapper reports it). `None` when it
-/// can't be told, which refuses the request.
+/// or, when detached, the branch a rebase in progress is rewriting, or else
+/// `HEAD`, as the git wrapper reports it (`crate::git_place`, the same rule
+/// on both sides since the identity review). `None` when it can't be told,
+/// which refuses the request.
 pub fn current_branch(repo: &Path) -> Option<String> {
-    let head = std::fs::read_to_string(git_dir(repo)?.join("HEAD")).ok()?;
+    let git_dir = git_dir(repo)?;
+    let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
     let head = head.trim();
     if let Some(reference) = head.strip_prefix("ref:") {
         return reference
@@ -93,7 +96,10 @@ pub fn current_branch(repo: &Path) -> Option<String> {
             .map(str::to_string);
     }
     let hex = head.len() == 40 || head.len() == 64;
-    (hex && head.chars().all(|c| c.is_ascii_hexdigit())).then(|| "HEAD".to_string())
+    if !(hex && head.chars().all(|c| c.is_ascii_hexdigit())) {
+        return None;
+    }
+    Some(crate::git_place::rebasing_branch(&git_dir).unwrap_or_else(|| "HEAD".to_string()))
 }
 
 /// What a folder is, as far as the approval prompt may say.

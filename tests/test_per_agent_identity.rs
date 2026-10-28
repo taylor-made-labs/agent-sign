@@ -11,8 +11,9 @@
 //!    `AGENT_SIGN_SESSION_ID`. Its principal is
 //!    `<slug>.<session8>@agents.local`, session8 being the first 8 hex
 //!    characters of the SHA-256 of the session id (`nosession` for a marked
-//!    agent without one; an unmarked commit with no terminal is
-//!    `agent.unidentified`).
+//!    agent without one). An unmarked commit with no terminal is no agent's:
+//!    since the identity review (28 Oct 2026) it is git's own, unsigned,
+//!    under git's own names, with nothing asked (it was `agent.unidentified`).
 //! 2. No approval by default; `[security] approval = "device-owner"` opts
 //!    back in.
 //! 3. Each agent commit is signed with an OpenSSH certificate for its
@@ -88,14 +89,6 @@ fn identity(name: &str, slug: &str, session: Option<&str>) -> Identity {
     Identity {
         name: name.to_string(),
         principal: format!("{slug}.{s8}@agents.local"),
-    }
-}
-
-/// An unmarked agent: no terminal, no mark.
-fn unidentified() -> Identity {
-    Identity {
-        name: "Agent".to_string(),
-        principal: "agent.unidentified@agents.local".to_string(),
     }
 }
 
@@ -670,22 +663,58 @@ fn explicit_session_id_names_a_gemini_session() {
     );
 }
 
+/// Identity review (28 Oct 2026), finding 5: a commit with no terminal and
+/// no agent mark may be the person's own editor or GUI, so it's git's own:
+/// it succeeds unsigned (`%G?` is N) under git's own author and committer,
+/// the person's signer is never called, and no approval is asked even with
+/// `approval = "device-owner"` and an owner who refuses every prompt.
+fn commit_is_gits_own(marks: Marks, what: &str) {
+    let w = World::new(
+        PersonSigner::Fake,
+        Some(ServiceSetup {
+            auto_approve: false,
+            auth: "fail",
+            approval: Some("device-owner"),
+        }),
+    );
+    let repo = w.repo();
+    let before = w.rev(&repo, "HEAD");
+    let out = w.agent_commit(&repo, marks, "agent.txt");
+    assert_eq!(
+        w.approvals_asked(),
+        "",
+        "{what}: approval was asked:\n{}",
+        text(&out)
+    );
+    assert_ok(&w, &out, what);
+    assert_ne!(w.rev(&repo, "HEAD"), before, "{what}: no commit was made");
+    assert_no_person_signer(&w, what);
+    let any = w.allowed_signers("any", &[]);
+    let (g, _, shown) = w.signature(&repo, "HEAD", &any);
+    assert_eq!(g, "N", "{what}: the commit should be unsigned:\n{shown}");
+    let gits_own = format!("{PERSON_NAME} <{PERSON_EMAIL}>");
+    assert_eq!(
+        w.author_and_committer(&repo, "HEAD"),
+        (gits_own.clone(), gits_own),
+        "{what}: author and committer should be git's own"
+    );
+}
+
 #[test]
-fn claudecode_set_to_zero_is_no_mark() {
+fn claudecode_set_to_zero_is_no_mark_so_the_commit_is_gits_own() {
     // Positive evidence only: CLAUDECODE=0 is not Claude Code.
-    commit_attributed_as(
+    commit_is_gits_own(
         &[
             ("CLAUDECODE", "0"),
             ("CLAUDE_CODE_SESSION_ID", "cc-session-zero"),
         ],
-        &unidentified(),
         "commit with CLAUDECODE=0",
     );
 }
 
 #[test]
-fn an_unmarked_commit_with_no_terminal_is_an_unidentified_agent() {
-    commit_attributed_as(UNMARKED, &unidentified(), "unmarked agent commit");
+fn an_unmarked_commit_with_no_terminal_is_gits_own_unsigned_commit() {
+    commit_is_gits_own(UNMARKED, "unmarked commit");
 }
 
 // ---------------------------------------------------------------------------
@@ -720,8 +749,8 @@ fn an_identified_agent_commit_needs_no_approval() {
 }
 
 #[test]
-fn an_unidentified_agent_commit_needs_no_approval() {
-    commit_without_approval(UNMARKED, "unmarked agent commit with no approval");
+fn an_unmarked_commit_with_no_terminal_asks_no_approval() {
+    commit_is_gits_own(UNMARKED, "unmarked commit, approval = \"device-owner\"");
 }
 
 #[test]
@@ -841,12 +870,8 @@ fn an_agent_commit_is_good_for_its_principal_under_the_trust_line() {
 }
 
 #[test]
-fn an_unidentified_agent_commit_is_good_for_agent_unidentified() {
-    let w = World::new(PersonSigner::Fake, Some(AUTO));
-    let repo = w.repo();
-    let out = w.agent_commit(&repo, UNMARKED, "agent.txt");
-    assert_ok(&w, &out, "unmarked agent commit");
-    assert_signed_as(&w, &repo, "HEAD", &unidentified(), "unmarked agent commit");
+fn an_unmarked_commit_with_no_terminal_is_unsigned_and_never_reaches_the_persons_signer() {
+    commit_is_gits_own(UNMARKED, "unmarked commit, checked for a signature");
 }
 
 #[test]

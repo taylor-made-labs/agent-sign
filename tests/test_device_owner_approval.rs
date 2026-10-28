@@ -404,9 +404,12 @@ fn start(dir: &Path, setup: Setup) -> Service {
     let socket = dir.join("svc.sock");
     let state = dir.join(".agent-sign");
     fs::create_dir_all(&state).unwrap();
+    // These tests are about the device owner's approval, which is opt-in
+    // since per-agent identities (the default, approval = "none", asks
+    // nobody).
     fs::write(
         state.join("config.toml"),
-        format!("[security]\n{}", setup.config),
+        format!("[security]\napproval = \"device-owner\"\n{}", setup.config),
     )
     .unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));

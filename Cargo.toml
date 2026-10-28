@@ -41,6 +41,16 @@ sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
 zeroize = "1.8"
+# OpenSSH certificates for agents' signing keys: the service issues each agent
+# session a short-lived certificate for its principal, from the agents'
+# certificate authority, and git and ssh-keygen verify commits through it.
+# RustCrypto's ssh-key is the maintained, widely used implementation of the
+# OpenSSH key and certificate formats (Apache-2.0 OR MIT, like the rest of
+# this tree); encoding certificates by hand would be more security-critical
+# code of our own to audit. It reuses the ed25519-dalek and sha2 already
+# here. The exact version is pinned here as well as in Cargo.lock, so an
+# upgrade is its own change; only the features the service calls are on.
+ssh-key = { version = "=0.6.7", default-features = false, features = ["alloc", "ed25519"] }
 
 # macOS only: the bridge to the system's LocalAuthentication framework
 # (Touch ID, Apple Watch, or the login password), which the service uses to

@@ -3,13 +3,15 @@ set -euo pipefail
 
 # =============================================================================
 # agent-sign sandbox demo
-# In a throwaway repository: an agent commit that asks for a lease once, a
-# second agent commit under that lease, and a commit refused by a local rule.
-# Run it after installing. The lease it asks for is revoked at the end.
+# In a throwaway repository: an agent commit, signed as the agent's own
+# identity ("Sandbox Demo <sandbox-demo.nosession@agents.local>"), a second
+# one under the same lease, and a commit refused by a local rule. Run it
+# after installing. The lease is revoked at the end.
 #
-# The service decides whether to ask you: with auto_approve off (the default)
-# you'll see the Touch ID prompt once. On a machine with no screen, see
-# "Headless machines" in docs/INSTALL.md.
+# The service decides whether to ask you: with the default approval = "none"
+# nothing asks; with approval = "device-owner" you'll see the Touch ID prompt
+# once. On a machine with no screen, see "Headless machines" in
+# docs/INSTALL.md.
 # =============================================================================
 
 BOLD='\033[1m'
@@ -66,19 +68,24 @@ echo "Hello from the setup commit" > README.md
 
 git checkout -q -b feat/ai-task
 
-echo -e "\n${CYAN}2. An agent's first commit (asks for a lease once)...${NC}"
+echo -e "\n${CYAN}2. An agent's first commit (signed as the agent; nothing asks unless approval = \"device-owner\")...${NC}"
 echo "function add(a, b) { return a + b; }" > math.js
 git add math.js
 
 # AGENT_SIGN_FORCE makes the wrapper treat this commit as an agent's even though it
-# runs in your terminal. Whether you're asked is up to the service.
+# runs in your terminal, and AGENT_SIGN_AGENT_NAME says which agent: a commit
+# nothing names is left to git, unsigned (it could be your own editor's).
+# Whether you're asked is up to the service.
+export AGENT_SIGN_AGENT_NAME="Sandbox Demo"
 AGENT_SIGN_FORCE=1 "$WRAPPER" commit -m "feat: add math helper"
 
 echo -e "\n${GREEN}✓ First agent commit signed!${NC}"
-echo -e "  Signature verification:"
+echo -e "  Author and committer, then signature verification (Good once the agents'"
+echo -e "  trust line is in your allowed-signers file; the installer adds it):"
+git log -1 --format='  %an <%ae> | %cn <%ce>'
 git log -1 --show-signature | grep -E "Good|Author|Date" || true
 
-echo -e "\n${CYAN}3. A second agent commit, under the same lease (no prompt)...${NC}"
+echo -e "\n${CYAN}3. A second agent commit, under the same lease (never a prompt)...${NC}"
 echo "module.exports = { add };" >> math.js
 git add math.js
 

@@ -1,13 +1,13 @@
 //! `agent-sign`: the command line for agent-sign.
 //!
-//! `agent-sign leases`, `status`, `revoke`, `doctor`, `--version`, `--help`. Any other
+//! `agent-sign leases`, `status`, `revoke`, `trust-line`, `doctor`, `--version`, `--help`. Any other
 //! arguments are treated as git calling it as `gpg.ssh.program`, exactly as
 //! `agent-sign` did, so `agent-sign` can be a link to this program. New setups
 //! point git at `agent-ssh-sign` instead.
 
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
 use agent_sign::config::Config;
@@ -36,6 +36,9 @@ fn main() -> ExitCode {
         }
         if first_arg == "deny" {
             return run_deny(&args[2..]);
+        }
+        if first_arg == "trust-line" {
+            return run_trust_line();
         }
         if first_arg == "--version" || first_arg == "-v" || first_arg == "-V" {
             println!("agent-sign {}", env!("CARGO_PKG_VERSION"));
@@ -75,11 +78,37 @@ fn print_help() {
         "  agent-sign deny <id>|--all               (Deny waiting requests and close their dialogs)"
     );
     println!(
+        "  agent-sign trust-line                    (Print the allowed-signers line that trusts agents' signatures)"
+    );
+    println!(
         "  agent-sign doctor                        (Run full system diagnostics and check health)"
     );
     println!("  agent-sign --version                     (Show version)");
     println!("  agent-sign --help                        (Show this message)");
     println!();
+}
+
+/// Prints the allowed-signers lines that trust the agents' certificate
+/// authorities for `*@agents.local`, one per authority the service has
+/// started with (it makes a new one, in memory, at each start), oldest
+/// first: added to the file git's `gpg.ssh.allowedSignersFile` names, they
+/// make every agent commit show as a Good signature for that agent's own
+/// principal, including commits certified before a restart.
+fn run_trust_line() -> ExitCode {
+    let keys = agent_sign::agents_ca::keys_dir_in(&agent_sign::paths::state_dir());
+    let lines = agent_sign::agents_ca::trust_lines(&keys);
+    if lines.is_empty() {
+        eprintln!(
+            "agent-sign: no agents' certificate authority in {} yet. One is made each time the \
+             service starts: start it (`agent-signd`), then run this again.",
+            keys.display()
+        );
+        return ExitCode::from(1);
+    }
+    for line in lines {
+        println!("{line}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn run_leases() -> ExitCode {
@@ -499,21 +528,84 @@ fn run_doctor() -> ExitCode {
         failures += 1;
     }
 
-    // 3. Check Agent Key Files
-    let pub_key_path = config.ssh.agent_key_path.with_extension("pub");
-    if config.ssh.agent_key_path.exists() && pub_key_path.exists() {
+    // 2b. Whether the person's own signing goes through agent-sign: with
+    // gpg.ssh.program set to agent-ssh-sign, a signing request from a
+    // process an agent marked is refused even when it reaches git without
+    // the wrapper (a hook, the real git called directly), and the person's
+    // own requests go on to fallback_program. The installer sets this up.
+    let own_program = Command::new("git")
+        .args([
+            "config",
+            "--global",
+            "--includes",
+            "--get",
+            "gpg.ssh.program",
+        ])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    if Path::new(&own_program).file_name().and_then(|n| n.to_str()) == Some("agent-ssh-sign") {
         println!(
-            "  \x1b[32m✓\x1b[0m Agent keypair present: {}",
-            config.ssh.agent_key_path.display()
+            "  \x1b[32m✓\x1b[0m Your own signing goes through agent-sign ({own_program}), on to {fallback}"
         );
         passes += 1;
     } else {
         println!(
-            "  \x1b[31m✗\x1b[0m Agent keypair missing at {}",
+            "  \x1b[33m⚠\x1b[0m Your own signing doesn't go through agent-sign (gpg.ssh.program is {})",
+            if own_program.is_empty() {
+                "not set"
+            } else {
+                own_program.as_str()
+            }
+        );
+        println!(
+            "    Hint: Run the installer again: it routes it through agent-ssh-sign and keeps your signer as fallback_program"
+        );
+        warnings += 1;
+    }
+
+    // 3. Check the agents' certificate authorities
+    let keys_dir = agent_sign::agents_ca::keys_dir_in(&agent_sign::paths::state_dir());
+    let trust = agent_sign::agents_ca::trust_lines(&keys_dir);
+    if !trust.is_empty() {
+        println!(
+            "  \x1b[32m✓\x1b[0m Agents' certificate authorities recorded: {} in {}",
+            trust.len(),
+            keys_dir
+                .join(agent_sign::agents_ca::CAS_HISTORY_FILE)
+                .display()
+        );
+        passes += 1;
+    } else {
+        println!(
+            "  \x1b[31m✗\x1b[0m No agents' certificate authority recorded in {}",
+            keys_dir.display()
+        );
+        println!(
+            "    Hint: Start the service (`agent-signd`): it makes one in memory at each start"
+        );
+        failures += 1;
+    }
+    let unprotected = keys_dir.join(agent_sign::agents_ca::CA_KEY_FILE);
+    if fs::symlink_metadata(&unprotected).is_ok() {
+        println!(
+            "  \x1b[31m✗\x1b[0m An agents' authority private key is stored unprotected: {} (the service won't start while it's there)",
+            unprotected.display()
+        );
+        println!("    Hint: Run the installer again: it deletes it, after asking");
+        failures += 1;
+    }
+    if config.ssh.agent_key_path.exists() {
+        println!(
+            "  \x1b[33m⚠\x1b[0m The shared agent key of earlier versions is no longer used, and its private half is stored unprotected: {}",
             config.ssh.agent_key_path.display()
         );
-        println!("    Hint: Run `agent-signd setup` to generate keys");
-        failures += 1;
+        println!(
+            "    Hint: Run the installer again: it deletes the private half (after asking) and prints the commands to stop trusting it in allowed_signers and on GitHub"
+        );
+        warnings += 1;
     }
 
     // 4. Check Allowed Signers
@@ -533,6 +625,43 @@ fn run_doctor() -> ExitCode {
                 clean_path
             );
             passes += 1;
+            let content = fs::read_to_string(&allowed_path).unwrap_or_default();
+            let missing = trust
+                .iter()
+                .filter(|line| !content.lines().any(|l| l.trim() == line.as_str()))
+                .count();
+            let has_block = content
+                .lines()
+                .any(|l| l == agent_sign::agents_ca::BLOCK_BEGIN);
+            if trust.is_empty() {
+                // Reported above.
+            } else if missing == 0 {
+                println!(
+                    "  \x1b[32m✓\x1b[0m It trusts agents' signatures ({} authorities{})",
+                    trust.len(),
+                    if has_block {
+                        ", in agent-sign's block, which the service keeps current"
+                    } else {
+                        ""
+                    }
+                );
+                passes += 1;
+            } else {
+                println!(
+                    "  \x1b[33m⚠\x1b[0m It doesn't trust {missing} of the agents' {} authorities: their commits show as unverified",
+                    trust.len()
+                );
+                if has_block {
+                    println!(
+                        "    Hint: Restart the service: it rewrites agent-sign's block at start"
+                    );
+                } else {
+                    println!(
+                        "    Hint: Run the installer again: it adds a block the service keeps current"
+                    );
+                }
+                warnings += 1;
+            }
         } else {
             println!(
                 "  \x1b[33m⚠\x1b[0m allowed_signers file configured but does not exist at {}",
@@ -579,36 +708,10 @@ fn run_doctor() -> ExitCode {
         warnings += 1;
     }
 
-    // 6. Check GitHub CLI registration
-    if Command::new("which")
-        .arg("gh")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-    {
-        let gh_check = Command::new("gh").args(["ssh-key", "list"]).output();
-        if let Ok(o) = gh_check {
-            let out_str = String::from_utf8_lossy(&o.stdout);
-            if pub_key_path.exists()
-                && let Ok(pub_content) = fs::read_to_string(&pub_key_path)
-            {
-                let key_data = pub_content.split_whitespace().nth(1).unwrap_or("");
-                if !key_data.is_empty() && out_str.contains(key_data) {
-                    println!("  \x1b[32m✓\x1b[0m GitHub account: Agent signing key registered!");
-                    passes += 1;
-                } else {
-                    println!(
-                        "  \x1b[33m⚠\x1b[0m GitHub account: Agent key not found in `gh ssh-key list`"
-                    );
-                    println!(
-                        "    Hint: Run `gh ssh-key add {} --type signing`",
-                        pub_key_path.display()
-                    );
-                    warnings += 1;
-                }
-            }
-        }
-    }
+    // 6. GitHub: it doesn't check signatures made with SSH certificates, so
+    // agents' commits show there as unverified. Earlier versions suggested
+    // adding the shared agent key to the person's GitHub account, which made
+    // agent commits look like the person's: that key is no longer used.
 
     // 7. Check Directory Permissions & Lease Persistence Storage
     let agent_dir = agent_sign::paths::state_dir();

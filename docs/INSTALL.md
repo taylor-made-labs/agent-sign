@@ -12,12 +12,10 @@ service). There are no prebuilt releases yet, so you build it from source.
   verify SSH signatures). On macOS both come with the Xcode command line
   tools (`xcode-select --install`), as does `python3`.
 - `python3` (the installer uses it to update editor settings)
-- On macOS, to approve leases: a desktop session, and Touch ID or a login
-  password on the Mac.
-- On Linux there is no way to approve a lease (see
+- Only if you turn on `approval = "device-owner"` (agent commits need no
+  approval by default): on macOS a desktop session, and Touch ID or a login
+  password; Linux has no way to approve a lease yet (see
   [Headless machines](#headless-machines-servers-containers-ci)).
-- Optional: the GitHub CLI (`gh`), logged in, so the installer can register
-  the agent's signing key on your account
 
 ## Install
 
@@ -34,8 +32,9 @@ skip the build, the installer still works: it tries to download a release
 itself.
 
 Where things go: everything is in `~/.agent-sign` (the programs, the
-agent key, the config, leases and the service's socket). Installing over an
-existing install keeps its key and leases; see [Upgrading](#upgrading).
+agents' certificate authority, the config, leases and the service's socket).
+Installing over an existing install keeps its keys and leases; see
+[Upgrading](#upgrading).
 
 Then open a new terminal (the installer changes your shell's `PATH`) and run:
 
@@ -47,7 +46,7 @@ It checks every piece and says how to fix anything that's wrong.
 
 To see it work end to end, run `./scripts/demo-sandbox.sh` from the `agent-sign`
 directory. It makes two signed agent commits in a throwaway repository
-(you'll see the Touch ID or password prompt once), shows one refused by a local rule, then
+(with `approval = "device-owner"` you'll see the Touch ID or password prompt once), shows one refused by a local rule, then
 deletes the repository and revokes its lease.
 
 When you try it in your own repository, have the agent work on a branch
@@ -56,33 +55,40 @@ can't make the first commit of a brand-new repository on `main`.
 
 ## What the installer changes
 
-Read this before you run it. `./scripts/uninstall.sh` undoes each change,
-except the global `gpg.ssh.allowedSignersFile` setting and your GitHub
-account's key, as noted below.
+Read this before you run it; at a terminal, the installer lists these
+changes and asks before making any (`--yes`, or no terminal, goes ahead).
+`./scripts/uninstall.sh` undoes each change, except the global
+`gpg.ssh.allowedSignersFile` setting, as noted below.
 
 | Where | What |
 |---|---|
 | `~/.agent-sign/bin` | The programs: `agent-signd`, `agent-sign`, `agent-ssh-sign`, `agent-git`, and a copy of `agent-git` named `git`. |
 | `~/.agent-sign/agent-sign.app` | macOS only. A tiny app bundle holding a copy of `agent-signd` and an `Info.plist` that names it "agent-sign". The service runs from here, so the Touch ID prompt says "agent-sign is trying to ..." instead of "agent-signd is trying to ...". It is signed ad hoc (no developer account), and rebuilt each time you run the installer, so after `brew upgrade` run the installer again to refresh it. |
-| `~/.agent-sign/keys` | A new ed25519 key for the agent, readable only by your user (and so by any agent running as you). It is not encrypted. |
-| `~/.agent-sign/config.toml` | Settings, with your existing SSH signing program detected (git's `gpg.ssh.program`, 1Password's `op-ssh-sign`, or `ssh-keygen`). Only written if missing. |
-| git's `allowed_signers` file (the list of SSH keys git trusts when it checks signatures) | One line with the agent's public key, **under your git email** (and `gpg.ssh.allowedSignersFile` set globally, to `~/.config/git/allowed_signers`, if it wasn't set; the uninstaller leaves that setting). This is what makes `git log --show-signature` report agent commits as good, and it attributes them to you. |
+| `~/.agent-sign/keys` | Public keys only. The agents' certificate authority is made in the service's memory each time it starts and never written anywhere; each start adds its public key, with the date, to `agents_cas.pub`. Private keys earlier versions stored here unprotected (`agents_ca_ed25519`, the old shared `agent_ed25519`, and copies in `retired/`) are deleted; their public halves stay. |
+| `~/.agent-sign/config.toml` | Settings. Only written if missing; on an install over an existing one, only `fallback_program` (below) and an old `"split"` default are changed. |
+| Your global `gpg.ssh.program` | Set to `~/.agent-sign/bin/agent-ssh-sign`, so your own SSH signing goes through agent-sign: your signatures go on to your signer, and a request from an agent's process is refused. What it was (or `ssh-keygen`, git's default, if unset) becomes `fallback_program` in `config.toml`; the uninstaller puts it back. If it already is `agent-ssh-sign`, the existing `fallback_program` is kept. |
+| git's `allowed_signers` file (the list of SSH keys git trusts when it checks signatures) | A marked block, between `# agent-sign: agents' certificate authorities, managed; do not edit` and its end line, holding `agent-sign trust-line`'s lines: they trust the agents' certificate authorities for `*@agents.local` principals and git signatures only. The service rewrites the block, and nothing outside it, each time it starts. An earlier version's bare trust line moves into the block. (And `gpg.ssh.allowedSignersFile` is set globally, to `~/.config/git/allowed_signers`, if it wasn't set; the uninstaller leaves that setting.) This is what makes `git log --show-signature` report each agent commit as good **for that agent**, never for you. |
 | launchd or systemd | A user service that runs `agent-signd` and restarts it if it stops (on macOS the copy in `agent-sign.app`; `~/Library/LaunchAgents/com.agentsign.agent-signd.plist`, or `~/.config/systemd/user/agent-signd.service`). Before installing it, the installer stops a service installed earlier, and any `agent-signd` or `agent-signd` process of yours started by hand. |
 | `~/.zshrc`, `~/.zprofile`, `~/.bashrc`, `~/.bash_profile` | A marked block putting `~/.agent-sign/bin` first on `PATH` (once), in each of these files that exists, so every program started from your shell, agents included, gets the wrapper as `git`. |
 | Cursor, VS Code and Windsurf `settings.json` | The same `PATH` for their built-in terminals, if those editors are installed. |
 | `~/.gemini/config/rules/agent-sign.md` | A rule for Google Antigravity, if it's installed. |
-| Your GitHub account | Only if you say yes: with `gh` logged in and you at the terminal, the installer asks whether to add the agent's public key to your account as a **signing key** (it can't be used to log in or push). Otherwise, or if you say no, the public key is printed (and copied to your clipboard, on a desktop) and GitHub's settings page is opened when there's a browser, for you to add it yourself. |
 
 Two consequences worth knowing:
 
-- Because the agent key is registered under your email and on your GitHub
-  account, and you're the committer in the default `split` attribution mode
-  (the agent is the author, you're the committer), GitHub shows agent commits
-  as Verified for you. agent-sign's aim is attribution
-  to the agent's own identity; that isn't built yet.
+- Each agent signs, authors and commits as its own identity (such as
+  `Claude Code <claude-code.1a2b3c4d@agents.local>`), never as you. GitHub
+  doesn't check signatures made with SSH certificates, so agent commits show
+  there as Unverified. The identities are claims made by programs running
+  as your user: attribution, not a security boundary.
 - Editors that read your login shell's `PATH` (VS Code on macOS does) may
-  run the wrapper for their own commit button. With no terminal attached,
-  the wrapper treats that commit as an agent's, and asks for a lease.
+  run the wrapper for their own commit button. With no terminal attached and
+  no agent mark, the wrapper leaves that commit to git: unsigned, under your
+  git name, never attributed to an agent (point the editor's `git.path` at
+  your real git to have it signed with your own key).
+- On an upgrade, the installer deletes the old shared agent key's private
+  half (it was stored unprotected) and, while its line is still in your
+  allowed-signers file, prints the commands to remove that line and its
+  GitHub signing key; it runs neither.
 
 ## Headless machines (servers, containers, CI)
 
@@ -129,12 +135,14 @@ git verify-commit HEAD
 ```
 
 This stops and removes the service, removes the `PATH` blocks and editor
-settings, removes the agent key's line from `allowed_signers`, and deletes
-`~/.agent-sign`, including the agent key and all leases (if it's a link to a
-folder kept elsewhere, only the link is removed).
+settings, removes agent-sign's lines from `allowed_signers` (the agents'
+trust line, and an earlier version's agent key), and deletes
+`~/.agent-sign`, including the agents' certificate authority and all leases
+(if it's a link to a folder kept elsewhere, only the link is removed).
 It leaves git's global `gpg.ssh.allowedSignersFile` setting (unset it with
 `git config --global --unset gpg.ssh.allowedSignersFile` if nothing else uses
-it). Remove the key from GitHub (Settings, SSH and GPG keys) yourself.
+it). If an earlier version added the shared agent key to your GitHub account,
+remove it there (Settings, SSH and GPG keys) yourself.
 
 ## Not ready yet
 

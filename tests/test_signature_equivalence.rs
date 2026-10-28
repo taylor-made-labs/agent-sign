@@ -1,12 +1,23 @@
-//! `agent-ssh-sign` signs exactly as agent-sign's `agent-sign` did.
+//! Every signing program name signs through the service, and the library's
+//! SSHSIG signer is unchanged.
 //!
 //! Ed25519 signatures are deterministic, so the same key and the same bytes
 //! must give the same signature, byte for byte. `GOLDEN_AGENT_SIGN_SIG` was
 //! produced on 30 Sept 2026 by the pre-rename `agent-sign` and `agent-signd`
-//! binaries (built from commit a036037, the code running on the person's Mac)
-//! with the test seed below and `BUFFER`. Each new program name must reproduce
-//! it, and `ssh-keygen -Y verify` must accept it. All runs use a temporary
-//! home and socket.
+//! binaries (built from commit a036037) with the test seed below and
+//! `BUFFER`. The library's signer must still reproduce it, and
+//! `ssh-keygen -Y verify` must accept it.
+//!
+//! Since per-agent identities (28 Oct 2026) the service no longer signs with
+//! one shared key: each agent session has its own key, made fresh in the
+//! service's memory, with a certificate from the agents' certificate
+//! authority. So the programs' signatures can't be byte-identical to a
+//! golden one any more; instead each program name must get a signature that
+//! `ssh-keygen -Y verify` accepts under the agents' trust line, for the
+//! agent the token names. Since the identity review (28 Oct 2026) a program
+//! runs as git runs it for an agent: inside the repository the token is for,
+//! with the wrapper's mark beside the token (an older wrapper's token with
+//! no identity is refused). All runs use a temporary home and socket.
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -14,6 +25,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use agent_sign::attribution::AgentIdentity;
 use agent_sign::crypto::AgentKeyPair;
 use agent_sign::protocol::{Request, Response, send_request};
 use tempfile::tempdir;
@@ -42,17 +54,8 @@ impl Drop for Service {
     }
 }
 
-/// Writes the test key into `<home>/.agent-sign/keys` and starts `agent-signd` on `socket`.
+/// Starts `agent-signd` on `socket`, in `home`.
 fn start_service(home: &Path, socket: &Path) -> Service {
-    let keys = home.join(".agent-sign/keys");
-    fs::create_dir_all(&keys).unwrap();
-    fs::write(keys.join("agent_ed25519"), TEST_SEED).unwrap();
-    fs::set_permissions(
-        keys.join("agent_ed25519"),
-        fs::Permissions::from_mode(0o600),
-    )
-    .unwrap();
-
     let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
         .arg("--socket")
         .arg(socket)
@@ -74,12 +77,18 @@ fn start_service(home: &Path, socket: &Path) -> Service {
     Service { child }
 }
 
+/// The agent the tokens sign as.
+fn golden_agent() -> AgentIdentity {
+    AgentIdentity::new("codex", "Codex", Some("golden"))
+}
+
 fn token(socket: &Path, repo: &str) -> String {
     match send_request(
         socket,
-        &Request::IssueToken {
+        &Request::IssueIdentifiedToken {
             repo: repo.into(),
             branch: "feat/golden".into(),
+            identity: golden_agent(),
         },
     )
     .unwrap()
@@ -97,11 +106,14 @@ fn sign_with(
     socket: &Path,
     token: &str,
     file: &Path,
+    repo: &Path,
 ) -> String {
     fs::write(file, BUFFER).unwrap();
     let out = Command::new(program)
+        .current_dir(repo)
+        .env("AGENT_SIGN_AGENT_RUN", "1")
         .args(["-Y", "sign", "-n", "git", "-f"])
-        .arg(home.join(".agent-sign/keys/agent_ed25519.pub"))
+        .arg(home.join(".agent-sign/keys/agents_ca_ed25519.pub"))
         .arg(file)
         .env("HOME", home)
         .env("AGENT_EVENT_TOKEN", token)
@@ -117,16 +129,43 @@ fn sign_with(
     fs::read_to_string(format!("{}.sig", file.display())).unwrap()
 }
 
+/// Runs `ssh-keygen -Y verify` on `sig` over `BUFFER` for `principal`
+/// against `allowed`, and fails the test with its output if it refuses.
+fn assert_verifies(home: &Path, allowed: &Path, principal: &str, sig: &str, what: &str) {
+    let data = home.join("data");
+    fs::write(&data, BUFFER).unwrap();
+    fs::write(home.join("data.sig"), sig).unwrap();
+    let verify = Command::new("ssh-keygen")
+        .args(["-Y", "verify", "-n", "git", "-I", principal, "-f"])
+        .arg(allowed)
+        .arg("-s")
+        .arg(home.join("data.sig"))
+        .stdin(fs::File::open(&data).unwrap())
+        .output()
+        .unwrap();
+    assert!(
+        verify.status.success(),
+        "{what}: ssh-keygen rejected: {}",
+        String::from_utf8_lossy(&verify.stderr)
+    );
+}
+
 #[test]
-fn every_signing_name_reproduces_agent_sign_signature_byte_for_byte() {
+fn every_signing_name_signs_as_the_agent_and_the_library_signer_is_unchanged() {
     let tmp = tempdir().unwrap();
     let home = tmp.path();
     let socket = home.join("s.sock");
     let _service = start_service(home, &socket);
     // The service only takes a request about a real git working tree.
-    let golden = home.join("golden/repo");
-    fs::create_dir_all(golden.join(".git")).unwrap();
-    let golden = golden.display().to_string();
+    let golden_dir = home.join("golden/repo");
+    fs::create_dir_all(&golden_dir).unwrap();
+    let init = Command::new("git")
+        .args(["init", "-q", "-b", "feat/golden"])
+        .current_dir(&golden_dir)
+        .status()
+        .unwrap();
+    assert!(init.success());
+    let golden = fs::canonicalize(&golden_dir).unwrap().display().to_string();
 
     match send_request(
         &socket,
@@ -158,6 +197,16 @@ fn every_signing_name_reproduces_agent_sign_signature_byte_for_byte() {
         ),
         (old_name, "AGENT_SIGN_"),
     ];
+    let ca = fs::read_to_string(home.join(".agent-sign/keys/agents_ca_ed25519.pub")).unwrap();
+    let trusted = home.join("agents_allowed_signers");
+    fs::write(
+        &trusted,
+        format!(
+            "*@agents.local cert-authority,namespaces=\"git\" {}\n",
+            ca.trim()
+        ),
+    )
+    .unwrap();
     for (i, (program, prefix)) in programs.iter().enumerate() {
         let tok = token(&socket, &golden);
         let sig = sign_with(
@@ -167,8 +216,15 @@ fn every_signing_name_reproduces_agent_sign_signature_byte_for_byte() {
             &socket,
             &tok,
             &home.join(format!("buf{i}")),
+            &golden_dir,
         );
-        assert_eq!(sig, GOLDEN_AGENT_SIGN_SIG, "{} differs", program.display());
+        assert_verifies(
+            home,
+            &trusted,
+            &golden_agent().principal,
+            &sig,
+            &program.display().to_string(),
+        );
     }
 
     // The library's signer, which agent-sign used unchanged, agrees too.
@@ -185,29 +241,12 @@ fn every_signing_name_reproduces_agent_sign_signature_byte_for_byte() {
         format!("agent@local.internal {}\n", kp.public_key_openssh()),
     )
     .unwrap();
-    let data = home.join("data");
-    fs::write(&data, BUFFER).unwrap();
-    fs::write(home.join("data.sig"), GOLDEN_AGENT_SIGN_SIG).unwrap();
-    let verify = Command::new("ssh-keygen")
-        .args([
-            "-Y",
-            "verify",
-            "-n",
-            "git",
-            "-I",
-            "agent@local.internal",
-            "-f",
-        ])
-        .arg(&allowed)
-        .arg("-s")
-        .arg(home.join("data.sig"))
-        .stdin(fs::File::open(&data).unwrap())
-        .output()
-        .unwrap();
-    assert!(
-        verify.status.success(),
-        "ssh-keygen rejected: {}",
-        String::from_utf8_lossy(&verify.stderr)
+    assert_verifies(
+        home,
+        &allowed,
+        "agent@local.internal",
+        GOLDEN_AGENT_SIGN_SIG,
+        "the golden signature",
     );
 }
 

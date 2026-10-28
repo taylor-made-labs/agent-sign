@@ -1,6 +1,7 @@
 //! The newline-delimited JSON protocol between agent-sign's programs and its service,
 //! unchanged from agent-sign so old and new programs can talk to each other.
 
+use crate::attribution::AgentIdentity;
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixStream;
@@ -66,13 +67,41 @@ pub enum Request {
         intent: String,
         duration_secs: Option<u64>,
     },
+    /// A single-use token for one commit, from a wrapper older than
+    /// per-agent identities, which sends no identity. Refused since the
+    /// identity review (28 Oct 2026): a commit nobody identifies is no longer
+    /// signed as an "unidentified agent".
     IssueToken {
         repo: String,
         branch: String,
     },
+    /// A single-use token for one commit, signed as `identity`.
+    IssueIdentifiedToken {
+        repo: String,
+        branch: String,
+        identity: AgentIdentity,
+    },
+    /// A token for one git run of an identified agent (merge, rebase,
+    /// cherry-pick, revert, am, pull, a shell alias): bound to the identity, the
+    /// repository and the branch, usable for every commit that run makes,
+    /// for [`RUN_TOKEN_LIFETIME`].
+    IssueRunToken {
+        repo: String,
+        branch: String,
+        identity: AgentIdentity,
+    },
+    /// A signature over `buffer_b64` with `token`. `repo` and `branch` are
+    /// where the git run asking is writing, as the signing program finds
+    /// them (see [`crate::git_place`]): the service refuses when they aren't
+    /// the token's, or when the branch is protected. A signing program older
+    /// than the identity review sends neither, and is refused.
     SignCommit {
         token: String,
         buffer_b64: String,
+        #[serde(default)]
+        repo: Option<String>,
+        #[serde(default)]
+        branch: Option<String>,
     },
     GetStatus {
         repo: String,
@@ -141,6 +170,10 @@ pub enum Response {
         message: String,
     },
 }
+
+/// How long a run token ([`Request::IssueRunToken`]) can be used: long
+/// enough for a big rebase, short enough that a leaked one soon stops working.
+pub const RUN_TOKEN_LIFETIME: Duration = Duration::from_secs(10 * 60);
 
 /// The service's socket when none is given: `daemon.sock` in the state
 /// directory (`~/.agent-sign`).

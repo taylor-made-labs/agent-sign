@@ -43,6 +43,14 @@ fn start() -> Service {
         .find(|p| p.exists())
         .unwrap();
     std::os::unix::fs::symlink(real, fakebin.join("git")).unwrap();
+    // Waiting approval requests exist only when the device owner approves
+    // leases, which is opt-in since per-agent identities.
+    fs::create_dir_all(home.join(".agent-sign")).unwrap();
+    fs::write(
+        home.join(".agent-sign/config.toml"),
+        "[security]\napproval = \"device-owner\"\n",
+    )
+    .unwrap();
 
     let socket = home.join("s.sock");
     let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
@@ -85,7 +93,9 @@ impl Service {
         fs::create_dir_all(repo.join(".git")).unwrap();
         // The service checks that the branch asked about is the one checked out.
         fs::write(repo.join(".git/HEAD"), "ref: refs/heads/feat/a\n").unwrap();
-        repo.display().to_string()
+        // The service names repositories by their canonical path (identity
+        // review, 28 Oct 2026), as `agent-sign pending` then lists them.
+        fs::canonicalize(&repo).unwrap().display().to_string()
     }
 
     fn times_shown(&self) -> usize {

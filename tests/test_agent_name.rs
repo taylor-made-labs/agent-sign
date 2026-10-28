@@ -109,9 +109,12 @@ fn author_of_agent_commit(marks: &[(&str, &str)], config_name: Option<&str>) -> 
     if let Some(name) = config_name {
         let state = home.join(".agent-sign");
         fs::create_dir_all(&state).unwrap();
+        // A configured name is used by the attribution modes that read
+        // `[agent]` ("split" here). The default mode, "agent", takes the
+        // identity from the environment only, so no config can rename it.
         fs::write(
             state.join("config.toml"),
-            format!("[agent]\nname = \"{name}\"\n"),
+            format!("[attribution]\nmode = \"split\"\n\n[agent]\nname = \"{name}\"\n"),
         )
         .unwrap();
     }
@@ -175,16 +178,22 @@ fn a_claude_code_commit_is_authored_by_claude_code() {
     );
 }
 
+/// Identity review (28 Oct 2026): an unmarked commit with no terminal is
+/// git's own, under the repository's user (it was "Agent", the
+/// unidentified agent).
 #[test]
-fn an_unmarked_agent_commit_keeps_the_default_name() {
-    assert_eq!(author_of_agent_commit(&[], None), "Agent");
+fn an_unmarked_commit_is_authored_by_gits_own_user() {
+    assert_eq!(author_of_agent_commit(&[], None), "Person");
 }
 
+/// Identity review (28 Oct 2026): an identified agent's signed commit is
+/// always authored by its identity, whatever the attribution mode, so a
+/// configured `[agent] name` no longer replaces it (it was "Build Bot").
 #[test]
-fn a_name_the_person_configured_is_kept() {
+fn a_configured_name_never_replaces_an_identified_agents() {
     assert_eq!(
         author_of_agent_commit(&[("CLAUDECODE", "1")], Some("Build Bot")),
-        "Build Bot"
+        "Claude Code"
     );
 }
 

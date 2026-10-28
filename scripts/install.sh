@@ -9,14 +9,21 @@ set -euo pipefail
 # Programs: agent-signd (service), agent-sign (CLI), agent-ssh-sign (git's
 # signing program), agent-git (the wrapper, also installed as `git`).
 #
-# Everything lives in ~/.agent-sign: the programs (bin/), the agent key
-# (keys/), config.toml, leases.json and the service's socket. The service runs
+# Everything lives in ~/.agent-sign: the programs (bin/), the agents'
+# certificate authorities' public keys (keys/), config.toml, leases.json and
+# the service's socket. No private key is ever stored there: the agents'
+# certificate authority is made in the service's memory at each start, and
+# private keys earlier versions left in plain files are deleted (after the
+# question below). The installer also routes your own SSH signing through
+# agent-sign (git's gpg.ssh.program), keeping your signer as its
+# fallback_program, and keeps a marked block in your allowed_signers file
+# that trusts agents' signatures. The service runs
 # as the LaunchAgent com.agentsign.agent-signd (macOS) or the systemd
 # user unit agent-signd (Linux). On macOS it runs from a copy inside a small
 # app bundle, ~/.agent-sign/agent-sign.app, so that the system's Touch ID
 # prompt says "agent-sign" instead of "agent-signd".
 #
-# Installing over an existing install keeps its key, leases and config. If
+# Installing over an existing install keeps its keys, leases and config. If
 # ~/.agent-sign is a link to a directory kept elsewhere, it's used in place.
 #
 # Usage:
@@ -30,7 +37,28 @@ INSTALL_DIR="$STATE_DIR/bin"
 KEYS_DIR="$STATE_DIR/keys"
 CONFIG_DIR="$STATE_DIR"
 CONFIG_FILE="$CONFIG_DIR/config.toml"
-PUB_KEY_FILE="$KEYS_DIR/agent_ed25519.pub"
+# An agents' certificate authority private key that earlier development
+# builds stored unprotected: deleted, and the service won't start while it's
+# there. The current authority's public key, and every one the service has
+# started with (one per line, with its date), are kept beside it.
+CA_KEY_FILE="$KEYS_DIR/agents_ca_ed25519"
+CA_PUB_FILE="$KEYS_DIR/agents_ca_ed25519.pub"
+CAS_HISTORY_FILE="$KEYS_DIR/agents_cas.pub"
+# The shared agent key of versions before per-agent identities: no longer
+# made or used. Its private half was stored unprotected, so it counts as
+# exposed and is deleted; its public half stays, so commits it signed can
+# still be checked.
+LEGACY_KEY_FILE="$KEYS_DIR/agent_ed25519"
+LEGACY_PUB_KEY_FILE="$KEYS_DIR/agent_ed25519.pub"
+# Where an earlier build of this change moved that private half: deleted too.
+RETIRED_DIR="$KEYS_DIR/retired"
+# The managed block in your allowed_signers file: the service rewrites the
+# lines between these two at each start, and nothing outside them.
+TRUST_BLOCK_BEGIN="# agent-sign: agents' certificate authorities, managed; do not edit"
+TRUST_BLOCK_END="# agent-sign: end of agents' certificate authorities"
+TRUST_PREFIX='*@agents.local cert-authority,namespaces="git" '
+# git's signing program for your own SSH signatures, once routed.
+AGENT_SSH_SIGN="$INSTALL_DIR/agent-ssh-sign"
 SERVICE_LABEL="com.agentsign.agent-signd"
 # macOS: the app bundle the service runs from (see make_service_bundle).
 APP_DIR="$STATE_DIR/agent-sign.app"
@@ -80,23 +108,69 @@ echo -e "${BOLD}║            agent-sign Installer (pre-release)          ║${
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
 
+# ─── What there is now ───────────────────────────────────────────────────────
+# Your own SSH signing: git's gpg.ssh.program, which becomes agent-ssh-sign.
+# What it was (or ssh-keygen, git's default, if it wasn't set) becomes
+# agent-sign's fallback_program, where your own signatures go on to, and
+# where uninstall.sh finds it to put it back. If it already is agent-ssh-sign
+# (installing again), the fallback_program in config.toml is kept.
+# --includes: the value may come from a file the global config includes,
+# which `git config --global` alone doesn't read.
+PREVIOUS_SSH_PROGRAM=$(git config --global --includes --get gpg.ssh.program 2>/dev/null || echo "")
+ALREADY_ROUTED=false
+if [ -n "$PREVIOUS_SSH_PROGRAM" ] && [ "$(basename -- "$PREVIOUS_SSH_PROGRAM")" = "agent-ssh-sign" ]; then
+    ALREADY_ROUTED=true
+    FALLBACK_PROGRAM=""
+elif [ -n "$PREVIOUS_SSH_PROGRAM" ]; then
+    FALLBACK_PROGRAM="$PREVIOUS_SSH_PROGRAM"
+else
+    FALLBACK_PROGRAM="ssh-keygen"
+fi
+
+# Private keys earlier versions stored unprotected, one per line: deleted
+# below, after the question. (Taylor, 28 Oct 2026: keys are never stored
+# unprotected; one that was counts as exposed.)
+UNPROTECTED_KEYS=""
+for key in "$CA_KEY_FILE" "$LEGACY_KEY_FILE" "$RETIRED_DIR"/agent_ed25519.*; do
+    if [ -e "$key" ] || [ -L "$key" ]; then
+        UNPROTECTED_KEYS="$UNPROTECTED_KEYS$key
+"
+    fi
+done
+
 # ─── Before anything: say what will change, and ask ────────────────────────
 # Someone at a terminal sees every change before it's made (docs/INSTALL.md
 # has the details) and can stop here. Without a terminal, or with --yes, it
 # goes ahead.
 if [ -t 0 ] && [ "$ASSUME_YES" = false ]; then
     echo "This will:"
-    echo "  • put agent-sign's programs, a new agent signing key, and its config in ~/.agent-sign"
-    echo "  • add the agent key to git's allowed_signers file, under your git email"
+    echo "  • put agent-sign's programs and its config in ~/.agent-sign (the agents' certificate"
+    echo "    authority lives only in the service's memory; no private key is stored)"
+    echo "  • keep a marked block in git's allowed_signers file that trusts agents' signatures"
+    echo "    for *@agents.local only (the service updates it each time it starts)"
+    if [ "$ALREADY_ROUTED" = true ]; then
+        echo "  • keep your own SSH signing going through agent-sign (git's gpg.ssh.program is"
+        echo "    already agent-ssh-sign)"
+    else
+        echo "  • route your own SSH signing through agent-sign: git's gpg.ssh.program becomes"
+        echo "    ~/.agent-sign/bin/agent-ssh-sign, which refuses requests from agents and passes"
+        echo "    yours on to your signer, $FALLBACK_PROGRAM (uninstall.sh puts it back)"
+    fi
+    printf '%s' "$UNPROTECTED_KEYS" | while IFS= read -r key; do
+        [ -n "$key" ] || continue
+        echo "  • delete $key: a private key an earlier version stored"
+        echo "    unprotected (its public half stays, so commits it signed still verify)"
+    done
     echo "  • install a user service that keeps agent-signd running ($( [ "$(uname -s)" = Darwin ] && echo launchd || echo systemd))"
     echo "  • put ~/.agent-sign/bin first on PATH in the shell profiles you have"
     echo "    (.zshrc, .zprofile, .bashrc, .bash_profile), so agents started from them use its git"
     echo "  • do the same for the terminals of Cursor, VS Code and Windsurf, if installed,"
     echo "    and add a rule for Google Antigravity, if installed"
-    [ -d "$HOME/.agent-sign" ] && echo "  • move your agent-sign install to ~/.agent-sign, keeping its key and leases"
-    echo "It asks separately before adding anything to your GitHub account."
+    [ -d "$HOME/.agent-sign" ] && echo "  • move your agent-sign install to ~/.agent-sign, keeping its keys and leases"
     echo "./scripts/uninstall.sh undoes all of it."
-    read -r -p "Continue? [Y/n] " REPLY_GO || REPLY_GO=""
+    # The end of input (Ctrl-D, or a closed terminal) is no answer, so it
+    # counts as no: what follows deletes keys and reroutes signing.
+    read -r -p "Continue? [Y/n] " REPLY_GO || REPLY_GO="n"
     case "$REPLY_GO" in [nN]|[nN][oO]) echo "Nothing was changed."; exit 0 ;; esac
 fi
 
@@ -231,63 +305,62 @@ chmod +x "$INSTALL_DIR/git"
 
 ok "Binaries ready in $INSTALL_DIR"
 
-# ─── Step 3: Generate agent keypair ─────────────────────────────────────────
-step "Agent signing keypair"
+# ─── Step 3: The agents' certificate authority ──────────────────────────────
+step "Agents' certificate authority"
 
-"$INSTALL_DIR/agent-signd" setup 2>&1 | grep -v "^=\|^$" || true
+# Each agent session signs with its own key, held only in the service's
+# memory, under a certificate for the agent's principal
+# (claude-code.1a2b3c4d@agents.local) from an authority the service makes in
+# its memory at each start and never writes anywhere. `setup` only makes the
+# folders.
+"$INSTALL_DIR/agent-signd" setup >/dev/null 2>&1 || true
+ok "The agents' certificate authority is made in the service's memory at each start; no private key is stored"
 
-if [ -f "$PUB_KEY_FILE" ]; then
-    AGENT_PUB_KEY=$(cat "$PUB_KEY_FILE")
-    ok "Agent public key: $AGENT_PUB_KEY"
+# Private keys earlier versions stored unprotected (listed in the question
+# above): deleted, not moved aside, since a stored copy is as exposed as the
+# original. Public halves stay, so what they signed can still be checked.
+printf '%s' "$UNPROTECTED_KEYS" | while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    rm -f "$key"
+    ok "Deleted $key (a private key stored unprotected by an earlier version)"
+done
+rmdir "$RETIRED_DIR" 2>/dev/null || true
+
+# ─── Step 4: Your own signing program ───────────────────────────────────────
+step "Your own signing"
+
+# See "What there is now" at the top: FALLBACK_PROGRAM is what git's
+# gpg.ssh.program was, or ssh-keygen (git's default) if it wasn't set.
+DETECTED_SOURCE="git's gpg.ssh.program"
+if [ "$ALREADY_ROUTED" = true ]; then
+    ok "Your own signing already goes through agent-sign ($PREVIOUS_SSH_PROGRAM)"
+elif [ -n "$PREVIOUS_SSH_PROGRAM" ]; then
+    ok "Your own signer: $FALLBACK_PROGRAM (git's gpg.ssh.program)"
 else
-    err "Keypair generation failed — $PUB_KEY_FILE not found"
-    exit 1
+    DETECTED_SOURCE="ssh-keygen, git's default"
+    ok "Your own signer: ssh-keygen (git's default; gpg.ssh.program wasn't set)"
 fi
 
-# ─── Step 4: Auto-detect fallback signing program ───────────────────────────
-step "Detecting your existing signing setup"
+# A value for a TOML basic string ("..."): backslashes and quotes escaped.
+toml_escape() {
+    printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g'
+}
 
-FALLBACK_PROGRAM=""
-DETECTED_SOURCE=""
-
-# Check git config first
-GIT_SSH_PROGRAM=$(git config --global gpg.ssh.program 2>/dev/null || echo "")
-GIT_GPG_FORMAT=$(git config --global gpg.format 2>/dev/null || echo "")
-
-if [ "$GIT_GPG_FORMAT" = "ssh" ] && [ -n "$GIT_SSH_PROGRAM" ]; then
-    if [ -x "$GIT_SSH_PROGRAM" ] || [ -f "$GIT_SSH_PROGRAM" ]; then
-        FALLBACK_PROGRAM="$GIT_SSH_PROGRAM"
-        DETECTED_SOURCE="git config (gpg.ssh.program)"
-    fi
-fi
-
-# If not found via git config, try common locations
-if [ -z "$FALLBACK_PROGRAM" ]; then
-    # 1Password (macOS)
-    if [ -x "/Applications/1Password.app/Contents/MacOS/op-ssh-sign" ]; then
-        FALLBACK_PROGRAM="/Applications/1Password.app/Contents/MacOS/op-ssh-sign"
-        DETECTED_SOURCE="1Password (macOS)"
-    # 1Password (Linux snap)
-    elif [ -x "/snap/1password/current/op-ssh-sign" ]; then
-        FALLBACK_PROGRAM="/snap/1password/current/op-ssh-sign"
-        DETECTED_SOURCE="1Password (Linux snap)"
-    # 1Password (Linux flatpak)
-    elif command -v op-ssh-sign &>/dev/null; then
-        FALLBACK_PROGRAM="$(command -v op-ssh-sign)"
-        DETECTED_SOURCE="1Password (PATH)"
-    # Standard ssh-keygen
-    elif [ -x "/usr/bin/ssh-keygen" ]; then
-        FALLBACK_PROGRAM="/usr/bin/ssh-keygen"
-        DETECTED_SOURCE="OpenSSH ssh-keygen"
-    fi
-fi
-
-if [ -n "$FALLBACK_PROGRAM" ]; then
-    ok "Detected fallback signing program: $FALLBACK_PROGRAM ($DETECTED_SOURCE)"
-else
-    warn "No existing signing program detected — defaulting to /usr/bin/ssh-keygen"
-    FALLBACK_PROGRAM="/usr/bin/ssh-keygen"
-fi
+# Sets [ssh] fallback_program in config.toml to $1, replacing the line if
+# there is one, adding it under [ssh] if not, or adding [ssh] at the end.
+set_fallback_program() {
+    local value
+    value="$(toml_escape "$1")"
+    FALLBACK_LINE="fallback_program = \"$value\"" awk '
+        BEGIN { line = ENVIRON["FALLBACK_LINE"]; done = 0 }
+        /^[[:space:]]*fallback_program[[:space:]]*=/ { if (!done) print line; done = 1; next }
+        { print }
+        /^[[:space:]]*\[ssh\][[:space:]]*$/ && !done { print line; done = 1 }
+        END { if (!done) { print ""; print "[ssh]"; print line } }
+    ' "$CONFIG_FILE" > "$CONFIG_FILE.new"
+    cat "$CONFIG_FILE.new" > "$CONFIG_FILE"
+    rm -f "$CONFIG_FILE.new"
+}
 
 # ─── Step 5: Generate config ────────────────────────────────────────────────
 step "Generating configuration"
@@ -296,6 +369,13 @@ step "Generating configuration"
 HUMAN_NAME=$(git config --global user.name 2>/dev/null || echo "")
 HUMAN_EMAIL=$(git config --global user.email 2>/dev/null || echo "")
 
+# Routed already, but no config to say where your signatures go on to:
+# git's default, said plainly so you can change it.
+if [ "$ALREADY_ROUTED" = true ] && [ ! -f "$CONFIG_FILE" ]; then
+    FALLBACK_PROGRAM="ssh-keygen"
+    warn "gpg.ssh.program was already agent-ssh-sign, but there was no config: your own signatures go on to ssh-keygen. If you sign with another program, set fallback_program in $CONFIG_FILE"
+fi
+
 if [ ! -f "$CONFIG_FILE" ]; then
     cat > "$CONFIG_FILE" <<EOF
 # agent-sign configuration
@@ -303,8 +383,14 @@ if [ ! -f "$CONFIG_FILE" ]; then
 # agent-signd reads this file when it starts: restart the service after changing it.
 
 [security]
-# A lease is your approval, given once, for agents to sign commits in one
-# repository. Its terms are fixed when you approve and never grow; changing
+# Whether agent commits need your approval: "none" (the default: agents sign
+# as themselves, never as you, and the service's log records which agent
+# committed where) or "device-owner" (you approve each lease once, with
+# Touch ID or your login password on macOS; Linux can't approve yet).
+approval = "none"
+
+# A lease is the permission, for one repository, under which agents sign
+# commits. Its terms are fixed when it's granted and never grow; changing
 # these settings later can only narrow leases already granted.
 #
 # Lease mode: "identity" (default: until its work is finished, see below, or max_lease_ceiling),
@@ -338,19 +424,25 @@ block_branches = ["main", "master"]
 # Guard against runaway commit loops
 max_commits_per_minute = 10
 
-# true grants every lease without asking. Only for a machine with no screen
-# (where agent-signd can't ask you), and only if every process that can reach the
-# service is trusted. See docs/INSTALL.md, "Headless machines".
+# With approval = "device-owner": true grants every lease without asking.
+# Only for a machine with no screen (where agent-signd can't ask you), and
+# only if every process that can reach the service is trusted. See
+# docs/INSTALL.md, "Headless machines".
 auto_approve = false
 
 [attribution]
-# "split"    -> Author: the agent, Committer: you
-# "trailers" -> Author and Committer: you, plus Co-Authored-By and X-Agent-*
-#               trailers (only when the message is given with -m or --message)
-# "alias"    -> Author and Committer: "<your name> (Agent)" <the [agent] email>
-mode = "split"
+# In every mode an agent's commit is authored, committed and signed by the
+# agent's own identity, such as
+# "Claude Code <claude-code.1a2b3c4d@agents.local>": agent-sign never puts
+# your name on an agent's commit. "agent" (the default) does only that.
+# "trailers" also adds Co-Authored-By and X-Agent-* trailers to a message
+# given with -m or --message. "split" and "alias", from earlier versions,
+# are still accepted and work as "agent".
+mode = "agent"
 
 [agent]
+# The Co-Authored-By trailer's name in "trailers" mode, when the agent
+# doesn't say who it is. It never changes who authors or commits.
 name = "Agent"
 email = "agent@local.internal"
 
@@ -360,24 +452,49 @@ email = "agent@local.internal"
 # email = "$HUMAN_EMAIL"
 
 [ssh]
-# Your existing signing program. A signing request without an agent token
-# (your own commits, when git calls agent-sign's signing program) is passed to it.
-fallback_program = "$FALLBACK_PROGRAM"
+# Your own signing program: what git's gpg.ssh.program was before the
+# installer routed your signing through agent-sign (ssh-keygen, git's
+# default, if it wasn't set). Your own signing requests go on to it; one from
+# a process an agent marked is refused. uninstall.sh puts it back as
+# gpg.ssh.program.
+fallback_program = "$(toml_escape "$FALLBACK_PROGRAM")"
 EOF
     ok "Config written to $CONFIG_FILE"
 else
-    # Update fallback_program in existing config if it's still the default
-    if grep -q 'fallback_program = "/usr/bin/ssh-keygen"' "$CONFIG_FILE" && [ "$FALLBACK_PROGRAM" != "/usr/bin/ssh-keygen" ]; then
-        sed -i.bak "s|fallback_program = \"/usr/bin/ssh-keygen\"|fallback_program = \"$FALLBACK_PROGRAM\"|" "$CONFIG_FILE"
+    ok "Existing config preserved at $CONFIG_FILE"
+    if [ "$ALREADY_ROUTED" = false ]; then
+        set_fallback_program "$FALLBACK_PROGRAM"
+        ok "fallback_program set to your signer, $FALLBACK_PROGRAM"
+    fi
+    # The old template's default attribution put your name on agent commits
+    # as committer; per-agent identities make the agent both.
+    if grep -q '^mode = "split"$' "$CONFIG_FILE"; then
+        sed -i.bak 's|^mode = "split"$|mode = "agent"|' "$CONFIG_FILE"
         rm -f "$CONFIG_FILE.bak"
-        ok "Updated fallback_program in existing config to $FALLBACK_PROGRAM"
-    else
-        ok "Existing config preserved at $CONFIG_FILE"
+        ok "Attribution changed from \"split\" (the old default) to \"agent\": agent commits are authored and committed by the agent"
     fi
 fi
 
-# ─── Step 6: Register agent key in allowed_signers ──────────────────────────
-step "Registering agent key for local verification"
+# ─── Step 5b: Route your own signing through agent-sign ─────────────────────
+# With gpg.ssh.program set to agent-ssh-sign, a signing request from a
+# process an agent marked is refused even when git runs without the wrapper
+# (a hook, the real git called directly), and yours go on to
+# fallback_program, as before. It covers SSH signing (gpg.format = ssh) only.
+step "Routing your own signing through agent-sign"
+if [ "$PREVIOUS_SSH_PROGRAM" = "$AGENT_SSH_SIGN" ]; then
+    ok "Your own signing already goes through $AGENT_SSH_SIGN"
+else
+    git config --global gpg.ssh.program "$AGENT_SSH_SIGN"
+    ok "git's gpg.ssh.program is now $AGENT_SSH_SIGN (it was ${PREVIOUS_SSH_PROGRAM:-not set}); your signatures go on to $(sed -n 's/^[[:space:]]*fallback_program[[:space:]]*=[[:space:]]*//p' "$CONFIG_FILE" | head -1)"
+fi
+# A file the global config includes after this setting would win over it.
+EFFECTIVE_SSH_PROGRAM=$(git config --global --includes --get gpg.ssh.program 2>/dev/null || echo "")
+if [ "$EFFECTIVE_SSH_PROGRAM" != "$AGENT_SSH_SIGN" ]; then
+    warn "A file your git config includes sets gpg.ssh.program to ${EFFECTIVE_SSH_PROGRAM:-nothing} after this setting, so your own signing doesn't go through agent-sign. Remove it there, or set it to $AGENT_SSH_SIGN."
+fi
+
+# ─── Step 6: Trust agents' signatures in allowed_signers ────────────────────
+step "Trusting agents' signatures for local verification"
 
 ALLOWED_SIGNERS_FILE=$(git config --global gpg.ssh.allowedSignersFile 2>/dev/null || echo "")
 
@@ -391,17 +508,72 @@ fi
 # Expand ~ in path
 ALLOWED_SIGNERS_FILE="${ALLOWED_SIGNERS_FILE/#\~/$HOME}"
 
-# Extract key type and key data from agent public key
-AGENT_KEY_DATA=$(awk '{print $2}' "$PUB_KEY_FILE")
-AGENT_SIGNER_EMAIL=$(git config --global user.email 2>/dev/null || echo "agent@local.internal")
-AGENT_SIGNER_LINE="$AGENT_SIGNER_EMAIL $AGENT_PUB_KEY"
+# The managed block: the lines `agent-sign trust-line` prints (one per
+# authority the service has started with), between two marker lines. The
+# service rewrites the block at each start, so a new authority is trusted
+# with no step of yours; nothing outside the markers is changed. Making the
+# block for the first time moves a bare trust line an earlier version added
+# into it. Before the service's first start there may be no line yet: it
+# adds its own when it starts.
+TRUST_LINES=$("$INSTALL_DIR/agent-sign" trust-line 2>/dev/null || true)
+write_trust_block() {
+    local file="$1"
+    [ -f "$file" ] || : > "$file"
+    BEGIN="$TRUST_BLOCK_BEGIN" END="$TRUST_BLOCK_END" LINES="$TRUST_LINES" PREFIX="$TRUST_PREFIX" awk '
+        BEGIN { b = ENVIRON["BEGIN"]; e = ENVIRON["END"]; lines = ENVIRON["LINES"]; prefix = ENVIRON["PREFIX"] }
+        { all[NR] = $0 }
+        $0 == b && !opened { opened = NR }
+        $0 == e && opened && !closed { closed = NR }
+        END {
+            if (opened && closed) {
+                for (i = 1; i <= NR; i++) {
+                    if (i > opened && i < closed) continue
+                    print all[i]
+                    if (i == opened && lines != "") print lines
+                }
+            } else {
+                for (i = 1; i <= NR; i++) if (index(all[i], prefix) != 1) print all[i]
+                print b
+                if (lines != "") print lines
+                print e
+            }
+        }
+    ' "$file" > "$file.agent-sign.new"
+    # Written over in place, so the file keeps its permissions, and a link
+    # stays a link.
+    cat "$file.agent-sign.new" > "$file"
+    rm -f "$file.agent-sign.new"
+}
+mkdir -p "$(dirname "$ALLOWED_SIGNERS_FILE")"
+write_trust_block "$ALLOWED_SIGNERS_FILE"
+ok "agent-sign's block in $ALLOWED_SIGNERS_FILE trusts agents' signatures for *@agents.local only; the service keeps it current"
 
-if [ -f "$ALLOWED_SIGNERS_FILE" ] && grep -qF "$AGENT_KEY_DATA" "$ALLOWED_SIGNERS_FILE"; then
-    ok "Agent key already registered in $ALLOWED_SIGNERS_FILE"
-else
-    mkdir -p "$(dirname "$ALLOWED_SIGNERS_FILE")"
-    echo "$AGENT_SIGNER_LINE" >> "$ALLOWED_SIGNERS_FILE"
-    ok "Agent key added to $ALLOWED_SIGNERS_FILE"
+# ─── The old shared agent key ───────────────────────────────────────────────
+# Versions before per-agent identities signed every agent commit with one
+# shared key, listed in allowed_signers under your own email (and perhaps on
+# your GitHub account), so agent commits verified as yours. Its private half
+# was stored unprotected, so it counts as exposed and was deleted above (Step
+# 3); its public half stays, so commits it already signed can still be
+# checked. Removing its trust is yours to decide, because commits it signed
+# then stop verifying: while it's still trusted, the installer prints the
+# exact commands, and runs neither.
+if [ -f "$LEGACY_PUB_KEY_FILE" ]; then
+    LEGACY_KEY_DATA=$(awk '{print $2}' "$LEGACY_PUB_KEY_FILE" 2>/dev/null || echo "")
+    if [ -n "$LEGACY_KEY_DATA" ] && [ -f "$ALLOWED_SIGNERS_FILE" ] && grep -qF "$LEGACY_KEY_DATA" "$ALLOWED_SIGNERS_FILE"; then
+        warn "$ALLOWED_SIGNERS_FILE still trusts the old shared agent key under your email, so commits it signed show as yours."
+        echo "    Its private half is deleted, so it signs nothing new. To stop trusting it"
+        echo "    (commits it signed will then show as unverified), remove its line:"
+        echo ""
+        echo "      grep -vF '$LEGACY_KEY_DATA' '$ALLOWED_SIGNERS_FILE' > '$ALLOWED_SIGNERS_FILE.new' && mv '$ALLOWED_SIGNERS_FILE.new' '$ALLOWED_SIGNERS_FILE'"
+        echo ""
+        echo "    If you added the old agent key to GitHub as a signing key, you can remove it"
+        echo "    there too: find it with"
+        echo ""
+        echo "      gh ssh-key list | grep -F '${LEGACY_KEY_DATA:0:40}'"
+        echo ""
+        echo "    and delete it with \`gh ssh-key delete <its ID>\`, or at https://github.com/settings/keys."
+        echo "    The installer removes neither."
+    fi
 fi
 
 # ─── Step 7: Stop any existing daemon ───────────────────────────────────────
@@ -586,7 +758,7 @@ if [ -d "$HOME/.gemini/config" ]; then
     mkdir -p "$HOME/.gemini/config/rules"
     cat > "$HOME/.gemini/config/rules/agent-sign.md" << 'EOF'
 # agent-sign
-Git commits here go through agent-sign (`~/.agent-sign/bin/git`), which signs them with the agent's own key once the person has approved.
+Git commits here go through agent-sign (`~/.agent-sign/bin/git`), which signs and commits them as the agent's own identity, never as the user.
 Run `git commit` normally. Never pass `--no-gpg-sign` or call another git to get around it.
 EOF
     ok "Configured Antigravity rule in ~/.gemini/config/rules/agent-sign.md"
@@ -613,12 +785,10 @@ verify "agent-sign binary exists"         "[ -x '$INSTALL_DIR/agent-sign' ]"
 verify "agent-ssh-sign binary exists" "[ -x '$INSTALL_DIR/agent-ssh-sign' ]"
 verify "agent-git binary exists"     "[ -x '$INSTALL_DIR/agent-git' ]"
 verify "git shim exists"            "[ -x '$INSTALL_DIR/git' ]"
-verify "Private key exists"         "[ -f '$KEYS_DIR/agent_ed25519' ]"
-verify "Public key exists"          "[ -f '$PUB_KEY_FILE' ]"
+verify "No agents' authority private key stored" "[ ! -e '$CA_KEY_FILE' ]"
+verify "Agents' authority public key recorded at start" "[ -s '$CAS_HISTORY_FILE' ]"
 verify "Config file exists"         "[ -f '$CONFIG_FILE' ]"
-# GNU stat first: on Linux, `stat -f` means "file system status" and prints
-# something else, so trying the BSD form first failed this check on Linux.
-verify "Key permissions (0600)"     "[ \"\$(stat -c '%a' '$KEYS_DIR/agent_ed25519' 2>/dev/null || stat -f '%Lp' '$KEYS_DIR/agent_ed25519' 2>/dev/null)\" = '600' ]"
+verify "Your own signing goes through agent-sign" "[ \"\$(git config --global --includes --get gpg.ssh.program)\" = '$AGENT_SSH_SIGN' ]"
 verify "Daemon socket exists"       "[ -S '$CONFIG_DIR/daemon.sock' ]"
 # grep without -q reads all of the output: with -q it stops at the first match,
 # agent-signd's next line then hits a closed pipe, and under pipefail the check
@@ -633,84 +803,13 @@ else
     echo -e "${YELLOW}${BOLD}$PASS passed, $FAIL failed${NC}"
 fi
 
-# ─── Step 11: Register Signing Key on GitHub / GitLab ───────────────────────
-step "GitHub / GitLab Signing Key Setup"
-
-REGISTERED_VIA_GH=false
-
-# Already on the account (an upgrade, or added before)? Then there's nothing
-# to add, and nothing to ask, print, copy or open. Reading the key list
-# changes nothing, so it needs no yes.
-if command -v gh &>/dev/null && gh auth status &>/dev/null \
-    && gh ssh-key list 2>/dev/null | grep -F "$AGENT_KEY_DATA" >/dev/null; then
-    ok "The agent's signing key is already on your GitHub account"
-    REGISTERED_VIA_GH=true
-fi
-
-# Adding a key to someone's GitHub account is theirs to agree to: ask, and
-# only when there's a person at the terminal to answer.
-ADD_WITH_GH=false
-if [ "$REGISTERED_VIA_GH" = false ] && command -v gh &>/dev/null && gh auth status &>/dev/null && [ -t 0 ]; then
-    echo ""
-    echo "The GitHub CLI (gh) is signed in. agent-sign can add the agent's public"
-    echo "key to your GitHub account as a signing key (it can sign, not log in or push),"
-    echo "so agent commits show as Verified."
-    read -r -p "Add it now with gh? [y/N] " REPLY_GH || REPLY_GH=""
-    case "$REPLY_GH" in [yY]|[yY][eE][sS]) ADD_WITH_GH=true ;; esac
-fi
-if [ "$ADD_WITH_GH" = true ]; then
-    if gh ssh-key list 2>/dev/null | grep -F "$AGENT_KEY_DATA" >/dev/null; then
-        ok "The agent's signing key is already on your GitHub account"
-        REGISTERED_VIA_GH=true
-    elif gh ssh-key add "$PUB_KEY_FILE" --type signing --title "agent-sign agent signing key ($(hostname -s))" 2>/dev/null; then
-        ok "Added the agent's signing key to your GitHub account"
-        REGISTERED_VIA_GH=true
-    else
-        warn "gh couldn't add the key (it may need the admin:ssh_signing_key scope); the steps to add it by hand follow"
-    fi
-fi
-
-if [ "$REGISTERED_VIA_GH" = false ]; then
-    # The clipboard and the browser are the person's: only touch them when
-    # they're at the terminal to see why.
-    COPIED_CLIPBOARD=false
-    if [ ! -t 0 ]; then
-        :
-    elif command -v pbcopy &>/dev/null; then
-        pbcopy < "$PUB_KEY_FILE"
-        COPIED_CLIPBOARD=true
-    elif command -v wl-copy &>/dev/null; then
-        wl-copy < "$PUB_KEY_FILE"
-        COPIED_CLIPBOARD=true
-    elif command -v xclip &>/dev/null; then
-        xclip -selection clipboard < "$PUB_KEY_FILE"
-        COPIED_CLIPBOARD=true
-    fi
-
-    echo ""
-    echo -e "${BOLD}Add your Agent SSH Signing Key to GitHub:${NC}"
-    echo -e "   1. Browser URL: ${CYAN}https://github.com/settings/ssh/new${NC}"
-    echo -e "   2. Key type:    ${BOLD}Signing Key${NC}  (NOT Authentication Key)"
-    echo -e "   3. Key content:"
-    echo ""
-    echo -e "   ${GREEN}$AGENT_PUB_KEY${NC}"
-    echo ""
-
-    if [ "$COPIED_CLIPBOARD" = true ]; then
-        ok "Public key automatically copied to your clipboard!"
-    fi
-
-    # Open the page only for someone at the terminal.
-    if [ -t 0 ]; then
-        if [ "$OS" = "Darwin" ] && command -v open &>/dev/null; then
-            open "https://github.com/settings/ssh/new" 2>/dev/null || true
-            ok "Opened GitHub SSH settings in your browser."
-        elif command -v xdg-open &>/dev/null; then
-            xdg-open "https://github.com/settings/ssh/new" 2>/dev/null || true
-            ok "Opened GitHub SSH settings in your browser."
-        fi
-    fi
-fi
+# ─── Step 11: GitHub / GitLab ───────────────────────────────────────────────
+# Nothing to add: agents sign with their own keys under certificates from the
+# agents' authority, which GitHub doesn't check, so agent commits show there
+# as Unverified. Earlier versions offered to add a shared agent key to your
+# account, which made agent commits show as Verified for you.
+step "GitHub / GitLab"
+ok "Nothing to add: agents' commits are signed as the agents, not as you, and show on GitHub as Unverified"
 
 # ─── Step 12: Print results & next steps ───────────────────────────────────
 step "Setup Complete"
@@ -721,14 +820,16 @@ echo -e "   The installer put $INSTALL_DIR first on PATH in the shell profiles"
 echo -e "   it found, so agents started from a new terminal run the wrapper as git."
 echo -e "   Then check the setup with: ${GREEN}agent-sign doctor${NC}"
 echo ""
-echo -e "${BOLD}2. Your own commits${NC} from an interactive terminal skip agent-sign and use"
-echo -e "   your own signing (${DETECTED_SOURCE:-none detected}). An editor's commit button whose"
-echo -e "   git is the wrapper looks like an agent to agent-sign, and asks for a lease."
+echo -e "${BOLD}2. Your own commits${NC} from an interactive terminal skip the wrapper and are"
+echo -e "   signed by your own signer (${DETECTED_SOURCE}), through agent-ssh-sign, which"
+echo -e "   refuses signing requests from agents. An editor's commit button whose git is"
+echo -e "   the wrapper is left to git: unsigned, under your git name, never attributed"
+echo -e "   to an agent."
 echo ""
-echo -e "${BOLD}3. What the agent key can do:${NC} it's registered as a signing key only, so"
-echo -e "   it can't log in or push. But it's stored unencrypted, readable by your"
-echo -e "   user, and signatures made with it show as Verified for you; see the"
-echo -e "   README's \"What it protects against, and what it doesn't\"."
+echo -e "${BOLD}3. Agents sign as themselves:${NC} each agent session's commits are signed,"
+echo -e "   authored and committed as that agent, never as you. These identities are"
+echo -e "   claims made by programs running as your user: attribution, not a security"
+echo -e "   boundary. See the README's \"What it protects against, and what it doesn't\"."
 echo ""
 echo -e "   To uninstall: ${CYAN}./scripts/uninstall.sh${NC}"
 echo ""

@@ -1,6 +1,16 @@
 //! agent-sign's settings: built-in defaults, then the person's config file in
 //! the state directory (`~/.agent-sign/config.toml`), then the repository's
 //! `.agent-sign.toml`, then environment variables.
+//!
+//! A repository's file is written by whoever wrote the repository, so since
+//! the identity review (28 Oct 2026) it can only tighten the person's rules
+//! (see [`tighten_with_repo_file`]): before, it overlaid every table, and a
+//! cloned repository could name the person, or anyone, as the author and
+//! committer of commits carrying a Good agent signature. The person's own
+//! file must read in full: the service refuses to start on one it can't
+//! read, or on a key it doesn't know (see [`Config::check_file`]), since a
+//! misspelt `approval` that fell back to the default would quietly mean no
+//! approval at all.
 
 use crate::attribution::AttributionMode;
 use crate::paths;
@@ -40,7 +50,7 @@ fn default_true() -> bool {
 impl Default for AttributionConfig {
     fn default() -> Self {
         Self {
-            mode: AttributionMode::Split,
+            mode: AttributionMode::default(),
             include_lease_trailer: true,
             include_signer_trailer: true,
         }
@@ -137,8 +147,27 @@ pub enum LeaseScope {
     Repo,
 }
 
+/// Whether a lease needs anyone's approval (`[security] approval`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ApprovalMode {
+    /// The service grants leases without asking, and records each grant
+    /// (which identity, which repository and branch) in its log. The default:
+    /// agents sign as themselves, never as the person, so there is nothing of
+    /// the person's to approve.
+    #[default]
+    None,
+    /// The device's owner approves each lease (Touch ID or the login
+    /// password on macOS), as every lease needed before per-agent identities.
+    DeviceOwner,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecurityConfig {
+    /// Whether leases need the device owner's approval: "none" (the default)
+    /// or "device-owner".
+    #[serde(default)]
+    pub approval: ApprovalMode,
     #[serde(default)]
     pub lease_mode: LeaseMode,
     #[serde(default)]
@@ -178,6 +207,18 @@ pub struct SecurityConfig {
     pub max_diff_lines: usize,
     #[serde(default)]
     pub enforce_conventional_commits: bool,
+    /// Written by installers before 30 Sept 2026 and no longer used: every
+    /// lease now ends when its branch is merged or deleted. Accepted, so an
+    /// existing config still starts the service, and never written back.
+    #[serde(default, skip_serializing)]
+    pub auto_revoke_on_branch_delete: Option<bool>,
+    /// The branches a repository's `.agent-sign.toml` added to
+    /// `block_branches` (see [`tighten_with_repo_file`]). The service never
+    /// reads repository files, so the wrapper refuses these itself; the
+    /// person's own list is the service's to enforce (it may be set on the
+    /// service's command line). Never read from or written to a file.
+    #[serde(skip)]
+    pub repo_block_branches: Vec<String>,
 }
 
 fn default_lease_duration_str() -> String {
@@ -227,6 +268,7 @@ fn default_max_diff_lines() -> usize {
 impl Default for SecurityConfig {
     fn default() -> Self {
         Self {
+            approval: ApprovalMode::default(),
             lease_mode: LeaseMode::default(),
             lease_scope: LeaseScope::default(),
             default_lease_duration: default_lease_duration_str(),
@@ -241,6 +283,8 @@ impl Default for SecurityConfig {
             forbidden_paths: default_forbidden_paths(),
             max_diff_lines: default_max_diff_lines(),
             enforce_conventional_commits: false,
+            auto_revoke_on_branch_delete: None,
+            repo_block_branches: Vec::new(),
         }
     }
 }
@@ -371,8 +415,151 @@ fn merge_toml(base: &mut toml::Value, overlay: toml::Value) {
     }
 }
 
+/// Keys an older installer wrote that this version accepts but no longer
+/// uses, by table: an existing config must keep starting the service (see
+/// [`Config::check_file`]). Every key any version of `scripts/install.sh`
+/// has written is either a field of [`Config`] or listed here.
+const RETIRED_KEYS: &[(&str, &str)] = &[("security", "auto_revoke_on_branch_delete")];
+
+/// Every table and key [`Config`] reads, from its own defaults (each field
+/// serializes, so none is missed), plus [`RETIRED_KEYS`].
+fn known_keys() -> Vec<(String, Vec<String>)> {
+    let defaults = toml::Value::try_from(Config::default())
+        .unwrap_or(toml::Value::Table(toml::map::Map::new()));
+    let mut known: Vec<(String, Vec<String>)> = defaults
+        .as_table()
+        .map(|t| {
+            t.iter()
+                .map(|(table, keys)| {
+                    let keys = keys
+                        .as_table()
+                        .map(|k| k.keys().cloned().collect())
+                        .unwrap_or_default();
+                    (table.clone(), keys)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    for (table, key) in RETIRED_KEYS {
+        if let Some((_, keys)) = known.iter_mut().find(|(t, _)| t == table) {
+            keys.push(key.to_string());
+        }
+    }
+    known
+}
+
+/// The first table or key in `file` that [`Config`] doesn't read, in plain
+/// words, or `None` when every one is known. A key in the wrong table says
+/// where it belongs.
+fn unknown_key(file: &toml::Value) -> Option<String> {
+    let known = known_keys();
+    let belongs = |key: &str| {
+        known
+            .iter()
+            .find(|(_, keys)| keys.iter().any(|k| k == key))
+            .map(|(t, _)| format!(" (it belongs under [{t}])"))
+            .unwrap_or_default()
+    };
+    for (name, value) in file.as_table()? {
+        let Some((_, keys)) = known.iter().find(|(t, _)| t == name) else {
+            return Some(if value.is_table() {
+                format!("an unknown table [{name}]")
+            } else {
+                format!("the key `{name}` outside any table{}", belongs(name))
+            });
+        };
+        let Some(table) = value.as_table() else {
+            return Some(format!("`{name}`, which should be a table [{name}]"));
+        };
+        for key in table.keys() {
+            if !keys.iter().any(|k| k == key) {
+                return Some(format!(
+                    "an unknown key `{key}` in [{name}]{}",
+                    belongs(key)
+                ));
+            }
+        }
+    }
+    None
+}
+
+/// Applies a repository's `.agent-sign.toml` (`file`, parsed) to `config`,
+/// keeping only what tightens the `[security]` rules:
+/// - `forbidden_paths` and `block_branches` entries are added to the
+///   person's, never replacing them;
+/// - `max_diff_lines` applies only when lower (0 means no limit, so any
+///   limit is lower).
+///
+/// Everything else (`[attribution]`, `[agent]`, `[human]`, `[ssh]`, any
+/// other `[security]` key, or a value of the wrong type) is ignored and
+/// named in the returned list, which the caller reports in one warning.
+/// That includes `max_commits_per_minute`: the rate is counted by the
+/// service, which reads only the person's own config, so a lower value here
+/// could never be enforced, and taking it would only look as if it were
+/// (follow-up round, 28 Oct 2026).
+/// Whoever wrote the repository is not the person: before the identity
+/// review its file overlaid every table, so it could loosen the rules or
+/// name anyone as an agent commit's author and committer.
+pub fn tighten_with_repo_file(config: &mut Config, file: &toml::Value) -> Vec<String> {
+    let mut ignored = Vec::new();
+    let Some(tables) = file.as_table() else {
+        return ignored;
+    };
+    let strings = |v: &toml::Value| -> Option<Vec<String>> {
+        v.as_array()?
+            .iter()
+            .map(|e| e.as_str().map(str::to_string))
+            .collect()
+    };
+    for (name, value) in tables {
+        let Some(security) = value.as_table().filter(|_| name == "security") else {
+            ignored.push(format!("[{name}]"));
+            continue;
+        };
+        for (key, value) in security {
+            let sec = &mut config.security;
+            let applied = match key.as_str() {
+                "forbidden_paths" => strings(value).map(|more| {
+                    for p in more {
+                        if !sec.forbidden_paths.contains(&p) {
+                            sec.forbidden_paths.push(p);
+                        }
+                    }
+                }),
+                "block_branches" => strings(value).map(|more| {
+                    for b in more {
+                        if !sec.block_branches.contains(&b) {
+                            sec.block_branches.push(b.clone());
+                        }
+                        sec.repo_block_branches.push(b);
+                    }
+                }),
+                "max_diff_lines" => value
+                    .as_integer()
+                    .and_then(|n| usize::try_from(n).ok())
+                    .map(|n| {
+                        if n > 0 && (sec.max_diff_lines == 0 || n < sec.max_diff_lines) {
+                            sec.max_diff_lines = n;
+                        }
+                    }),
+                _ => None,
+            };
+            if applied.is_none() {
+                ignored.push(format!("[security] {key}"));
+            }
+        }
+    }
+    ignored
+}
+
 impl Config {
+    /// The config in an explicit file (`agent-signd --config`): it must
+    /// exist and pass [`Config::check_file`].
     pub fn load_from_file(path: &Path) -> Result<Self, Box<dyn std::error::Error>> {
+        if std::fs::symlink_metadata(path).is_err() {
+            return Err(format!("{} doesn't exist", path.display()).into());
+        }
+        Self::check_file(path)?;
         let content = std::fs::read_to_string(path)?;
         let config: Config = toml::from_str(&content)?;
         Ok(config)
@@ -382,10 +569,69 @@ impl Config {
     /// 1. Default built-in configs
     /// 2. Deep-merged with `<state dir>/config.toml` (if present), where the
     ///    state dir is `~/.agent-sign`
-    /// 3. Deep-merged with `<repo_root>/.agent-sign.toml` (if present)
+    /// 3. Tightened by `<repo_root>/.agent-sign.toml` (if present), see
+    ///    [`tighten_with_repo_file`]
     /// 4. Overlaid with environment variables (`AGENT_SIGN_*`)
     pub fn load(repo_path: Option<&Path>) -> Self {
         Self::load_in_home(&paths::home_dir(), repo_path)
+    }
+
+    /// Whether the person's config file in `home` (if there is one) reads as
+    /// a valid config: [`Config::check_file`] on `~/.agent-sign/config.toml`.
+    pub fn check_file_in_home(home: &Path) -> Result<(), String> {
+        Self::check_file(&paths::state_dir_in(home).join("config.toml"))
+    }
+
+    /// Whether the person's config file at `path` reads in full. Only "not
+    /// found" means there is no config; anything else that stops it being
+    /// read (its permissions, a link to nothing, a directory), a key or
+    /// table agent-sign doesn't know (a misspelt or misplaced `approval`), or
+    /// a value it can't read is an error that names the file. [`Config::load`]
+    /// falls back to the defaults in those cases, which for a security
+    /// setting would quietly loosen it (the default approval is "none"), so
+    /// the service checks this first and refuses to start instead.
+    pub fn check_file(path: &Path) -> Result<(), String> {
+        let content = match std::fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                // A link whose target is missing reads as "not found" too,
+                // but the person meant to have a config there.
+                if std::fs::symlink_metadata(path).is_ok() {
+                    return Err(format!(
+                        "{} is a link to a file that doesn't exist; point it at your config or remove it",
+                        path.display()
+                    ));
+                }
+                return Ok(());
+            }
+            Err(e) => {
+                return Err(format!(
+                    "{} exists but can't be read ({e}); fix its permissions, or move it aside to use the defaults",
+                    path.display()
+                ));
+            }
+        };
+        let overlay: toml::Value = toml::from_str(&content)
+            .map_err(|e| format!("{} isn't valid TOML: {e}", path.display()))?;
+        if let Some(what) = unknown_key(&overlay) {
+            return Err(format!(
+                "{} has {what}, which agent-sign doesn't read; fix the spelling or remove it",
+                path.display()
+            ));
+        }
+        let mut defaults = Config::default();
+        if let Some(home) = path.parent().and_then(Path::parent) {
+            defaults.ssh.agent_key_path = key_path_in(home);
+        }
+        let mut base: toml::Value = toml::Value::try_from(&defaults)
+            .map_err(|e| format!("the built-in defaults don't serialize: {e}"))?;
+        merge_toml(&mut base, overlay);
+        base.try_into::<Config>().map(|_| ()).map_err(|e| {
+            format!(
+                "{} has a setting agent-sign can't read: {e}",
+                path.display()
+            )
+        })
     }
 
     /// [`Config::load`] for an explicit home directory, so loading can be
@@ -405,19 +651,29 @@ impl Config {
             merge_toml(&mut base_val, overlay);
         }
 
-        // 2. Overlay repo-level config (.agent-sign.toml, then .agent-sign.toml)
+        let mut config: Config = base_val.try_into().unwrap_or_default();
+
+        // 2. The repository's file, which can only tighten [security] rules
+        // (see tighten_with_repo_file). What it tried to set otherwise is
+        // named once, so a repository that expected more isn't silently
+        // half-applied.
         if let Some(repo) = repo_path {
             for name in paths::REPO_CONFIG_FILES {
                 let repo_config = repo.join(name);
                 if let Ok(content) = std::fs::read_to_string(&repo_config)
                     && let Ok(overlay) = toml::from_str::<toml::Value>(&content)
                 {
-                    merge_toml(&mut base_val, overlay);
+                    let ignored = tighten_with_repo_file(&mut config, &overlay);
+                    if !ignored.is_empty() {
+                        eprintln!(
+                            "[agent-sign] {}: ignored {}: a repository's file can only add forbidden_paths and block_branches, or lower max_diff_lines",
+                            repo_config.display(),
+                            ignored.join(", ")
+                        );
+                    }
                 }
             }
         }
-
-        let mut config: Config = base_val.try_into().unwrap_or_default();
 
         // 3. Environment overrides
         if let Some(val) = paths::env_var("ALLOW_MAIN") {
@@ -459,6 +715,7 @@ impl Config {
 
         if let Some(val) = paths::env_var("MODE") {
             match val.to_lowercase().as_str() {
+                "agent" => config.attribution.mode = AttributionMode::Agent,
                 "split" => config.attribution.mode = AttributionMode::Split,
                 "trailers" => config.attribution.mode = AttributionMode::Trailers,
                 "alias" => config.attribution.mode = AttributionMode::Alias,

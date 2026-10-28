@@ -53,24 +53,29 @@ fn test_attribution_split_mode() {
         github_username: "humandev".to_string(),
     };
 
-    let engine = AttributionEngine::new(attr_config, agent_config, human_config);
+    // Identity review (28 Oct 2026): every mode attributes an agent's signed
+    // commit to the agent's own identity; `split` no longer names the
+    // configured agent as author and the person as committer.
+    let identity = agent_sign::attribution::AgentIdentity::new("codex", "Codex", Some("s"));
+    let engine = AttributionEngine::new(attr_config, agent_config, human_config)
+        .with_identity(identity.clone());
     let env_vars = engine.compute_env_vars("initial commit message");
 
     assert_eq!(
         env_vars.get("GIT_AUTHOR_NAME").map(|s| s.as_str()),
-        Some("Antigravity Agent")
+        Some("Codex")
     );
     assert_eq!(
         env_vars.get("GIT_AUTHOR_EMAIL").map(|s| s.as_str()),
-        Some("agent@local.internal")
+        Some(identity.principal.as_str())
     );
     assert_eq!(
         env_vars.get("GIT_COMMITTER_NAME").map(|s| s.as_str()),
-        Some("Human Dev")
+        Some("Codex")
     );
     assert_eq!(
         env_vars.get("GIT_COMMITTER_EMAIL").map(|s| s.as_str()),
-        Some("dev@example.com")
+        Some(identity.principal.as_str())
     );
 }
 
