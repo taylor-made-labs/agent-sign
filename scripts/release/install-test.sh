@@ -107,11 +107,15 @@ new_repo() {
     echo "$repo"
 }
 
-# An agent commit through the installed `git` on PATH.
+# An agent commit through the installed `git` on PATH, marked the way
+# Claude Code marks the commands it runs. (Changed 28 Oct: a commit with no
+# terminal and no agent mark may be the user's own editor, so agent-sign now
+# leaves it to git, unsigned; an agent's commit names its session.)
 agent_commit() {
     local home="$1" repo="$2" file="$3"
     (cd "$repo" && echo "$file" > "$file" && in_home "$home" git add "$file" \
-        && in_home "$home" git commit -q -m "add $file")
+        && in_home "$home" env CLAUDECODE=1 CLAUDE_CODE_SESSION_ID=install-test \
+            git commit -q -m "add $file")
 }
 
 verified() {
