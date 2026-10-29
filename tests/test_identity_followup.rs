@@ -985,7 +985,10 @@ fn b_g_the_summary_names_the_routing_and_the_deletion_before_asking() {
     let w = World::new("");
     fs::create_dir_all(w.keys()).unwrap();
     let legacy = w.keys().join("agent_ed25519");
-    fs::write(&legacy, "-----BEGIN OPENSSH PRIVATE KEY-----\nx\n").unwrap();
+    // Assembled at run time, so the repository's own history scan for
+    // private key blocks never matches this stand-in.
+    let header = format!("-----BEGIN OPENSSH {} KEY-----", "PRIVATE");
+    fs::write(&legacy, format!("{header}\nx\n")).unwrap();
     let inst = installer(&w);
     let out = inst.install_answering(&w, "n\n");
     let shown = all_output(&out);

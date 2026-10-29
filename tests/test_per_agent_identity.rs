@@ -107,7 +107,9 @@ enum PersonSigner {
     /// `gpg.ssh.program` is the fake signer.
     Fake,
     /// `gpg.ssh.program` is agent-sign's signing program, whose
-    /// `fallback_program` is the fake signer.
+    /// `fallback_program` is the fake signer. Only the macOS-only terminal
+    /// tests use it, so it's unused on Linux.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     ThroughAgentSshSign,
 }
 
