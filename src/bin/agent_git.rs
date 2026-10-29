@@ -4,19 +4,30 @@
 //! The person's own commands go straight to the real git. A commit from an
 //! agent is checked against the local rules, gets a lease and a single-use
 //! token from the service, and runs the real git with agent-sign's signing
-//! program and the configured author and committer. Any other command from an
-//! agent (merge, rebase, cherry-pick, pull, a shell alias...) runs with
-//! signing off and the person's signer out of reach, so nothing git creates
-//! for an agent is ever signed with the person's own key.
+//! program, signed as the agent's own identity (see
+//! `agent_sign::attribution`), with the agent as author and committer. A
+//! command that makes commits by itself (merge, rebase, cherry-pick, revert,
+//! am, pull, an alias) from an identified agent gets a run token instead, so
+//! every commit it makes is signed as that agent too. Any other command from
+//! an agent runs with signing off. Either way the person's signer is out of
+//! reach, so nothing git creates for an agent is ever signed with the
+//! person's own key.
+//!
+//! A commit with no terminal and no agent mark (the person's editor or a
+//! GUI, or an agent that doesn't say it's one) is left to git: unsigned,
+//! under git's own names, with no lease and nothing asked (identity review,
+//! 28 Oct 2026). Before, it was signed as an "unidentified agent", which put
+//! an agent's name on the person's own commits.
 
 use std::env;
 use std::io::IsTerminal;
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-use agent_sign::attribution::{AttributionEngine, AttributionMode};
+use agent_sign::attribution::{AgentIdentity, AttributionEngine, AttributionMode};
 use agent_sign::config::Config;
 use agent_sign::interceptor::CommandInterceptor;
+use agent_sign::lease::branch_matches_blocked;
 use agent_sign::paths;
 use agent_sign::protocol::{Request, Response, client_socket_path, send_request};
 use agent_sign::ssh_sign::EVENT_TOKEN_VAR;
@@ -43,13 +54,20 @@ fn main() -> ExitCode {
 
     // An alias for commit (`git ci`, with alias.ci = "commit ...") is a
     // commit too: it gets the same handling, with the alias's name where
-    // `commit` would be.
+    // `commit` would be. Another alias may make commits as well (one for
+    // `merge`, or a shell alias running `git merge`), which `exec_for_agent`
+    // needs to know.
+    let mut alias_may_commit = false;
     if !decision.is_commit
         && let Some(at) = decision.subcommand_index
-        && alias_is_commit(&real_git, &args[1..1 + at], &args[1 + at])
+        && let Some(expansion) = alias_expansion(&real_git, &args[1..1 + at], &args[1 + at])
     {
-        decision.is_commit = true;
-        decision.commit_index = Some(at);
+        if alias_is_commit(&real_git, &args[1..1 + at], &expansion) {
+            decision.is_commit = true;
+            decision.commit_index = Some(at);
+        } else {
+            alias_may_commit = alias_makes_commits(&real_git, &args[1..1 + at], &expansion);
+        }
     }
 
     // Human isolation [INV-1]: a command typed in an interactive terminal
@@ -70,23 +88,83 @@ fn main() -> ExitCode {
         if is_interactive_human {
             return exec_persons_git(&real_git, &args[1..]);
         }
-        return exec_for_agent(&real_git, &args[1..]);
+        return exec_for_agent(
+            &real_git,
+            &args[1..],
+            decision.subcommand_index,
+            alias_may_commit,
+        );
     }
+
+    let identity = agent_sign::attribution::identify_agent();
 
     // A commit that asks not to be signed (--no-gpg-sign, or commit.gpgsign
     // set to false for this command or this repository, as test fixtures
-    // do for throwaway commits) goes to the real git unchanged: there's
-    // nothing to sign, so nothing to ask the person about.
+    // do for throwaway commits) goes to the real git unsigned: there's
+    // nothing to sign, so nothing to ask the person about. An identified
+    // agent's still carries its identity, unless the repository names its
+    // own user (see `identity_names_for_unsigned`).
     if signing_declined(&real_git, &args[1..], decision.commit_index) {
-        return exec_unsigned(&real_git, &args[1..]);
+        let names = match &identity {
+            Some(id) if !is_interactive_human => {
+                identity_names_for_unsigned(&real_git, &args[1..], decision.commit_index, id)
+            }
+            _ => Vec::new(),
+        };
+        return exec_unsigned(&real_git, &args[1..], &names);
     }
 
     if is_interactive_human {
         return exec_persons_git(&real_git, &args[1..]);
     }
 
+    // No terminal and no agent mark: the person's editor or GUI as likely as
+    // an agent that doesn't say so. Like an unmarked merge, it's git's own
+    // commit: unsigned, git's own names, no lease, nothing asked, and it
+    // never fails for want of the service.
+    let Some(identity) = identity else {
+        return exec_unmarked_commit(&real_git, &args[1..], decision.commit_index);
+    };
+
     // Commit command detected: prepare autonomous signing context
-    handle_agent_commit(&real_git, &args[1..], decision.commit_index)
+    handle_agent_commit(&real_git, &args[1..], decision.commit_index, identity)
+}
+
+/// The author and committer variables an identified agent's unsigned commit
+/// gets: its identity, so an agent's commit that declines signing (as test
+/// suites' throwaway commits do) doesn't carry the person's global name and
+/// email (identity review, 28 Oct 2026). Only when the repository doesn't
+/// name its own user: when `user.email` is set for this repository or
+/// worktree, or for this command (`-c`), that is the fixture's choice and
+/// other projects' test suites depend on it, so it's kept. A variable the
+/// caller already set is kept too, for the same reason.
+fn identity_names_for_unsigned(
+    real_git: &Path,
+    args: &[String],
+    commit_index: Option<usize>,
+    identity: &AgentIdentity,
+) -> Vec<(String, String)> {
+    let global = &args[..commit_index.unwrap_or(0)];
+    // GIT_CONFIG is read by `git config` but not by `git commit`.
+    let scope = git_command(real_git)
+        .args(global)
+        .args(["config", "--show-scope", "--get", "user.email"])
+        .env_remove("GIT_CONFIG")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string());
+    let repository_names_its_user = scope.is_some_and(|line| {
+        let scope = line.split('\t').next().unwrap_or("").trim();
+        !matches!(scope, "global" | "system")
+    });
+    if repository_names_its_user {
+        return Vec::new();
+    }
+    agent_sign::attribution::identity_env(identity)
+        .into_iter()
+        .filter(|(key, _)| env::var_os(key).is_none())
+        .collect()
 }
 
 /// Whether this commit asks not to be signed: by its own options, or else by
@@ -120,28 +198,29 @@ fn signing_declined(real_git: &Path, args: &[String], commit_index: Option<usize
         })
 }
 
-/// Whether `name` is a git alias that runs `commit`, as git would expand it
-/// with these global options, following aliases of aliases (as git does, up
-/// to a depth). A shell alias (`!...`) isn't followed: git runs its own copy
-/// of itself inside it, not this wrapper, which is an open gap noted in the
-/// README's limits.
-fn alias_is_commit(real_git: &Path, global: &[String], name: &str) -> bool {
+/// What `name` expands to as a git alias with these global options, or
+/// `None` when it isn't one. GIT_CONFIG is read by `git config` but not when
+/// git expands an alias, so it mustn't hide one.
+fn alias_expansion(real_git: &Path, global: &[String], name: &str) -> Option<String> {
+    git_command(real_git)
+        .args(global)
+        .args(["config", "--get", &format!("alias.{name}")])
+        .env_remove("GIT_CONFIG")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+}
+
+/// Whether an alias expanding to `expansion` runs `commit`, as git would
+/// expand it with these global options, following aliases of aliases (as git
+/// does, up to a depth). A shell alias (`!...`) isn't a commit here: git runs
+/// its own copy of itself inside it, not this wrapper, so the commits it
+/// makes are signed through the run token `exec_for_agent` gives it.
+fn alias_is_commit(real_git: &Path, global: &[String], expansion: &str) -> bool {
     let interceptor = CommandInterceptor::new();
-    let mut name = name.to_string();
+    let mut expansion = expansion.to_string();
     for _ in 0..16 {
-        let Some(expansion) = git_command(real_git)
-            .args(global)
-            .args(["config", "--get", &format!("alias.{name}")])
-            // GIT_CONFIG is read by `git config` but not when git expands an
-            // alias, so it mustn't hide one.
-            .env_remove("GIT_CONFIG")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-        else {
-            return false;
-        };
         let words: Vec<String> = expansion.split_whitespace().map(str::to_string).collect();
         if words.first().is_some_and(|w| w.starts_with('!')) {
             return false;
@@ -151,24 +230,58 @@ fn alias_is_commit(real_git: &Path, global: &[String], name: &str) -> bool {
         if inner.is_commit {
             return true;
         }
-        match inner.subcommand_index.and_then(|i| words.get(i)) {
-            Some(next) => name = next.clone(),
-            None => return false,
-        }
+        let Some(next) = inner.subcommand_index.and_then(|i| words.get(i)) else {
+            return false;
+        };
+        let Some(further) = alias_expansion(real_git, global, next) else {
+            return false;
+        };
+        expansion = further;
     }
     false
 }
 
-/// Runs a commit that asked not to be signed, with signing made impossible:
-/// every signing program git could call is set to one that always fails.
+/// Whether an alias expanding to `expansion` may make commits: a shell alias
+/// (`!...`, whose commands can't be read ahead), or one that expands, through
+/// any aliases of aliases, to one of [`MAKES_COMMITS`].
+fn alias_makes_commits(real_git: &Path, global: &[String], expansion: &str) -> bool {
+    let interceptor = CommandInterceptor::new();
+    let mut expansion = expansion.to_string();
+    for _ in 0..16 {
+        let words: Vec<String> = expansion.split_whitespace().map(str::to_string).collect();
+        if words.first().is_some_and(|w| w.starts_with('!')) {
+            return true;
+        }
+        let Some(next) = interceptor
+            .inspect_command(&words)
+            .subcommand_index
+            .and_then(|i| words.get(i))
+        else {
+            return false;
+        };
+        if MAKES_COMMITS.contains(&next.as_str()) {
+            return true;
+        }
+        let Some(further) = alias_expansion(real_git, global, next) else {
+            return false;
+        };
+        expansion = further;
+    }
+    false
+}
+
+/// Runs a commit unsigned, with signing made impossible: `commit.gpgsign` is
+/// off and every signing program git could call is set to one that always
+/// fails. `names` are author and committer variables to set (an identified
+/// agent's, see `identity_names_for_unsigned`), or none for git's own.
 /// If the wrapper ever reads a commit's options differently from git, the
 /// commit fails, rather than git signing it with the person's own key. (Global
 /// options the commit itself gives come after these and can override them:
 /// an agent setting its own signing program is going around agent-sign on
 /// purpose, which it could also do by calling git directly.)
-fn exec_unsigned(real_git: &Path, args: &[String]) -> ExitCode {
+fn exec_unsigned(real_git: &Path, args: &[String], names: &[(String, String)]) -> ExitCode {
     let fails = failing_program();
-    let mut unsigned: Vec<String> = Vec::new();
+    let mut unsigned: Vec<String> = vec!["-c".to_string(), "commit.gpgsign=false".to_string()];
     for key in [
         "gpg.program",
         "gpg.openpgp.program",
@@ -179,7 +292,56 @@ fn exec_unsigned(real_git: &Path, args: &[String]) -> ExitCode {
         unsigned.push(format!("{key}={fails}"));
     }
     unsigned.extend(args.iter().cloned());
-    exec_system_git(real_git, &unsigned, &[])
+    let names: Vec<(&str, &str)> = names
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
+    exec_system_git(real_git, &unsigned, &names)
+}
+
+/// What an unmarked commit with no terminal that was going to be signed
+/// prints, once, on stderr.
+const UNMARKED_UNSIGNED_NOTE: &str = "agent-sign: no terminal and no agent mark, so this commit was made unsigned (an editor's commit button? commit in a terminal to sign it as yourself)";
+
+/// Runs a commit with no terminal and no agent mark (the user's editor or
+/// GUI as likely as an agent that doesn't say so) as git's own, unsigned
+/// commit, even when it asked to sign: its `-S` and `--gpg-sign[=key]` are
+/// taken out of the commit's options, a `-c commit.gpgsign=...` out of the
+/// global ones, and `--no-gpg-sign` goes right after the subcommand (after
+/// an alias's own options, so an alias that adds `-S` is unsigned too).
+/// Before the follow-up round (28 Oct 2026) the caller's request came after
+/// the wrapper's settings and won, so git called the failing signing
+/// program and the commit failed. When it was going to be signed (it asked,
+/// or the config says to), one line on stderr says why it wasn't.
+fn exec_unmarked_commit(real_git: &Path, args: &[String], commit_index: Option<usize>) -> ExitCode {
+    let Some(at) = commit_index else {
+        return exec_unsigned(real_git, args, &[]);
+    };
+    let wanted = agent_sign::interceptor::signing_flag(&args[at + 1..]) == Some(true)
+        || config_wants_signing(real_git, &args[..at]);
+    let mut unsigned = agent_sign::interceptor::without_gpgsign_settings(&args[..at]);
+    unsigned.push(args[at].clone());
+    unsigned.push("--no-gpg-sign".to_string());
+    unsigned.extend(agent_sign::interceptor::without_signing_requests(
+        &args[at + 1..],
+    ));
+    if wanted {
+        eprintln!("{UNMARKED_UNSIGNED_NOTE}");
+    }
+    exec_unsigned(real_git, &unsigned, &[])
+}
+
+/// Whether git's config, with these global options (a `-c` among them
+/// counts), says to sign commits.
+fn config_wants_signing(real_git: &Path, global: &[String]) -> bool {
+    git_command(real_git)
+        .args(global)
+        .args(["config", "--type=bool", "--get", "commit.gpgsign"])
+        .env_remove("GIT_CONFIG")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .is_some_and(|o| String::from_utf8_lossy(&o.stdout).trim() == "true")
 }
 
 /// A program that always fails, for signing programs that must never run.
@@ -190,54 +352,203 @@ fn failing_program() -> &'static str {
         .unwrap_or("false")
 }
 
+/// The git commands that make commits by themselves (besides `commit`,
+/// which has its own path). An alias for one of them, or a shell alias, gets
+/// the same treatment (see [`alias_makes_commits`]).
+const MAKES_COMMITS: [&str; 6] = ["merge", "pull", "rebase", "cherry-pick", "revert", "am"];
+
 /// Runs a command other than `commit` for an agent. Git creates commits for
 /// merge, pull, rebase, cherry-pick, revert and am, and inside shell aliases
 /// and hooks, and without this it signs them with whatever the person's
 /// global config says: their own key. So here:
-/// - signing is off for commits, tags and pushes, so those commits are
-///   unsigned (signing them with the agent's own key comes with per-agent
-///   identities);
-/// - every signing program is agent-sign's, which refuses to sign for an
-///   agent without a commit token, and checks signatures with plain
-///   `ssh-keygen` or `gpg`, so verifying still works (X.509's program always
-///   fails, so X.509 signatures read as unchecked);
+/// - for an identified agent (see `agent_sign::attribution::identify_agent`)
+///   running a command that makes commits ([`MAKES_COMMITS`], or an alias
+///   that may),
+///   signing is on and goes to agent-sign's signing program with a run token
+///   from the service, so every commit the run makes is signed as the agent,
+///   and the agent is the committer (and the author of new commits: merge,
+///   revert; replayed ones keep their author). If the service refuses the
+///   token (a protected branch) or can't be reached, signing stays on
+///   without one, so those commits fail rather than go unsigned or reach
+///   the person's key;
+/// - otherwise signing is off for commits, so an unmarked caller's commits
+///   are unsigned with git's own names, as before (it may be the person's
+///   own editor, which has no terminal);
+/// - tags and pushes are never signed, and every signing program is
+///   agent-sign's, which refuses to sign for an agent without a token and
+///   checks signatures with plain `ssh-keygen` or `gpg`, so verifying still
+///   works (X.509's program always fails, so X.509 signatures read as
+///   unchecked);
 /// - [`AGENT_RUN_VAR`] marks the run, so the signing program knows an agent
 ///   is behind git's nested copies of itself (`-c` settings reach those
 ///   too, through git's own `GIT_CONFIG_PARAMETERS`).
 ///
-/// An explicit request to sign (`tag -s`, `merge -S`) then fails rather than
-/// using the person's key. Author and committer are git's own, as before.
 /// As with commits, an agent that sets its own signing program after these
-/// settings is going around agent-sign on purpose, which it could also do
-/// by calling git directly.
+/// settings is going around agent-sign on purpose, which it could also do by
+/// calling git directly.
 ///
-/// Nothing here reads agent-sign's config: this runs for every git command an
+/// Only the commit-making commands of identified agents read agent-sign's
+/// config or ask the service anything: this runs for every git command an
 /// agent makes, including agent-sign's own lookups when the wrapper is first
 /// on `PATH`.
 ///
 /// [`AGENT_RUN_VAR`]: agent_sign::attribution::AGENT_RUN_VAR
-fn exec_for_agent(real_git: &Path, args: &[String]) -> ExitCode {
+fn exec_for_agent(
+    real_git: &Path,
+    args: &[String],
+    subcommand_index: Option<usize>,
+    alias_may_commit: bool,
+) -> ExitCode {
     let ssh_sign_bin = find_ssh_sign_bin().display().to_string();
-    let settings = [
-        ("commit.gpgsign", "false"),
+    let makes_commits = alias_may_commit
+        || subcommand_index
+            .and_then(|at| args.get(at))
+            .is_some_and(|sub| MAKES_COMMITS.contains(&sub.as_str()));
+    let run = match agent_sign::attribution::identify_agent() {
+        Some(identity) if makes_commits => {
+            let global = &args[..subcommand_index.unwrap_or(0)];
+            Some(prepare_agent_run(real_git, global, identity))
+        }
+        _ => None,
+    };
+
+    let signing_key = signing_key_file(None);
+    let signing_key = signing_key.display().to_string();
+    let mut settings: Vec<(&str, &str)> = match run {
+        Some(_) => vec![
+            ("commit.gpgsign", "true"),
+            ("gpg.format", "ssh"),
+            ("user.signingkey", signing_key.as_str()),
+        ],
+        None => vec![("commit.gpgsign", "false")],
+    };
+    settings.extend([
         ("tag.gpgSign", "false"),
         ("push.gpgSign", "false"),
         ("gpg.ssh.program", ssh_sign_bin.as_str()),
         ("gpg.program", ssh_sign_bin.as_str()),
         ("gpg.openpgp.program", ssh_sign_bin.as_str()),
         ("gpg.x509.program", failing_program()),
-    ];
+    ]);
     let mut agent_args: Vec<String> = Vec::new();
     for (key, value) in settings {
         agent_args.push("-c".to_string());
         agent_args.push(format!("{key}={value}"));
     }
     agent_args.extend(args.iter().cloned());
-    exec_system_git(
-        real_git,
-        &agent_args,
-        &[(agent_sign::attribution::AGENT_RUN_VAR, "1")],
-    )
+
+    let mut cmd = git_command(real_git);
+    cmd.args(&agent_args)
+        .env(agent_sign::attribution::AGENT_RUN_VAR, "1");
+    if let Some(run) = run {
+        // Only this run's own token signs, never one left in the environment.
+        cmd.env_remove(EVENT_TOKEN_VAR);
+        if let Some(token) = &run.token {
+            cmd.env(EVENT_TOKEN_VAR, token);
+        }
+        for (key, value) in &run.names {
+            cmd.env(key, value);
+        }
+    }
+    run_git(cmd, real_git)
+}
+
+/// What an identified agent's commit-making git run needs: the run token
+/// (`None` when the service refused one or couldn't be reached), and the
+/// author and committer variables for the attribution mode.
+struct AgentRun {
+    token: Option<String>,
+    names: Vec<(String, String)>,
+}
+
+/// Asks the service for a run token for `identity` in the repository the
+/// command is for, and works out the names its commits carry. A refusal is
+/// said on standard error; the run then goes ahead with signing on and no
+/// token, so a commit it makes fails instead of going unsigned.
+fn prepare_agent_run(real_git: &Path, global: &[String], identity: AgentIdentity) -> AgentRun {
+    let place = get_repo_and_branch(real_git, global);
+    let config = Config::load(place.as_ref().map(|(repo, _)| Path::new(repo.as_str())));
+    let token = match &place {
+        None => Err("agent-sign couldn't identify the repository".to_string()),
+        Some((_, branch)) if wrapper_protects(&config, branch) => Err(protected(branch)),
+        Some((repo, branch)) => run_token(repo, branch, &identity),
+    };
+    let token = match token {
+        Ok(token) => Some(token),
+        Err(why) => {
+            eprintln!(
+                "[agent-git] agent-sign won't sign commits this git command makes for {}: {why}. \
+                 Any commit it needs to make will fail.",
+                identity.principal
+            );
+            None
+        }
+    };
+    let engine = AttributionEngine::new(config.attribution, config.agent, config.human)
+        .with_identity(identity);
+    let names = engine.compute_env_vars("").into_iter().collect();
+    AgentRun { token, names }
+}
+
+/// Whether the wrapper refuses an agent's commits on `branch`: one of the
+/// branches the repository's file added to `block_branches`, compared
+/// without case. The service enforces the person's own list (and
+/// `allow_main_branch`, which may be set on its command line) on every token
+/// and signature, but never reads repository files, so this is where a
+/// repository's additions apply.
+fn wrapper_protects(config: &Config, branch: &str) -> bool {
+    branch_matches_blocked(branch, &config.security.repo_block_branches)
+}
+
+fn protected(branch: &str) -> String {
+    format!("branch '{branch}' is protected (block_branches), so agents can't commit there")
+}
+
+/// A lease (granted without asking unless `approval = "device-owner"`) and
+/// then a run token for `identity` in `repo` on `branch`.
+fn run_token(repo: &str, branch: &str, identity: &AgentIdentity) -> Result<String, String> {
+    let socket_path = client_socket_path();
+    let unreachable = |e: Box<dyn std::error::Error>| {
+        format!(
+            "the agent-sign service at {} didn't answer ({e})",
+            socket_path.display()
+        )
+    };
+    let lease = Request::RequestLease {
+        repo: repo.to_string(),
+        branch: branch.to_string(),
+        intent: format!("git run by {}", identity.principal),
+        duration_secs: Some(7200),
+    };
+    match send_request(&socket_path, &lease).map_err(unreachable)? {
+        Response::LeaseGranted { .. } => {}
+        Response::Error { message } => return Err(message),
+        other => return Err(format!("unexpected answer to the lease request: {other:?}")),
+    }
+    let run = Request::IssueRunToken {
+        repo: repo.to_string(),
+        branch: branch.to_string(),
+        identity: identity.clone(),
+    };
+    match send_request(&socket_path, &run).map_err(unreachable)? {
+        Response::TokenIssued { token } => Ok(token),
+        Response::Error { message } => Err(message),
+        other => Err(format!("unexpected answer to the token request: {other:?}")),
+    }
+}
+
+/// A public key file to name as `user.signingkey`. agent-sign's signing
+/// program ignores it (the service signs with the agent session's own key
+/// and certificate), but git wants one: the agents' certificate authority's
+/// public key, or the legacy agent key's, or `configured` when given.
+fn signing_key_file(configured: Option<&Path>) -> PathBuf {
+    let ca = agent_sign::agents_ca::ca_pub_path_in(&paths::state_dir());
+    if ca.exists() {
+        return ca;
+    }
+    configured
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| paths::state_dir().join("keys/agent_ed25519.pub"))
 }
 
 fn find_system_git() -> PathBuf {
@@ -295,11 +606,14 @@ fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]
 /// Runs the person's own command on the real git. The wrapper's agent mark
 /// is removed first: it can reach the person's terminal through an editor an
 /// agent's git started, and the signing program would then refuse the
-/// person's own signature.
+/// person's own signature. So is any agent token: one that leaked into the
+/// person's terminal made their own commit sign as the agent (identity
+/// review, 28 Oct 2026).
 fn exec_persons_git(real_git: &Path, args: &[String]) -> ExitCode {
     let mut cmd = git_command(real_git);
     cmd.args(args)
-        .env_remove(agent_sign::attribution::AGENT_RUN_VAR);
+        .env_remove(agent_sign::attribution::AGENT_RUN_VAR)
+        .env_remove(EVENT_TOKEN_VAR);
     run_git(cmd, real_git)
 }
 
@@ -307,33 +621,22 @@ fn exec_persons_git(real_git: &Path, args: &[String]) -> ExitCode {
 /// global options (`-C`, `--git-dir`, `--work-tree`, `-c`) the commit itself
 /// gets, and the same environment (`GIT_DIR`, `GIT_WORK_TREE`), so a commit
 /// run with `git -C <repo>` from another folder is identified as that
-/// repository. `None` when git can't say: the caller refuses rather than
-/// asking about a placeholder, since a dialog that names no repository
-/// invites approving everything.
+/// repository. The rule is `agent_sign::git_place::repo_and_branch`, the one
+/// the signing program uses again for every signature, so the two agree
+/// (during a rebase, the branch being rewritten). `None` when git can't say:
+/// the caller refuses rather than asking about a placeholder, since a dialog
+/// that names no repository invites approving everything.
 fn get_repo_and_branch(real_git: &Path, global: &[String]) -> Option<(String, String)> {
-    let ask = |args: &[&str]| -> Option<String> {
+    agent_sign::git_place::repo_and_branch(|args| {
         let out = git_command(real_git)
             .args(global)
             .args(args)
             .output()
             .ok()?;
-        if !out.status.success() {
-            return None;
-        }
-        Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
-    };
-    let top = ask(&["rev-parse", "--show-toplevel"]).filter(|t| !t.is_empty())?;
-    // The canonical absolute path, so a link or relative path names the same
-    // repository (and the same lease) as its real location.
-    let repo = std::fs::canonicalize(&top)
-        .ok()?
-        .to_string_lossy()
-        .to_string();
-    // Detached HEAD has no branch; "HEAD" is what git itself calls it.
-    let branch = ask(&["branch", "--show-current"])
-        .filter(|b| !b.is_empty())
-        .unwrap_or_else(|| "HEAD".to_string());
-    Some((repo, branch))
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    })
 }
 
 /// The signing program to hand git as `gpg.ssh.program`:
@@ -401,6 +704,7 @@ fn handle_agent_commit(
     real_git: &Path,
     original_args: &[String],
     commit_index: Option<usize>,
+    identity: AgentIdentity,
 ) -> ExitCode {
     let global = &original_args[..commit_index.unwrap_or(0)];
     let Some((repo, branch)) = get_repo_and_branch(real_git, global) else {
@@ -415,7 +719,15 @@ fn handle_agent_commit(
     let repo_path = Path::new(&repo);
     let config = Config::load(Some(repo_path));
 
-    // 0. Enterprise Guardrails: Validate staged paths, diff size, and commit message
+    // 0. Enterprise Guardrails: protected branches (with the repository's
+    // additions), staged paths, diff size, and commit message
+    if wrapper_protects(&config, &branch) {
+        eprintln!(
+            "[agent-git] Security Policy Violation: {}",
+            protected(&branch)
+        );
+        return ExitCode::from(1);
+    }
     if let Err(err_msg) = validate_guardrails(real_git, global, &config, original_args) {
         eprintln!("[agent-git] Security Policy Violation: {}", err_msg);
         return ExitCode::from(1);
@@ -453,10 +765,12 @@ fn handle_agent_commit(
         }
     };
 
-    // 2. Request single-use commit event token
-    let token_req = Request::IssueToken {
+    // 2. Request a single-use commit token that signs as this agent: the one
+    // its own marks name.
+    let token_req = Request::IssueIdentifiedToken {
         repo: repo.clone(),
         branch: branch.clone(),
+        identity: identity.clone(),
     };
 
     let token = match send_request(&socket_path, &token_req) {
@@ -485,7 +799,8 @@ fn handle_agent_commit(
         explicit,
         agent_sign::attribution::detect_agent(),
     );
-    let attr_engine = AttributionEngine::new(config.attribution, agent, config.human);
+    let attr_engine =
+        AttributionEngine::new(config.attribution, agent, config.human).with_identity(identity);
     let attr_envs = attr_engine.compute_env_vars("commit");
 
     let mut git_args: Vec<String> = Vec::new();
@@ -497,7 +812,7 @@ fn handle_agent_commit(
     git_args.push("-c".to_string());
     git_args.push(format!("gpg.ssh.program={}", ssh_sign_bin.display()));
     git_args.push("-c".to_string());
-    let pub_key_path = config.ssh.agent_key_path.with_extension("pub");
+    let pub_key_path = signing_key_file(Some(&config.ssh.agent_key_path.with_extension("pub")));
     git_args.push(format!("user.signingkey={}", pub_key_path.display()));
 
     // Apply commit message transformation for trailers mode if applicable
@@ -509,8 +824,7 @@ fn handle_agent_commit(
 
     git_args.extend_from_slice(&final_args);
 
-    let mut env_pairs: Vec<(&str, &str)> = Vec::new();
-    env_pairs.push((EVENT_TOKEN_VAR, &token));
+    let mut env_pairs: Vec<(&str, &str)> = vec![(EVENT_TOKEN_VAR, &token)];
     // Hooks the commit runs, and any git they start, are the agent's too.
     env_pairs.push((agent_sign::attribution::AGENT_RUN_VAR, "1"));
 

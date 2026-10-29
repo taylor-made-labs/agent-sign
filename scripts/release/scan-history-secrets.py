@@ -19,6 +19,13 @@ is a 64-hex-digit hash. So is a quoted assignment whose value is only zeros
 and dashes after an optional short prefix (such as a test's forged token
 "ev_00000000-0000-..."): a placeholder carries no secret.
 
+A finding that has been reviewed and judged harmless can be listed in
+scripts/release/secret-scan-allowlist.txt by its blob's full hash, path and
+rule. A blob hash names exact content, so an entry allows only that one file
+version and never a later edit of the file. Allowed findings are counted in
+the output, never hidden. Each entry needs a reason, and adding one is a
+deliberate change to this check, made as its own commit.
+
 Usage: scan-history-secrets.py [repo] [rev ...]
 """
 
@@ -53,6 +60,24 @@ def is_placeholder_assignment(text):
     return bool(values) and all(PLACEHOLDER.fullmatch(v) for v in values)
 
 
+ALLOWLIST = "scripts/release/secret-scan-allowlist.txt"
+
+
+def load_allowlist(repo):
+    """(blob hash, path, rule) triples from the allowlist, if there is one."""
+    try:
+        with open(f"{repo}/{ALLOWLIST}", encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except FileNotFoundError:
+        return set()
+    allowed = set()
+    for line in lines:
+        fields = line.split("#", 1)[0].split()
+        if len(fields) == 3:
+            allowed.add(tuple(fields))
+    return allowed
+
+
 def git(repo, *args, text=True):
     return subprocess.run(["git", "-C", repo, *args], capture_output=True, text=text, check=True).stdout
 
@@ -62,6 +87,7 @@ def main():
     revs = sys.argv[2:] or ["--all"]
     objects = git(repo, "rev-list", "--objects", *revs).splitlines()
     seen, findings, blobs = set(), [], 0
+    allowlist, allowed = load_allowlist(repo), 0
     for line in objects:
         sha, _, path = line.partition(" ")
         if not path or sha in seen:
@@ -81,11 +107,16 @@ def main():
                 if rx.search(text):
                     if rule == "secret-assignment" and is_placeholder_assignment(text):
                         continue
+                    if (sha, path, rule) in allowlist:
+                        allowed += 1
+                        continue
                     findings.append((rule, sha[:10], path, n))
     commits = git(repo, "rev-list", "--count", *revs).strip()
     print(f"Scanned {blobs} file versions in {commits} commits ({' '.join(revs)}).")
     for f in findings:
         print("\t".join(map(str, f)))
+    if allowed:
+        print(f"{allowed} reviewed finding(s) allowed by {ALLOWLIST}.")
     print(f"{len(findings)} finding(s).")
     return 1 if findings else 0
 

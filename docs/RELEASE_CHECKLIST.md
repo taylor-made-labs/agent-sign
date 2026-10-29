@@ -6,18 +6,49 @@ can install it and trust what it says (R). Each check says how it's run, so
 anyone can rerun it; the status column records the latest run.
 
 Status: **Pass**, **Fail**, **Open** (not run yet), **Limit** (it doesn't
-hold, and the README says so), or **Person** (only the maintainer can do it).
+hold, and the README says so), **Person** (only the maintainer can do it), or
+**Superseded** (a later change made the check's expectation wrong; see below).
+
+## Superseded by per-agent identities and the identity review (28 Oct 2026)
+
+Each agent now signs, authors and commits as its own identity, under a
+certificate from the agents' authority, and the identity review fixed nine
+findings in that change (see [ADVERSARIAL_REVIEW.md](ADVERSARIAL_REVIEW.md)).
+These parts of the checks below no longer describe the aim, and are marked
+**Superseded** where they appear:
+
+- **F1's manual check** that an agent commit shows **Verified** on GitHub:
+  agent commits show as Unverified by design (GitHub doesn't check SSH
+  certificate signatures, and they aren't the person's). The automated half
+  stands, now checked under the agents' trust line.
+- **F3's editor-button Limit** ("it looks like an agent"): a commit with no
+  terminal and no agent mark is now left to git, unsigned, under git's own
+  names, never attributed to an agent.
+- **F7's "signed with the agent key"**: now "signed as the agent's own
+  identity". Its coverage rows for merge, cherry-pick, rebase, revert, pull
+  and shell aliases ("would have signed with the person's key") were fixed on
+  26 Oct (never the person's key) and 28 Oct (signed as the agent, only in
+  the repository and on the branch the run started from).
+- **F10 (commits name the agent)'s "a configured name is kept"**: an
+  identified agent's signed commit is its identity's, whatever the config.
+- **R3's open item** "agent commits show as Verified for the person":
+  resolved; they're the agent's.
+- **P3's "key kept"**: on upgrade the installer deletes the shared agent
+  key's private half (stored unprotected, so exposed), keeping its public
+  half; no private key is kept across upgrades, since the agents' authority
+  lives only in the service's memory.
 
 ## F: the tool works
 
 | # | Check | How it's run | Status |
 |---|---|---|---|
-| F1 | Agent commits are signed and verify | Automated: `tests/test_e2e_git_commit.rs` and `tests/test_signature_equivalence.rs` check `git log --show-signature` and `ssh-keygen -Y verify`. Manual, once: an agent commit pushed to GitHub shows **Verified**. | **Pass** (automated, 7 Oct 2026); GitHub **Open** |
+| F1 | Agent commits are signed and verify | Automated: `tests/test_e2e_git_commit.rs` and `tests/test_signature_equivalence.rs` check `git log --show-signature` and `ssh-keygen -Y verify`. Manual, once: an agent commit pushed to GitHub shows **Verified**. | **Pass** (automated, 7 Oct 2026; under the agents' trust line since 28 Oct); GitHub **Superseded** (Unverified by design) |
 | F2 | One approval, then no more asking | Automated: one approval, then 20 agent commits in the same scope, counting approval requests (must be exactly 1). `tests/test_approval_scope.rs`. | **Pass** (7 Oct 2026) |
-| F3 | Your own commits never use the agent key | Automated: a commit from a terminal goes to your normal git and signing (`tests/test_human_isolation.rs`). Manual: an editor's commit button and GitHub Desktop. | Terminal **Pass**; editor buttons **Limit** (if the editor's git is the wrapper, it looks like an agent) |
+| F3 | Your own commits never use the agent key | Automated: a commit from a terminal goes to your normal git and signing (`tests/test_human_isolation.rs`). Manual: an editor's commit button and GitHub Desktop. | Terminal **Pass**; editor buttons **Superseded** (28 Oct 2026: unmarked commits with no terminal are left to git, unsigned, never an agent's) |
 | F4 | Fails closed | Automated: with no lease, a revoked lease, an expired lease, a forged or replayed token, or the service stopped, an agent commit is refused with a message saying why, and is never signed with another key. | **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` (denied, revoked, ended, forged and reused tokens, service stopped: each refused, and no commit exists afterwards) |
 | F5 | The rules refuse with a reason | Automated: commits on `main`/`master`, touching CI workflows or key files, over a diff-size limit the person set, or over the rate limit are refused, each with its own message. | **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` (protected branch without asking, CI workflow and key files, diff size, rate limit) |
-| F10 | Commits name the agent | Automated: with each known agent mark, or `AGENT_SIGN_AGENT_NAME`, the commit's author is that agent; a configured name is kept (`tests/test_agent_name.rs`). | **Pass** (7 Oct 2026) |
+| F10 | Commits name the agent | Automated: with each known agent mark, or `AGENT_SIGN_AGENT_NAME`, the commit's author is that agent; a configured name is kept (`tests/test_agent_name.rs`). | **Pass** (7 Oct 2026); "a configured name is kept" **Superseded** (28 Oct 2026: an identified agent's name always) |
+| F11 | The identity review's findings stay fixed | Automated: `tests/test_identity_review_fixes.rs`, one regression test per finding (repository files only tighten; unsigned agent commits; tokens bound to repository and branch; strict config; unmarked commits left to git; well-formed principals; run rate limits, session-key cap and canonical paths; leaked tokens; branch case), each recorded failing before its fix. Manual: the installer's step that retires the shared key, run on its own in a throwaway folder (28 Oct 2026: key moved, 0600 in a 0700 folder, `.pub` and `allowed_signers` untouched, commands printed); the whole installer on macOS is **Person**. | **Pass** (28 Oct 2026) |
 | F6 | Terms never grow after approval | Automated: `tests/test_lease_terms.rs` (config can only narrow; an unreadable ceiling stops the service). | **Pass** (7 Oct 2026) |
 | F7 | Real agents actually go through it | Manual, recorded: Claude Code, Codex and Cursor, each started the normal way, on macOS and on Linux, make a commit; the commit is signed with the agent key, or `agent-sign doctor` says plainly that this agent bypasses the wrapper. | See "F7: coverage" below. |
 | F8 | Edge cases, repeated | Automated: two agents committing at once (same repository and different ones), the service restarted mid-work, hundreds of commits in a row, repository paths with spaces and non-ASCII characters, symlinked repositories, worktrees, detached HEAD, `--amend`, and each approval scope's boundaries (a folder lease saved earlier doesn't cover a sibling whose name starts the same). Each case runs enough times to rule out flakes. | Mostly **Pass** (7 Oct 2026): `tests/test_edge_cases.rs` covers paths with spaces and accents, a symlinked repository (one lease), a worktree, detached HEAD, `--amend`, 200 commits in a row, two agents committing at once in two repositories, and a restart between commits; `tests/test_service_restart.rs` covers a commit during a restart; the full suite (117 tests) passed 2 runs in 2. **Limit**: a home folder long enough to push the socket path past 104 bytes (macOS) stops the service. Not yet: two agents committing in the same repository at once (git itself locks the index). |

@@ -1,7 +1,8 @@
 # Engineering practices
 
 How agent-sign's code is meant to be written, and where it stands against each
-practice today (checked 30 Sept 2026). [CONTRIBUTING.md](../CONTRIBUTING.md)
+practice today (checked 30 Sept 2026; failing closed, keys and tests
+updated 28 Oct 2026). [CONTRIBUTING.md](../CONTRIBUTING.md)
 has the rules every change must keep; this page is the longer list of aims.
 Where the code doesn't meet an aim yet, it says so, so a contributor can
 tell an aim from a guarantee.
@@ -32,19 +33,37 @@ tell an aim from a guarantee.
   single-use tokens appear only in the environment of the git process they're
   for.
 - A setting that can't be read must not quietly widen access.
-  *Today:* an unreadable `max_lease_ceiling` stops the service. A config file
-  that isn't valid TOML is still ignored as a whole (defaults apply), which
-  is a gap.
+  *Today:* the service stops, with a message naming the file and key, on a
+  `config.toml` it can't read (its permissions, a link to nothing, a
+  directory), that isn't valid TOML, that has a table or key it doesn't
+  know, or that has a value it can't read (`max_lease_ceiling`,
+  `approval`, ...); only a missing file means the defaults, and it logs the
+  approval mode in effect when it starts. The wrapper and signing program
+  still fall back to the defaults on a bad file, which is safe only because
+  the service then won't start.
+- What isn't the person's can't change the person's rules.
+  *Today:* a repository's `.agent-sign.toml` can only tighten them (see
+  `config::tighten_with_repo_file`); what else it sets is ignored, with a
+  warning.
 
 ## 3. Files and permissions
 
 - State lives in `~/.agent-sign` (or the directory it links to),
-  mode 0700; the key and `leases.json` are 0600; the socket is 0600.
-  *Today:* yes. The key is **not encrypted** at rest.
+  mode 0700; `leases.json` is 0600; the socket is 0600. No private key is
+  ever stored there (Taylor, 28 Oct 2026: keys are never stored
+  unprotected; they live in OpenBao, a hardware or OS keystore, or only in a
+  running process's memory). The agents' certificate authority and agent
+  sessions' keys live only in the service's memory (sessions: at most 1024,
+  each dropped after 12 hours unused); only public keys are on disk.
+  *Today:* yes. Private keys earlier versions stored (the shared agent key,
+  an earlier build's authority key) are deleted by the installer, and the
+  service refuses to start while the authority key file is there.
 - Write state files atomically: a temporary file created 0600, synced, then
   renamed. Never overwrite a file that couldn't be read. *Today:* yes for
   `leases.json`.
-- Tokens are single-use, random (UUID v4), and expire after 60 seconds.
+- Tokens are random (UUID v4) and bound to one identity, repository and
+  branch: a commit's is single-use and expires after 60 seconds, a git run's
+  after 10 minutes. A token is used only beside the wrapper's own mark.
   *Today:* yes.
 
 ## 4. Robustness
@@ -75,6 +94,8 @@ tell an aim from a guarantee.
   a stand-in owner (`AGENT_SIGN_TEST_AUTH`, test builds only), so they never touch an installed agent-sign or show a real
   prompt.
 - Every fix comes with a test that fails without it.
-- *Today:* 72 tests. Not covered automatically: the wrapper's terminal check,
-  the real Touch ID prompt, and the installer (see the install test in
+- *Today:* 305 tests, 304 run and 1 ignored (28 Oct 2026). Each finding of the identity review has a
+  regression test in `tests/test_identity_review_fixes.rs` that failed before
+  its fix. Not covered automatically: the real Touch ID prompt, and the
+  installer on macOS (see the install test in
   [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md)).

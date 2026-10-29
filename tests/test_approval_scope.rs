@@ -265,7 +265,11 @@ fn start_service(home: &Path, owner: &str, extra_config: &str) -> Service {
     fs::create_dir_all(&state).unwrap();
     fs::write(
         state.join("config.toml"),
-        format!("[security]\nmax_commits_per_minute = 1000\n{extra_config}"),
+        // What an approval covers: approval by the device owner is opt-in
+        // since per-agent identities.
+        format!(
+            "[security]\napproval = \"device-owner\"\nmax_commits_per_minute = 1000\n{extra_config}"
+        ),
     )
     .unwrap();
     let socket = home.join("svc.sock");
@@ -325,9 +329,12 @@ fn commit_through_service(socket: &Path, repo: &str, branch: &str) -> Result<(),
     }
     match send_request(
         socket,
-        &Request::IssueToken {
+        // A wrapper that says which agent is committing: since the identity
+        // review (28 Oct 2026) the service refuses one that doesn't.
+        &Request::IssueIdentifiedToken {
             repo: repo.to_string(),
             branch: branch.to_string(),
+            identity: agent_sign::attribution::AgentIdentity::new("codex", "Codex", Some("t")),
         },
     )
     .map_err(|e| e.to_string())?

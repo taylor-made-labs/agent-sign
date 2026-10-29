@@ -79,6 +79,13 @@ impl Setup {
         let home = dir.path().to_path_buf();
         let state = home.join(".agent-sign");
         fs::create_dir_all(&state).unwrap();
+        // These tests count the stand-in owner's prompts: the device owner's
+        // approval is opt-in since per-agent identities.
+        let opt_in = "[security]\napproval = \"device-owner\"\n";
+        let config = match config.strip_prefix("[security]\n") {
+            Some(rest) => format!("{opt_in}{rest}"),
+            None => format!("{opt_in}{config}"),
+        };
         fs::write(state.join("config.toml"), config).unwrap();
 
         let fakebin = home.join("fakebin");
@@ -164,7 +171,8 @@ impl Setup {
         repo
     }
 
-    /// Runs the wrapper as an agent would (no terminal, no agent marks).
+    /// Runs the wrapper as an agent would: no terminal, and named only by
+    /// `AGENT_SIGN_AGENT_NAME` (none of the known agents' marks).
     fn agent_git(&self, repo: &Path, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-git"));
         cmd.args(args)
@@ -178,6 +186,10 @@ impl Setup {
         for (var, _) in KNOWN_AGENTS {
             cmd.env_remove(var);
         }
+        // The agent says who it is: since the identity review (28 Oct 2026)
+        // an unmarked commit with no terminal is left to git, unsigned, and
+        // these tests are about the agent's rules, leases and signatures.
+        cmd.env("AGENT_SIGN_AGENT_NAME", "Test Agent");
         for (k, v) in extra_env {
             cmd.env(k, v);
         }
@@ -194,11 +206,20 @@ impl Setup {
         self.agent_git(repo, &["commit", "-q", "-m", &format!("add {file}")], &[])
     }
 
-    /// Whether HEAD's signature verifies with the agent key.
+    /// Whether HEAD's signature verifies under the agents' trust line (since
+    /// per-agent identities, agents no longer sign with the shared key).
     fn head_verifies(&self, repo: &Path) -> bool {
-        let key = fs::read_to_string(self.home.join(".agent-sign/keys/agent_ed25519.pub")).unwrap();
+        let ca =
+            fs::read_to_string(self.home.join(".agent-sign/keys/agents_ca_ed25519.pub")).unwrap();
         let signers = self.home.join("allowed_signers");
-        fs::write(&signers, format!("person@example.com {}\n", key.trim())).unwrap();
+        fs::write(
+            &signers,
+            format!(
+                "*@agents.local cert-authority,namespaces=\"git\" {}\n",
+                ca.trim()
+            ),
+        )
+        .unwrap();
         let out = git(
             repo,
             &[
@@ -302,6 +323,8 @@ fn a_forged_or_reused_token_signs_nothing() {
         &Request::SignCommit {
             token: "ev_00000000-0000-0000-0000-000000000000".into(),
             buffer_b64: buffer.clone(),
+            repo: None,
+            branch: None,
         },
     )
     .unwrap();
@@ -309,7 +332,9 @@ fn a_forged_or_reused_token_signs_nothing() {
 
     let w_r = s.home.join("w/r");
     fs::create_dir_all(w_r.join(".git")).unwrap();
-    let w_r = w_r.display().to_string();
+    // The service names repositories by their canonical path (identity
+    // review, 28 Oct 2026), and the signature must name the token's.
+    let w_r = fs::canonicalize(&w_r).unwrap().display().to_string();
     let granted = send_request(
         &s.socket,
         &Request::RequestLease {
@@ -323,9 +348,10 @@ fn a_forged_or_reused_token_signs_nothing() {
     assert!(matches!(granted, Response::LeaseGranted { .. }));
     let Response::TokenIssued { token } = send_request(
         &s.socket,
-        &Request::IssueToken {
+        &Request::IssueIdentifiedToken {
             repo: w_r.clone(),
             branch: "feat/a".into(),
+            identity: agent_sign::attribution::AgentIdentity::new("codex", "Codex", Some("t")),
         },
     )
     .unwrap() else {
@@ -336,6 +362,8 @@ fn a_forged_or_reused_token_signs_nothing() {
         &Request::SignCommit {
             token: token.clone(),
             buffer_b64: buffer.clone(),
+            repo: Some(w_r.clone()),
+            branch: Some("feat/a".into()),
         },
     )
     .unwrap();
@@ -345,6 +373,8 @@ fn a_forged_or_reused_token_signs_nothing() {
         &Request::SignCommit {
             token,
             buffer_b64: buffer,
+            repo: Some(w_r.clone()),
+            branch: Some("feat/a".into()),
         },
     )
     .unwrap();
@@ -792,6 +822,10 @@ impl Setup {
         for (var, _) in KNOWN_AGENTS {
             cmd.env_remove(var);
         }
+        // The agent says who it is: since the identity review (28 Oct 2026)
+        // an unmarked commit with no terminal is left to git, unsigned, and
+        // these tests are about the agent's rules, leases and signatures.
+        cmd.env("AGENT_SIGN_AGENT_NAME", "Test Agent");
         for (k, v) in extra_env {
             cmd.env(k, v);
         }

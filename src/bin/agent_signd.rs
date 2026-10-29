@@ -1,10 +1,13 @@
 //! `agent-signd`: the agent-sign service.
 //!
-//! One per user. It holds the agent signing key and the leases, answers the
+//! One per user. It holds the agents' certificate authority and each agent
+//! session's signing key (in memory only: the authority is made anew at each
+//! start and its private half is never written anywhere), and the leases. It answers the
 //! wrapper, the signing program, and the CLI over a Unix socket in the state
-//! directory, and asks the person to approve new leases. `agent-signd` can be a
-//! link to this program; the LaunchAgent and systemd unit installed by
-//! agent-sign start it by that name.
+//! directory, signs each agent commit as that agent's own identity, and, only
+//! when `[security] approval = "device-owner"`, asks the person to approve new
+//! leases. `agent-signd` can be a link to this program; the LaunchAgent and
+//! systemd unit installed by agent-sign start it by that name.
 
 use std::collections::HashMap;
 use std::fs;
@@ -19,20 +22,23 @@ use std::time::{Duration, Instant};
 use base64::Engine;
 use clap::{Parser, Subcommand};
 
+use agent_sign::agents_ca::{AgentsCa, BlockUpdate, CertificateIssuer, SessionSigners};
 use agent_sign::approval::{
     Approval, Asked, BranchReach, MAX_PENDING_REQUESTS, RefusalBackoff, auth_reason, confirm,
     has_unsafe_display_chars, platform_authenticator,
 };
-use agent_sign::config::Config;
-use agent_sign::crypto::AgentKeyPair;
+use agent_sign::attribution::AgentIdentity;
+use agent_sign::config::{ApprovalMode, Config};
 use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy};
-use agent_sign::protocol::{PendingInfo, Request, Response, default_socket_path, send_response};
+use agent_sign::protocol::{
+    PendingInfo, RUN_TOKEN_LIFETIME, Request, Response, default_socket_path, send_response,
+};
 
 #[derive(Parser)]
 #[command(
     name = "agent-signd",
     version = "0.1.0",
-    about = "agent-sign service: holds the agent signing key and leases"
+    about = "agent-sign service: holds the agents' certificate authority, their session keys, and leases"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -56,7 +62,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Initialize keys and setup directory structure
+    /// Create the state and keys folders (the agents' certificate authority
+    /// itself is made in memory each time the service starts)
     Setup,
     /// Query status of active daemon
     Status,
@@ -66,9 +73,20 @@ enum Commands {
 
 struct DaemonState {
     lease_engine: LeaseEngine,
-    keypair: AgentKeyPair,
+    /// The agents' certificate authority, behind its port: today the one
+    /// made in memory at this start (see `agent_sign::agents_ca`).
+    ca: Box<dyn CertificateIssuer>,
+    /// Each agent session's key and certificate, by principal; memory only.
+    signers: SessionSigners,
     _config: Config,
-    valid_tokens: HashMap<String, Instant>,
+    /// Single-use commit tokens: when each was issued, and as whom, in which
+    /// repository and on which branch it signs.
+    valid_tokens: HashMap<String, (Instant, RunToken)>,
+    /// Run tokens: one per git run of an identified agent, usable for every
+    /// commit that run makes until it ends.
+    run_tokens: HashMap<String, RunToken>,
+    /// Whether leases need the device owner's approval.
+    approval: ApprovalMode,
     auto_approve: bool,
     /// Approval requests waiting for the person, one per repository and
     /// branch, keyed by `pending_key`.
@@ -96,6 +114,19 @@ struct PendingAsk {
     outcome: Mutex<Option<Response>>,
     done: Condvar,
 }
+
+/// A token's terms: as whom it signs, for which repository and branch (the
+/// lease it was issued under), and when it was issued. Single-use commit
+/// tokens carry the same terms, so every signature is checked against them.
+struct RunToken {
+    identity: AgentIdentity,
+    repo: String,
+    branch: String,
+    issued: Instant,
+}
+
+/// How long a single-use commit token can wait to be used.
+const COMMIT_TOKEN_LIFETIME: Duration = Duration::from_secs(60);
 
 fn pending_key(repo: &str, branch: &str) -> String {
     format!("{repo}\n{branch}")
@@ -165,42 +196,66 @@ fn get_state_dir() -> PathBuf {
 
 fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
     let base_dir = get_state_dir();
-    let keys_dir = base_dir.join("keys");
-    fs::create_dir_all(&keys_dir)?;
-
-    // Set 0700 permissions
+    fs::create_dir_all(&base_dir)?;
     fs::set_permissions(&base_dir, fs::Permissions::from_mode(0o700))?;
+    let keys_dir = agent_sign::agents_ca::keys_dir_in(&base_dir);
+    fs::create_dir_all(&keys_dir)?;
     fs::set_permissions(&keys_dir, fs::Permissions::from_mode(0o700))?;
-
-    let priv_key_path = keys_dir.join("agent_ed25519");
-    let pub_key_path = keys_dir.join("agent_ed25519.pub");
-
-    let keypair = if priv_key_path.exists() {
-        println!("Existing private key found at: {}", priv_key_path.display());
-        let bytes = fs::read(&priv_key_path)?;
-        AgentKeyPair::from_bytes(&bytes)?
-    } else {
-        println!("Generating new Ed25519 agent signing keypair...");
-        let seed = rand::random::<[u8; 32]>();
-        let kp = AgentKeyPair::from_bytes(&seed)?;
-        fs::write(&priv_key_path, seed)?;
-        fs::set_permissions(&priv_key_path, fs::Permissions::from_mode(0o600))?;
-        fs::write(&pub_key_path, kp.public_key_openssh())?;
-        kp
-    };
 
     println!("\n========================================================");
     println!(" agent-sign Setup Complete");
     println!("========================================================");
-    println!("Private Key: {}", priv_key_path.display());
-    println!("Public Key:  {}", pub_key_path.display());
     println!(
-        "\nAdd this SSH Signing Key to GitHub (Settings -> SSH Keys -> New Key -> Key Type: Signing Key):"
+        "The agents' certificate authority is made in memory each time the service\n\
+         starts, and its private key is never written anywhere. Each start adds its\n\
+         public key to {}.",
+        keys_dir
+            .join(agent_sign::agents_ca::CAS_HISTORY_FILE)
+            .display()
     );
-    println!("\n  {}\n", keypair.public_key_openssh());
+    println!(
+        "\nTo see agents' commits as Good signatures, the file git's\n\
+         gpg.ssh.allowedSignersFile names needs the lines `agent-sign trust-line`\n\
+         prints. The installer adds a block there that the service keeps current."
+    );
     println!("========================================================");
 
     Ok(())
+}
+
+/// Makes this start's agents' certificate authority, in memory, after
+/// refusing a private key an earlier build left in a file; records its
+/// public key (`agent_sign::agents_ca::record_authority`); and rewrites the
+/// managed block in the person's allowed-signers file, if it has one, so the
+/// new authority is trusted with no step of theirs.
+fn start_authority(base_dir: &Path) -> Result<AgentsCa, Box<dyn std::error::Error>> {
+    let keys_dir = agent_sign::agents_ca::keys_dir_in(base_dir);
+    agent_sign::agents_ca::refuse_unprotected_key(&keys_dir)?;
+    let ca = AgentsCa::generate(&agent_sign::agents_ca::hostname());
+    let lines = agent_sign::agents_ca::record_authority(
+        &keys_dir,
+        &ca.public_key_openssh(),
+        agent_sign::agents_ca::now_secs(),
+    )?;
+    eprintln!(
+        "[agent-signd] made this start's agents' certificate authority in memory ({} trusted in all)",
+        lines.len()
+    );
+    if let Some(file) = agent_sign::agents_ca::global_allowed_signers_file() {
+        match agent_sign::agents_ca::update_allowed_signers(&file, &lines) {
+            Ok(BlockUpdate::Rewritten) => eprintln!(
+                "[agent-signd] updated agent-sign's block in {}",
+                file.display()
+            ),
+            Ok(BlockUpdate::Unchanged) | Ok(BlockUpdate::NoBlock) => {}
+            Err(e) => eprintln!(
+                "[agent-signd] couldn't update agent-sign's block in {} ({e}): agent commits \
+                 made from now on may show as unverified until `agent-sign trust-line`'s lines are there",
+                file.display()
+            ),
+        }
+    }
+    Ok(ca)
 }
 
 fn run_status(custom_socket: Option<&Path>) -> Result<(), Box<dyn std::error::Error>> {
@@ -257,6 +312,9 @@ fn run_daemon(
     let mut config = if let Some(cfg_path) = custom_config {
         Config::load_from_file(cfg_path)?
     } else {
+        // A setting that doesn't read (a misspelt approval mode, say) would
+        // otherwise fall back to the defaults without a word.
+        Config::check_file_in_home(&agent_sign::paths::home_dir())?;
         Config::load(None)
     };
     let max_ceiling = config.security.max_ceiling_duration()?;
@@ -269,23 +327,11 @@ fn run_daemon(
         );
     }
 
+    // This start's agents' certificate authority, made in memory. The
+    // shared agent key of earlier versions (`agent_ed25519`) is no longer
+    // used.
     let base_dir = get_state_dir();
-    let keys_dir = base_dir.join("keys");
-    fs::create_dir_all(&keys_dir)?;
-
-    let priv_key_path = keys_dir.join("agent_ed25519");
-    let pub_key_path = keys_dir.join("agent_ed25519.pub");
-    let keypair = if priv_key_path.exists() {
-        let bytes = fs::read(&priv_key_path)?;
-        AgentKeyPair::from_bytes(&bytes)?
-    } else {
-        let seed = rand::random::<[u8; 32]>();
-        let kp = AgentKeyPair::from_bytes(&seed)?;
-        fs::write(&priv_key_path, seed)?;
-        fs::set_permissions(&priv_key_path, fs::Permissions::from_mode(0o600))?;
-        fs::write(&pub_key_path, kp.public_key_openssh())?;
-        kp
-    };
+    let ca = start_authority(&base_dir)?;
 
     let socket_path = custom_socket
         .map(PathBuf::from)
@@ -320,11 +366,32 @@ fn run_daemon(
         max_commits_per_minute: config.security.max_commits_per_minute,
     };
 
+    let approval = config.security.approval;
+    // The approval mode in effect, said once at start: since "none" became
+    // the default, a config that didn't say what the person thought it said
+    // would otherwise go unnoticed (identity review, 28 Oct 2026).
+    eprintln!(
+        "[agent-signd] approval = \"{}\": {}",
+        match approval {
+            ApprovalMode::None => "none",
+            ApprovalMode::DeviceOwner => "device-owner",
+        },
+        match (approval, effective_auto_approve) {
+            (ApprovalMode::None, _) => "leases are granted without asking, and logged",
+            (ApprovalMode::DeviceOwner, true) => {
+                "but auto_approve is on, so leases are granted without asking"
+            }
+            (ApprovalMode::DeviceOwner, false) => "you approve each lease",
+        }
+    );
     let state = Arc::new(Mutex::new(DaemonState {
         lease_engine: LeaseEngine::new_with_storage(policy, storage_path),
-        keypair,
+        ca: Box::new(ca),
+        signers: SessionSigners::default(),
         _config: config,
         valid_tokens: HashMap::new(),
+        run_tokens: HashMap::new(),
+        approval,
         auto_approve: effective_auto_approve,
         pending: HashMap::new(),
         backoff: RefusalBackoff::new(refusal_backoff),
@@ -428,6 +495,9 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 );
                 return;
             }
+            // One name per repository: a link or `..` would otherwise get a
+            // lease, and a rate window, of its own.
+            let repo = canonical_repo(&repo);
             if !Path::new(&repo).join(".git").exists() {
                 let _ = send_response(
                     stream,
@@ -441,7 +511,7 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 return;
             }
             // Check active lease state without holding the lock across the prompt
-            let (blocked, covering, can_follow, auto_approve_val, terms, reach, ends) = {
+            let (blocked, covering, can_follow, grant_unasked, terms, reach, ends) = {
                 let mut st = state.lock().unwrap();
                 end_finished_work(&mut st);
                 let engine = &st.lease_engine;
@@ -457,7 +527,9 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                     engine.is_branch_blocked(&branch),
                     covering,
                     can_follow,
-                    st.auto_approve,
+                    // Nobody is asked with approval = "none", or when the
+                    // person chose unattended approval.
+                    st.approval == ApprovalMode::None || st.auto_approve,
                     engine.policy.describe_terms(&branch),
                     engine.policy.branch_reach(&branch),
                     engine.policy.end_phrase(),
@@ -491,9 +563,10 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                     Err(e) => Response::Error { message: e },
                 }
             } else {
-                // Nothing covers this commit: ask the person, outside the lock.
-                // Unattended approval only ever grants this repository.
-                if !auto_approve_val {
+                // Nothing covers this commit: ask the person, outside the lock,
+                // when approval = "device-owner". Granting without asking only
+                // ever grants this repository.
+                if !grant_unasked {
                     // The branch goes into the prompt's sentence, and the
                     // agent chose it: it must be a plain, valid branch name
                     // and the one the repository really has checked out.
@@ -518,6 +591,7 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                     return;
                 }
                 let mut st = state.lock().unwrap();
+                let unasked = st.approval == ApprovalMode::None;
                 match st.lease_engine.try_grant_for_work(
                     &repo,
                     &branch,
@@ -525,57 +599,73 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                     Coverage::Repository,
                     work_at(&repo, &branch),
                 ) {
-                    Ok(lease) => Response::LeaseGranted {
-                        lease_id: lease.id,
-                        expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
-                    },
+                    Ok(lease) => {
+                        // The record of what was granted without anyone's
+                        // approval; each identity's use of it is logged as
+                        // its tokens are issued.
+                        if unasked {
+                            eprintln!(
+                                "[agent-signd] Granted lease {} for {repo} (branch '{branch}') without asking: approval = \"none\"",
+                                lease.id
+                            );
+                        }
+                        Response::LeaseGranted {
+                            lease_id: lease.id,
+                            expires_at_secs: lease.expires_at_secs.unwrap_or(u64::MAX),
+                        }
+                    }
                     Err(e) => Response::Error { message: e },
                 }
             }
         }
-        Request::IssueToken { repo, branch } => {
+        Request::IssueToken { .. } => Response::Error {
+            // A wrapper from before per-agent identities, which doesn't say
+            // who is committing. Nobody's commit is signed as an
+            // "unidentified agent" any more (identity review, 28 Oct 2026).
+            message: "this git wrapper is older than the agent-sign service and doesn't say which agent is committing: run agent-sign's installer again to update it".to_string(),
+        },
+        Request::IssueIdentifiedToken {
+            repo,
+            branch,
+            identity,
+        } => issue_token(&state, repo, branch, identity, false),
+        Request::IssueRunToken {
+            repo,
+            branch,
+            identity,
+        } => issue_token(&state, repo, branch, identity, true),
+        Request::SignCommit {
+            token,
+            buffer_b64,
+            repo,
+            branch,
+        } => {
             let mut st = state.lock().unwrap();
-            end_finished_work(&mut st);
-            // Prune expired tokens (> 60s)
-            let now = Instant::now();
-            st.valid_tokens
-                .retain(|_, created_at| now.duration_since(*created_at) < Duration::from_secs(60));
-
-            match st.lease_engine.issue_commit_token(&repo, &branch) {
-                Ok(tok) => {
-                    st.valid_tokens.insert(tok.clone(), now);
-                    Response::TokenIssued { token: tok }
-                }
-                Err(e) => Response::Error { message: e },
-            }
-        }
-        Request::SignCommit { token, buffer_b64 } => {
-            let mut st = state.lock().unwrap();
-            let now = Instant::now();
-            st.valid_tokens
-                .retain(|_, created_at| now.duration_since(*created_at) < Duration::from_secs(60));
-
-            if st.valid_tokens.remove(&token).is_none() {
-                Response::Error {
-                    message: "Invalid, expired, or already consumed AGENT_EVENT_TOKEN".to_string(),
-                }
-            } else {
-                match base64::engine::general_purpose::STANDARD.decode(buffer_b64) {
-                    Ok(buffer) => {
-                        let signature = st.keypair.sign_git_buffer(&buffer);
-                        Response::Signed {
-                            signature_pem: signature.to_armored_pem(),
+            prune_tokens(&mut st);
+            match signer_for_signature(&mut st, &token, repo, branch) {
+                Err(message) => Response::Error { message },
+                Ok(identity) => {
+                    match base64::engine::general_purpose::STANDARD.decode(buffer_b64) {
+                        Ok(buffer) => {
+                            let st = &mut *st;
+                            match st.signers.signer_for(st.ca.as_ref(), &identity.principal) {
+                                Ok(signer) => Response::Signed {
+                                    signature_pem: signer.sign_git_buffer(&buffer),
+                                },
+                                Err(message) => Response::Error { message },
+                            }
                         }
+                        Err(e) => Response::Error {
+                            message: format!("Base64 decode error: {}", e),
+                        },
                     }
-                    Err(e) => Response::Error {
-                        message: format!("Base64 decode error: {}", e),
-                    },
                 }
             }
         }
         Request::GetStatus { repo } => {
             let st = state.lock().unwrap();
-            let (active, lease_id, branch, expires_in_secs) = st.lease_engine.get_status(&repo);
+            let (active, lease_id, branch, expires_in_secs) =
+                st.lease_engine.get_status(&canonical_repo(&repo));
             Response::Status {
                 active,
                 lease_id,
@@ -640,7 +730,11 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             if all {
                 st.lease_engine.revoke_all();
                 Response::Success
-            } else if st.lease_engine.revoke_lease(&repo) {
+            } else if st.lease_engine.revoke_lease(&repo)
+                // Leases are filed under canonical paths; one named through a
+                // link (or macOS's /var for /private/var) is the same lease.
+                || st.lease_engine.revoke_lease(&canonical_repo(&repo))
+            {
                 Response::Success
             } else {
                 // Saying "revoked" here would leave the person believing
@@ -656,6 +750,138 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
     };
 
     let _ = send_response(stream, &response);
+}
+
+/// Drops commit tokens older than [`COMMIT_TOKEN_LIFETIME`] and run tokens
+/// older than [`RUN_TOKEN_LIFETIME`].
+fn prune_tokens(st: &mut DaemonState) {
+    let now = Instant::now();
+    st.valid_tokens
+        .retain(|_, (created_at, _)| now.duration_since(*created_at) < COMMIT_TOKEN_LIFETIME);
+    st.run_tokens
+        .retain(|_, run| now.duration_since(run.issued) < RUN_TOKEN_LIFETIME);
+}
+
+/// The canonical path of a repository as a client named it, or the name
+/// unchanged when it can't be resolved (it then matches no lease). Leases,
+/// tokens and the rate window are all keyed by it, so a link to a repository
+/// or a path with `..` in it is the same repository, with one lease and one
+/// rate window (identity review, 28 Oct 2026).
+fn canonical_repo(repo: &str) -> String {
+    fs::canonicalize(repo)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| repo.to_string())
+}
+
+/// Whom a signature with `token` signs as, after checking that the git run
+/// asking writes where the token allows: the repository and branch the
+/// signing program reports must be the token's (a run token used to sign
+/// anything for ten minutes, so `git rebase feature main` and `rebase --exec
+/// 'cd /other && git commit'` made agent-signed commits on `main` and in
+/// other repositories), the branch must not be protected, and for a run
+/// token its lease must still be in force and the repository's rate window
+/// not full (each signature counts). A single-use token is burned whatever
+/// the answer.
+fn signer_for_signature(
+    st: &mut DaemonState,
+    token: &str,
+    repo: Option<String>,
+    branch: Option<String>,
+) -> Result<AgentIdentity, String> {
+    let (terms, run) = match st.valid_tokens.remove(token) {
+        Some((_, terms)) => (terms, false),
+        None => match st.run_tokens.get(token) {
+            Some(run) => (
+                RunToken {
+                    identity: run.identity.clone(),
+                    repo: run.repo.clone(),
+                    branch: run.branch.clone(),
+                    issued: run.issued,
+                },
+                true,
+            ),
+            None => {
+                return Err("Invalid, expired, or already consumed AGENT_EVENT_TOKEN".to_string());
+            }
+        },
+    };
+    let (Some(repo), Some(branch)) = (repo, branch) else {
+        return Err(
+            "the signing program didn't say which repository and branch it is signing for (it is older than the service): run agent-sign's installer again".to_string(),
+        );
+    };
+    let repo = canonical_repo(&repo);
+    if repo != terms.repo || branch != terms.branch {
+        eprintln!(
+            "[agent-signd] Refused a signature as {}: its token is for {} on branch '{}', but the git run is writing {repo} on branch '{branch}'",
+            terms.identity.principal, terms.repo, terms.branch
+        );
+        return Err(format!(
+            "this token signs only in {} on branch '{}', but git is writing {repo} on branch '{branch}'",
+            terms.repo, terms.branch
+        ));
+    }
+    if st.lease_engine.is_branch_blocked(&branch) {
+        return Err(format!(
+            "Branch '{branch}' is protected: agents can't sign commits there"
+        ));
+    }
+    if run {
+        // A run token signs only while the lease it was issued under is
+        // still in force (revoking it stops the run), and each signature
+        // counts against the repository's rate limit.
+        st.lease_engine.record_signature(&repo, &branch)?;
+    }
+    Ok(terms.identity)
+}
+
+/// Issues a token that signs as `identity` in `repo` on `branch`: a
+/// single-use one for a commit, or (`run`) one for every commit a git run
+/// makes. Either needs a lease in force for the repository and branch, which
+/// also applies the branch rules and the rate limit, and every one issued is
+/// logged: the record of which identity committed where.
+fn issue_token(
+    state: &Arc<Mutex<DaemonState>>,
+    repo: String,
+    branch: String,
+    identity: AgentIdentity,
+    run: bool,
+) -> Response {
+    if let Err(message) = identity.check() {
+        return Response::Error { message };
+    }
+    let repo = canonical_repo(&repo);
+    let mut st = state.lock().unwrap();
+    end_finished_work(&mut st);
+    prune_tokens(&mut st);
+    let issued = if run {
+        st.lease_engine.issue_run_token(&repo, &branch)
+    } else {
+        st.lease_engine.issue_commit_token(&repo, &branch)
+    };
+    match issued {
+        Ok(token) => {
+            eprintln!(
+                "[agent-signd] {} signs as {} in {repo} on branch '{branch}'",
+                if run { "A git run" } else { "A commit" },
+                identity.principal
+            );
+            let terms = RunToken {
+                identity,
+                repo,
+                branch,
+                issued: Instant::now(),
+            };
+            if run {
+                st.run_tokens.insert(token.clone(), terms);
+            } else {
+                st.valid_tokens
+                    .insert(token.clone(), (Instant::now(), terms));
+            }
+            Response::TokenIssued { token }
+        }
+        Err(e) => Response::Error { message: e },
+    }
 }
 
 /// The work an approval asked from `repo` on `branch` is for, if the

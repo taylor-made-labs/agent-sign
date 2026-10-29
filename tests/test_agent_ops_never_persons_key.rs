@@ -1,7 +1,7 @@
 //! The reverse leak: commits that git makes by itself for an agent (merge,
 //! pull, rebase, cherry-pick, revert, am, a shell alias) must never be signed
-//! with the person's own key. (Their author and committer are left to the
-//! per-agent identity change: see the two ignored tests in group 3.)
+//! with the person's own key. (Their author and committer come from the
+//! per-agent identity change: see group 3.)
 //!
 //! The wrapper handles only `git commit`; every other command goes to the
 //! real git unchanged, so git signs the commits it creates itself with
@@ -521,7 +521,6 @@ fn assert_authored_by_agent(w: &World, repo: &Path, what: &str) {
 }
 
 #[test]
-#[ignore = "moved to the per-agent identity change (26 Oct): giving agent merges the agent's name through GIT_AUTHOR_* made the wrapper call itself and relabelled the person's own merges from editors and scripts (security review), so author and committer are designed there"]
 fn agent_merge_commit_is_not_authored_as_the_person() {
     let w = World::new(PersonSigner::Fake, true);
     let repo = w.repo();
@@ -540,7 +539,6 @@ fn agent_merge_commit_is_not_authored_as_the_person() {
 }
 
 #[test]
-#[ignore = "moved to the per-agent identity change (26 Oct): giving agent merges the agent's name through GIT_AUTHOR_* made the wrapper call itself and relabelled the person's own merges from editors and scripts (security review), so author and committer are designed there"]
 fn agent_revert_commit_is_not_authored_as_the_person() {
     let w = World::new(PersonSigner::Fake, true);
     let repo = w.repo();
@@ -682,9 +680,19 @@ fn agent_can_still_verify_an_agent_signed_commit() {
     );
     assert!(out.status.success(), "agent commit failed:\n{}", text(&out));
 
-    let pub_key = fs::read_to_string(w.home.join(".agent-sign/keys/agent_ed25519.pub")).unwrap();
+    // Agents sign as themselves since per-agent identities: trust the
+    // agents' certificate authority (the line `agent-sign trust-line`
+    // prints), not the retired shared key under the person's email.
+    let ca = fs::read_to_string(w.home.join(".agent-sign/keys/agents_ca_ed25519.pub")).unwrap();
     let allowed = w.home.join("allowed_signers");
-    fs::write(&allowed, format!("{PERSON_EMAIL} {}\n", pub_key.trim())).unwrap();
+    fs::write(
+        &allowed,
+        format!(
+            "*@agents.local cert-authority,namespaces=\"git\" {}\n",
+            ca.trim()
+        ),
+    )
+    .unwrap();
 
     let out = w.agent(
         &repo,

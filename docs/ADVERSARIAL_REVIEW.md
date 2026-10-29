@@ -15,7 +15,7 @@
 > | 1. Branch-switching deadlock | Fixed: leases can cover every unprotected branch, and revocation works. |
 > | 2. "Touch ID" is an AppleScript dialog | The docs no longer claim Touch ID. Fixed on macOS on 19 Oct 2026: the dialog only picks the coverage (nothing preselected, Continue or Deny), and the lease is granted only after Touch ID or the login password through LocalAuthentication. No Approve default remains. Linux has no dialog and no authenticator (release checklist F10). |
 > | 3. `trailers` mode never applied | Fixed for messages given with `-m` or `--message`; `-F` and editor messages are left as they are. |
-> | 4. Repository config never loaded | Fixed for the wrapper's rules and attribution, merged over the person's config. The service deliberately reads only the person's own config. |
+> | 4. Repository config never loaded | Fixed for the wrapper's rules, merged over the person's config. Since the identity review (28 Oct 2026, below) a repository's file can only tighten them, and can't change attribution. The service deliberately reads only the person's own config. |
 > | 5. Service blocks during dialogs | Fixed: a thread per connection, and the lock isn't held during a dialog. |
 > | 6. Repositories keyed by folder name | Fixed: keyed by canonical path. |
 > | 7. Hard-coded `/usr/bin/git` and `ssh-keygen` | Fixed: git is found on `PATH`; `fallback_program` is used. |
@@ -29,6 +29,86 @@
 > The review's praise of a "zero blast radius" key needs a correction: the key
 > can't log in or push, but it's unencrypted and readable by the person's user,
 > and commits signed with it show as Verified for the person.
+
+
+## Identity review, 28 Oct 2026
+
+Two independent reviewers read the per-agent identity change (every agent
+signing as itself, under certificates from an agents' authority) before it
+merged, and confirmed these findings with isolated reproductions. The fixes
+were decided before any code was written; each finding (1 to 9) got a
+regression test in `tests/test_identity_review_fixes.rs` first, run against
+the code before the fix, where it **failed**, then passed after it. The run
+before the fixes: 23 of 25 failed for the reason under test; the other two
+(`f2_a_fixture_with_its_own_user_keeps_its_names`,
+`f4_a_config_any_installer_wrote_still_starts_the_service`) are guards that
+must hold before and after.
+
+| # | Finding | Regression test (failed before the fix) | Fix |
+|---|---|---|---|
+| 1 | HIGH. A repository's `.agent-sign.toml` overlaid every table, so a cloned repository could set `[attribution]`, `[human]` and `[agent]` and put anyone's name on commits with a Good agent signature, or replace `forbidden_paths`. | `f1_a_repository_file_cant_put_another_name_on_agent_commits`, `f1_every_attribution_mode_commits_as_the_agent`, `f1_a_repository_file_adds_forbidden_paths_but_cant_remove_them`, `f1_a_repository_file_cant_raise_max_diff_lines`, `f1_a_repository_file_can_block_more_branches` | A repository's file can only add `forbidden_paths` and `block_branches` and lower `max_commits_per_minute` and `max_diff_lines`; everything else is ignored with one warning line (`config::tighten_with_repo_file`). An identified agent's signed commit is authored (new commits) and committed by its identity in every mode (`AttributionEngine::compute_env_vars`). The wrapper refuses branches the repository's file adds. |
+| 2 | HIGH. An identified agent's commit that declined signing carried the person's global name and email. | `f2_an_identified_agents_unsigned_commit_is_attributed_to_it` | On that path the wrapper sets author and committer to the identity when `user.email` comes only from global or system config (a fixture's own user, and variables already set, are kept). Unsigned commits on `main` stay allowed, and are documented: protection covers agent-signed commits, and a signed-merge rule guards `main`. |
+| 3 | MEDIUM. Run tokens were checked against the starting branch but signed anything for 10 minutes: `git rebase feature main` and `rebase --exec 'cd /other && git commit'` made agent-signed commits on `main` and in other repositories. | `f3_rebasing_main_from_another_branch_makes_no_agent_commit_on_main`, `f3_a_run_token_signs_nothing_in_another_repository`, `f3_a_commit_token_signs_only_for_its_repository_and_branch` | The signing program sends the canonical repository top and the branch being written (`git_place::repo_and_branch`: `branch --show-current`, or the rebase's `head-name`, or `HEAD`); the service refuses a signature unless both are the token's and the branch isn't protected. The wrapper uses the same rule. Commit tokens too. |
+| 4 | MEDIUM, fail open. A `config.toml` that existed but couldn't be read became the defaults (now `approval = "none"`), and a misspelt or misplaced key was ignored. | `f4_an_unreadable_config_stops_the_service`, `f4_a_config_that_is_a_directory_or_a_dangling_link_stops_the_service`, `f4_an_unknown_or_misplaced_key_stops_the_service`, `f4_the_service_logs_its_approval_mode_at_start` (guard: `f4_a_config_any_installer_wrote_still_starts_the_service`, every key from `git log -p -- scripts/install.sh`) | Only "not found" means no config; any other read error, unknown table or key stops the service naming file and key (`Config::check_file`). `auto_revoke_on_branch_delete`, written by installers before 30 Sept, is accepted and ignored. The service logs its approval mode at start. |
+| 5 | MEDIUM. Commits with no terminal and no agent mark (the person's editor, or an unmarked agent) were signed as "Agent <agent.unidentified@agents.local>", attributing the person's commits to an agent. | `f5_an_unmarked_commit_needs_no_service_and_is_gits_own`, and the four tests of `test_per_agent_identity.rs` rewritten to the new behaviour (a deliberate eval change, listed in the change's report) | Such commits go to git unsigned (`commit.gpgsign=false`, every signing program failing), under git's own names, with nothing asked and no service needed. The old `IssueToken` request is refused. |
+| 6 | LOW. The authority signed any principal `check()` let through, such as `codex.admin@agents.local` or `---.a@agents.local`. | `f6_check_refuses_principals_that_dont_look_like_sessions`, `f6_an_explicit_name_gets_a_slug_check_accepts` | The session part must be 8 lowercase hex digits or `nosession`, the slug must match `^[a-z0-9]+(-[a-z0-9]+)*$`; `slug_of` joins words with single `-` so every name passes. |
+| 7 | LOW. Run tokens skipped `max_commits_per_minute`; session keys were never evicted; a repository named by a link had its own lease and rate window. | `f7_a_run_tokens_signatures_count_against_the_rate_limit`, `f7_session_keys_are_capped_least_recently_used_first`, `f7_a_repository_named_by_a_link_shares_its_lease_and_rate_window` (unit: `an_idle_session_key_is_evicted_after_twelve_hours`, `at_most_max_signers_are_kept`, which use the new time-injected API and so could not run before) | Every run-token signature counts against the repository's window (`LeaseEngine::record_signature`); signers idle 12 hours are evicted and at most 1024 kept, least recently used first; the service canonicalizes repository paths for leases, tokens, the limiter, status and revocation. |
+| 8 | LOW. A leaked `AGENT_EVENT_TOKEN` made the person's terminal commit sign as the agent. | `f8_a_leaked_token_doesnt_sign_the_persons_terminal_commit`, `f8_the_signing_program_ignores_a_token_without_the_wrappers_mark` | The person's git runs without `AGENT_EVENT_TOKEN`; the signing program ignores a token unless the wrapper's `AGENT_SIGN_AGENT_RUN` is set. |
+| 9 | LOW, older than the change. On a case-insensitive disk a branch named `MAIN` slipped past main protection. | `f9_protected_branches_are_compared_without_case`, `f9_an_agent_commit_on_upper_case_main_is_refused` | `block_branches` are compared without ASCII case everywhere (`lease::branch_matches_blocked`). |
+| 10 | LOW. After an upgrade the old shared key stayed live, and its `allowed_signers` line still trusted it under the person's email. | Checked by hand: the installer's retirement step run alone in a throwaway folder. | The installer moves `keys/agent_ed25519` to `keys/retired/agent_ed25519.<date>` (0600, folder 0700), keeps the `.pub`, and prints the exact commands to remove its `allowed_signers` line and GitHub signing key; it runs neither. |
+
+Left open, and stated in the README: an agent that names another author on
+purpose (`--author`, or `--amend` of someone else's commit). (A repository's
+lower `max_commits_per_minute`, accepted but not enforced after this round,
+is ignored since the follow-up round below.)
+
+### Follow-up round (28 Oct 2026)
+
+Two new requirements of Taylor's (A: the certificate authority key is never
+stored unprotected, "never create keys unprotected, they must be protected
+from the start"; B: the installer routes the user's own signing through
+agent-sign) and five findings of the independent check after the fix round
+(C to G). Each test in `tests/test_identity_followup.rs` was written first
+and run against the code before its change: **all 14 failed**, each for the
+reason under test (the assertion that fails is named below), and all 14
+pass after.
+
+| Item | Test (failed before) | How it failed before | Change |
+|---|---|---|---|
+| A | `a_no_file_under_the_state_dir_holds_private_key_material_after_start` | `keys/agents_ca_ed25519` is a raw 32-byte seed | The authority is made in memory at each start (`AgentsCa::generate`) behind the `CertificateIssuer` port; nothing private is written. |
+| A | `a_a_commit_certified_before_a_restart_still_verifies_after_it` | The same authority after a restart (it was loaded from the file). The verification half held before too, since the key was reused. | Each start appends its public key, dated, to `keys/agents_cas.pub`; `trust-line` prints one line per authority; both commits verify under its output. |
+| A | `a_the_service_rewrites_only_the_managed_trust_block` | The block still held the stale line | The service rewrites only the lines between the markers (`update_allowed_signers`), byte for byte outside them; a file without markers is untouched. |
+| A | `a_a_ca_private_key_left_by_an_earlier_build_stops_the_service` | The service started with it | `refuse_unprotected_key` stops the service, naming the file. |
+| A | `a_the_installer_deletes_the_authority_key_and_writes_the_managed_block` | The key file was still there after install | The installer deletes it after its question, moves a bare trust line into the block, and the service fills the block at start. |
+| B | `b_the_installer_routes_the_users_signing_and_uninstall_restores_it`, `b_with_no_program_set_uninstall_leaves_it_unset_again` | `gpg.ssh.program` unchanged by the installer | The installer sets it to `agent-ssh-sign`, keeping the old value (or `ssh-keygen`) as `fallback_program`; `uninstall.sh` puts it back (unset for `ssh-keygen`). |
+| B | `b_doctor_reports_when_the_users_signing_isnt_routed` | `doctor` didn't mention it | `doctor` reports whether the routing is in place. |
+| B, G | `b_g_the_summary_names_the_routing_and_the_deletion_before_asking` | The summary didn't mention `gpg.ssh.program` | The summary lists the routing (with the current signer) and each private key it will delete; answering no changes nothing. |
+| C | `c_an_unmarked_commit_that_asks_to_sign_is_made_unsigned` | `commit -S` exited 128 (git called the failing signing program) | `exec_unmarked_commit` strips `-S`/`--gpg-sign[=key]` (before `--`) and `-c commit.gpgsign=...`, adds `--no-gpg-sign`, and prints one line. |
+| D | `d_a_repository_file_cant_lower_max_commits_per_minute` | The repository's 1 replaced the 10 | The key is ignored, with the usual warning, whose text no longer promises it. |
+| E | `e_the_config_template_and_spec_say_every_mode_commits_as_the_agent` | The template said "Committer: you" | The template and SPEC say every mode commits as the agent. |
+| F | `f_the_github_notice_is_printed_only_while_the_old_key_is_trusted` | The notice was printed with the old key's line already gone | The notice is inside the "still trusted" branch. |
+| G | `g_the_installer_deletes_the_old_keys_private_half_and_keeps_its_public_half` | The private half was moved to `keys/retired/` | Deleted (with copies an earlier build moved aside), `.pub` kept. |
+
+The installer tests run the real `scripts/install.sh` and `uninstall.sh`
+(non-interactive: `--yes` with no terminal, the installer's existing mode;
+the summary test answers "n" in a pseudo-terminal) from a copy of
+`scripts/` whose programs are the test builds, in a throwaway home with a
+throwaway global git config, and with stand-ins first on `PATH` for
+`launchctl`, `systemctl`, `loginctl`, `codesign`, `pkill`, `pgrep`, `curl`
+and `cargo`, so no real service, process or network is touched. The copy's
+`check-binary-clean.sh` passes, since test builds carry the test
+authenticator it rightly refuses.
+
+Existing assertions changed by design: none in the integration tests. The
+unit test `the_authority_is_created_private_once_and_reused`
+(`src/agents_ca.rs`) asserted the behaviour item A removes (a 0600 key file
+reused across starts); it is replaced by
+`each_generated_authority_is_new_and_nothing_is_written` and
+`the_history_is_appended_and_an_earlier_authority_carried_over`.
+`scripts/release/install-test.sh` (Linux CI) checked "same agents'
+authority" across a reinstall and a key file in a moved state folder; it now
+checks that the earlier authority is still recorded and that a commit from
+before the reinstall still verifies.
 
 ---
 

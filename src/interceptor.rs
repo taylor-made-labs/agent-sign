@@ -103,6 +103,133 @@ pub fn signing_flag(commit_args: &[String]) -> Option<bool> {
     decided
 }
 
+/// `git commit`'s short options that take a value, attached (`-mmsg`) or as
+/// the next argument (`-m msg`): what follows them is never an option.
+const COMMIT_SHORT_WITH_VALUE: [char; 5] = ['m', 'F', 'C', 'c', 't'];
+
+/// `git commit`'s long options that take a value, which may be the next
+/// argument (`--message -S` is a message that reads "-S").
+const COMMIT_LONG_WITH_VALUE: [&str; 12] = [
+    "message",
+    "file",
+    "reuse-message",
+    "reedit-message",
+    "template",
+    "author",
+    "date",
+    "cleanup",
+    "fixup",
+    "squash",
+    "trailer",
+    "pathspec-from-file",
+];
+
+/// A commit's own options without any request to sign: `-S` (with its
+/// attached key id, and taken out of a bundle such as `-qS`), and
+/// `--gpg-sign[=<key>]` with any abbreviation git accepts. Values of options
+/// that take one (`-m -S`, `--message -S`) are kept as they are, and so is
+/// everything after `--`, which are paths.
+///
+/// For a commit that must be unsigned whatever it asked (an unmarked commit
+/// with no terminal, see the wrapper's `exec_unmarked_commit`): before the
+/// follow-up round (28 Oct 2026) such a commit's `-S` came after the
+/// wrapper's own settings, so git asked the signing program the wrapper had
+/// replaced with one that fails, and the commit failed.
+pub fn without_signing_requests(commit_args: &[String]) -> Vec<String> {
+    let mut kept = Vec::with_capacity(commit_args.len());
+    let mut i = 0;
+    while i < commit_args.len() {
+        let arg = &commit_args[i];
+        i += 1;
+        if arg == "--" {
+            kept.extend(commit_args[i - 1..].iter().cloned());
+            break;
+        }
+        if let Some(long) = arg.strip_prefix("--") {
+            let name = long.split('=').next().unwrap_or("");
+            if arg.len() >= 3 && "gpg-sign".starts_with(name) {
+                continue;
+            }
+            kept.push(arg.clone());
+            if !long.contains('=')
+                && name.len() >= 2
+                && COMMIT_LONG_WITH_VALUE.iter().any(|o| o.starts_with(name))
+                && i < commit_args.len()
+            {
+                kept.push(commit_args[i].clone());
+                i += 1;
+            }
+            continue;
+        }
+        let Some(bundle) = arg.strip_prefix('-').filter(|b| !b.is_empty()) else {
+            kept.push(arg.clone());
+            continue;
+        };
+        // The first letter that ends the bundle: `S` (whose key id is the
+        // rest), `u` (whose mode is the rest), or one that takes a value.
+        match bundle
+            .char_indices()
+            .find(|(_, c)| *c == 'S' || *c == 'u' || COMMIT_SHORT_WITH_VALUE.contains(c))
+        {
+            Some((at, 'S')) => {
+                if at > 0 {
+                    kept.push(format!("-{}", &bundle[..at]));
+                }
+            }
+            Some((at, c)) if c != 'u' && at + 1 == bundle.len() => {
+                kept.push(arg.clone());
+                if i < commit_args.len() {
+                    kept.push(commit_args[i].clone());
+                    i += 1;
+                }
+            }
+            _ => kept.push(arg.clone()),
+        }
+    }
+    kept
+}
+
+/// git's global options (those before the subcommand) without any setting
+/// of `commit.gpgsign` (`-c commit.gpgsign[=...]`, `--config-env
+/// commit.gpgsign=VAR`, `--config-env=commit.gpgsign=VAR`, the key in any
+/// case, as git reads it). Other options, and their values, are kept as
+/// they are.
+pub fn without_gpgsign_settings(global_args: &[String]) -> Vec<String> {
+    let sets_gpgsign = |setting: &str| {
+        setting
+            .split('=')
+            .next()
+            .unwrap_or("")
+            .eq_ignore_ascii_case("commit.gpgsign")
+    };
+    let mut kept = Vec::with_capacity(global_args.len());
+    let mut i = 0;
+    while i < global_args.len() {
+        let arg = global_args[i].as_str();
+        let value = global_args.get(i + 1);
+        if arg == "-c" || arg == "--config-env" {
+            if !value.is_some_and(|v| sets_gpgsign(v)) {
+                kept.push(arg.to_string());
+                kept.extend(value.cloned());
+            }
+            i += 2;
+        } else if let Some(setting) = arg.strip_prefix("--config-env=") {
+            if !sets_gpgsign(setting) {
+                kept.push(arg.to_string());
+            }
+            i += 1;
+        } else if GLOBAL_OPTIONS_WITH_VALUES.contains(&arg) {
+            kept.push(arg.to_string());
+            kept.extend(value.cloned());
+            i += 2;
+        } else {
+            kept.push(arg.to_string());
+            i += 1;
+        }
+    }
+    kept
+}
+
 /// Whether `git config --show-scope --type=bool --get commit.gpgsign` output
 /// says signing was turned off for this command or this repository
 /// (`command`, `local` or `worktree` scope). A global or system setting
@@ -112,4 +239,60 @@ pub fn config_declines_signing(show_scope_output: &str) -> bool {
     let scope = parts.next().unwrap_or_default();
     let value = parts.next().unwrap_or_default().trim();
     value == "false" && matches!(scope, "command" | "local" | "worktree")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn strings(args: &[&str]) -> Vec<String> {
+        args.iter().map(|a| a.to_string()).collect()
+    }
+
+    #[test]
+    fn signing_requests_are_taken_out_of_a_commits_options() {
+        for (given, kept) in [
+            (&["-S", "-m", "x"][..], &["-m", "x"][..]),
+            (&["-qS", "-m", "x"], &["-q", "-m", "x"]),
+            (&["-SKEYID", "-m", "x"], &["-m", "x"]),
+            (&["--gpg-sign=KEY", "-a"], &["-a"]),
+            (&["--gpg", "-a"], &["-a"]),
+            (&["-m", "-S"], &["-m", "-S"]),
+            (&["-qm", "-S"], &["-qm", "-S"]),
+            (&["-m-S"], &["-m-S"]),
+            (&["--message", "-S"], &["--message", "-S"]),
+            (&["--message=-S", "-S"], &["--message=-S"]),
+            (&["-a", "--", "-S"], &["-a", "--", "-S"]),
+            (&["--no-gpg-sign"], &["--no-gpg-sign"]),
+        ] {
+            assert_eq!(
+                without_signing_requests(&strings(given)),
+                strings(kept),
+                "{given:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn gpgsign_settings_are_taken_out_of_global_options() {
+        for (given, kept) in [
+            (&["-c", "commit.gpgsign=true"][..], &[][..]),
+            (&["-c", "Commit.GpgSign"], &[]),
+            (
+                &["--config-env", "commit.gpgsign=V", "-C", "d"],
+                &["-C", "d"],
+            ),
+            (&["--config-env=commit.gpgsign=V"], &[]),
+            (
+                &["-c", "user.name=x", "-C", "-c"],
+                &["-c", "user.name=x", "-C", "-c"],
+            ),
+        ] {
+            assert_eq!(
+                without_gpgsign_settings(&strings(given)),
+                strings(kept),
+                "{given:?}"
+            );
+        }
+    }
 }

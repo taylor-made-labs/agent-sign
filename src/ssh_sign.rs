@@ -9,6 +9,14 @@
 //! to sign is refused, since agent work is never signed with the person's key,
 //! and a request to verify goes to plain `ssh-keygen`, which needs no key.
 //!
+//! A token counts only with the wrapper's own mark beside it
+//! ([`crate::attribution::AGENT_RUN_VAR`]): a token that leaked into another
+//! environment (the person's shell, a tool that copied an agent's
+//! environment) is ignored, and the person's commit goes to their own
+//! signer. With a token, the service is also told which repository and
+//! branch the git run is writing ([`crate::git_place`]), and refuses a
+//! signature for anywhere other than the token's.
+//!
 //! It lives in the library so that `agent-ssh-sign` and `agent-sign` (which
 //! also accepts git's signing arguments, as it always has) run exactly the
 //! same code.
@@ -52,7 +60,13 @@ pub fn run(args: &[String]) -> ExitCode {
     let fallback_prog = config.ssh.fallback_program.clone();
     let multiplexer = Multiplexer::new(config);
 
-    let token_var = env::var(EVENT_TOKEN_VAR).ok();
+    // A token is the wrapper's, for a git it runs for an agent, and that git
+    // always has the wrapper's mark too. Without the mark the token leaked
+    // (identity review, 28 Oct 2026: a token left in the person's terminal
+    // made their own commit sign as the agent), so it's ignored.
+    let token_var = env::var(EVENT_TOKEN_VAR)
+        .ok()
+        .filter(|_| wrappers_mark_present(|k| env::var(k).ok()));
     let action = multiplexer.determine_action(token_var.as_deref());
 
     match action {
@@ -81,6 +95,13 @@ pub fn run(args: &[String]) -> ExitCode {
             sign_with_agent_daemon(args, &token)
         }
     }
+}
+
+/// Whether the wrapper's mark ([`crate::attribution::AGENT_RUN_VAR`]) is set
+/// (and isn't empty or `0`) in the environment `get` reads: the only
+/// environment in which a token is used.
+pub fn wrappers_mark_present(get: impl Fn(&str) -> Option<String>) -> bool {
+    get(crate::attribution::AGENT_RUN_VAR).is_some_and(|v| !v.is_empty() && v != "0")
 }
 
 /// Whether gpg's arguments only check a signature: `--verify`, and nothing
@@ -188,9 +209,26 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
     let buffer_b64 = base64::engine::general_purpose::STANDARD.encode(&buffer);
     let socket_path = client_socket_path();
 
+    // Where this git run is writing, asked of the real git from git's own
+    // folder and environment (git runs its signing program there), so the
+    // service can refuse a signature for anywhere but the token's repository
+    // and branch. If git can't say, nothing is sent and the service refuses.
+    let place = crate::git_place::repo_and_branch(|args| {
+        let out = Command::new(crate::paths::real_git())
+            .args(args)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+    });
+    let (repo, branch) = place.unzip();
     let req = Request::SignCommit {
         token: token.to_string(),
         buffer_b64,
+        repo,
+        branch,
     };
 
     let resp = match send_request(&socket_path, &req) {

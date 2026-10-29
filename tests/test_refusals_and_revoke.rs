@@ -37,6 +37,15 @@ impl Drop for Service {
 /// Starts `agent-signd` in `home` with `path` as its whole `PATH`, no terminal,
 /// and `owner` as what its stand-in owner (`AGENT_SIGN_TEST_AUTH`) does.
 fn start_service(home: &Path, path: &str, auto_approve: bool, owner: &str) -> Service {
+    // The refusals here come from the device owner's approval, which is
+    // opt-in since per-agent identities.
+    let state = home.join(".agent-sign");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(
+        state.join("config.toml"),
+        "[security]\napproval = \"device-owner\"\n",
+    )
+    .unwrap();
     let socket = home.join("svc.sock");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
     cmd.arg("--socket")

@@ -16,12 +16,14 @@ compile_error!(
     "the `test-authenticator` feature is for debug test builds only: run `cargo test` without --release"
 );
 
+pub mod agents_ca;
 pub mod approval;
 pub mod attribution;
 pub mod config;
 pub mod crypto;
 #[cfg(target_os = "macos")]
 pub mod device_owner;
+pub mod git_place;
 pub mod interceptor;
 pub mod lease;
 pub mod multiplexer;

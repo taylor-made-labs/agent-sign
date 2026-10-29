@@ -326,6 +326,23 @@ pub fn describe_duration(d: Duration) -> String {
     format!("{} {}{}", n, unit, if n == 1 { "" } else { "s" })
 }
 
+/// Whether `branch` matches one of `patterns` (`block_branches`): a name, or
+/// a prefix ending in `*`, compared without regard to ASCII case. On a disk
+/// that ignores case (macOS by default) `refs/heads/MAIN` and
+/// `refs/heads/main` are the same file, and a remote may only ever see one
+/// of them, so a branch named `MAIN` must be as protected as `main`
+/// (identity review, 28 Oct 2026; before, it slipped past).
+pub fn branch_matches_blocked(branch: &str, patterns: &[String]) -> bool {
+    let branch = branch.to_ascii_lowercase();
+    patterns.iter().any(|pattern| {
+        let pattern = pattern.to_ascii_lowercase();
+        match pattern.strip_suffix('*') {
+            Some(prefix) => branch.starts_with(prefix),
+            None => branch == pattern,
+        }
+    })
+}
+
 pub struct LeaseEngine {
     pub policy: LeasePolicy,
     storage_path: Option<PathBuf>,
@@ -582,18 +599,12 @@ impl LeaseEngine {
         self.get_active_lease(repo).is_some()
     }
 
+    /// Whether `branch` is protected under this policy (see
+    /// [`branch_matches_blocked`]), unless `allow_main_branch` turns
+    /// protection off.
     pub fn is_branch_blocked(&self, branch: &str) -> bool {
-        if self.policy.allow_main_branch {
-            return false;
-        }
-        for blocked in &self.policy.block_branches {
-            if branch == blocked
-                || (blocked.ends_with('*') && branch.starts_with(blocked.trim_end_matches('*')))
-            {
-                return true;
-            }
-        }
-        false
+        !self.policy.allow_main_branch
+            && branch_matches_blocked(branch, &self.policy.block_branches)
     }
 
     /// Grants a lease for this repository only.
@@ -790,7 +801,62 @@ impl LeaseEngine {
         list
     }
 
+    /// Checks a single-use commit token for `repo` on `branch` (branch
+    /// rules, a lease in force, the rate limit) and counts the commit.
     pub fn issue_commit_token(&mut self, repo: &str, branch: &str) -> Result<String, String> {
+        self.token_for(repo, branch)
+    }
+
+    /// The same checks for a run token, for one git run that may make
+    /// several commits (a rebase replays many). The run counts once against
+    /// `max_commits_per_minute`, however many commits it signs: the limit
+    /// guards against runaway loops of separate git runs, and counting each
+    /// signature made a rebase of more commits than the limit fail halfway
+    /// (seen in the live check on the server, 28 Oct). A run token's
+    /// signatures stay bounded by its lifetime, its lease, and its
+    /// repository and branch.
+    pub fn issue_run_token(&mut self, repo: &str, branch: &str) -> Result<String, String> {
+        self.token_for(repo, branch)
+    }
+
+    /// Records one signature made with a run token for `repo` on `branch`
+    /// in the lease's usage record, or refuses it when no lease covers it
+    /// any more. It doesn't count against the rate limit: the run already
+    /// counted once when its token was issued.
+    pub fn record_signature(&mut self, repo: &str, branch: &str) -> Result<(), String> {
+        let Some(key) = self.find_lease_key(repo, Some(branch)) else {
+            return Err("the lease this git run was signing under has ended".to_string());
+        };
+        self.note_use(&key);
+        Ok(())
+    }
+
+    /// Records a commit in `repo`'s sliding 60-second window, or refuses it
+    /// when `max_commits_per_minute` are already in it.
+    fn count_commit(&mut self, repo: &str) -> Result<(), String> {
+        let now = Instant::now();
+        let timestamps = self.commit_timestamps.entry(repo.to_string()).or_default();
+        timestamps.retain(|&t| now.duration_since(t) < Duration::from_secs(60));
+        if timestamps.len() as u32 >= self.policy.max_commits_per_minute {
+            return Err(format!(
+                "Rate limit exceeded: maximum {} commits per minute allowed",
+                self.policy.max_commits_per_minute
+            ));
+        }
+        timestamps.push(now);
+        Ok(())
+    }
+
+    /// Updates a lease's usage record (never its end).
+    fn note_use(&mut self, key: &str) {
+        if let Some(lease) = self.leases.get_mut(key) {
+            lease.commit_count += 1;
+            lease.last_used_at_secs = current_epoch_secs();
+            self.save_to_disk();
+        }
+    }
+
+    fn token_for(&mut self, repo: &str, branch: &str) -> Result<String, String> {
         // 0. Branch rules, checked on every token and for every scope: a lease
         // never covers a protected branch. Checking only when a lease is
         // granted or moved let repository-scoped leases sign on `main`.
@@ -813,27 +879,13 @@ impl LeaseEngine {
             });
         };
 
-        // 2. Rate limiter check (sliding 60s window)
-        let now = Instant::now();
-        let timestamps = self.commit_timestamps.entry(repo.to_string()).or_default();
-        timestamps.retain(|&t| now.duration_since(t) < Duration::from_secs(60));
-
-        if timestamps.len() as u32 >= self.policy.max_commits_per_minute {
-            return Err(format!(
-                "Rate limit exceeded: maximum {} commits per minute allowed",
-                self.policy.max_commits_per_minute
-            ));
-        }
-
-        timestamps.push(now);
-
+        // 2. Rate limiter (sliding 60s window): one count per commit or per
+        // git run, however many commits the run signs.
+        self.count_commit(repo)?;
         // 3. Update lease statistics (never its end)
-        let lease = self.leases.get_mut(&key).expect("checked above");
-        lease.commit_count += 1;
-        lease.last_used_at_secs = current_epoch_secs();
-        self.save_to_disk();
+        self.note_use(&key);
 
-        // 4. Issue single-use event token
+        // 4. Issue the token
         Ok(format!("ev_{}", Uuid::new_v4()))
     }
 }
