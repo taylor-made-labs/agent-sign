@@ -346,6 +346,7 @@ pub fn branch_matches_blocked(branch: &str, patterns: &[String]) -> bool {
 pub struct LeaseEngine {
     pub policy: LeasePolicy,
     storage_path: Option<PathBuf>,
+    storage_unavailable: bool,
     leases: HashMap<String, Lease>,
     commit_timestamps: HashMap<String, Vec<Instant>>,
 }
@@ -355,6 +356,7 @@ impl LeaseEngine {
         Self {
             policy,
             storage_path: None,
+            storage_unavailable: false,
             leases: HashMap::new(),
             commit_timestamps: HashMap::new(),
         }
@@ -371,6 +373,7 @@ impl LeaseEngine {
         let mut engine = Self {
             policy,
             storage_path,
+            storage_unavailable: false,
             leases: HashMap::new(),
             commit_timestamps: HashMap::new(),
         };
@@ -406,6 +409,7 @@ impl LeaseEngine {
                                 re
                             );
                             engine.storage_path = None;
+                            engine.storage_unavailable = true;
                         }
                     }
                 }
@@ -418,6 +422,7 @@ impl LeaseEngine {
                     e
                 );
                 engine.storage_path = None;
+                engine.storage_unavailable = true;
             }
         }
         engine.save_to_disk();
@@ -460,7 +465,11 @@ impl LeaseEngine {
         let written = options
             .open(&tmp_path)
             .and_then(|mut f| f.write_all(json.as_bytes()).and_then(|_| f.sync_all()))
-            .and_then(|_| fs::rename(&tmp_path, path));
+            .and_then(|_| fs::rename(&tmp_path, path))
+            .and_then(|_| match path.parent() {
+                Some(parent) => fs::File::open(parent)?.sync_all(),
+                None => Ok(()),
+            });
         if written.is_err() {
             let _ = fs::remove_file(&tmp_path);
         }
@@ -738,6 +747,13 @@ impl LeaseEngine {
     /// path (for a folder lease), or [`EVERYWHERE`]. Returns whether one
     /// was found.
     pub fn revoke_lease(&mut self, target: &str) -> bool {
+        self.revoke_lease_durable(target).unwrap_or_else(|e| {
+            eprintln!("[agent-sign] {e}");
+            false
+        })
+    }
+
+    pub fn revoke_lease_durable(&mut self, target: &str) -> Result<bool, String> {
         let target = if target.len() > 1 {
             target.trim_end_matches('/')
         } else {
@@ -748,16 +764,31 @@ impl LeaseEngine {
             .find(|k| self.leases.contains_key(k));
         let removed = key.is_some_and(|k| self.leases.remove(&k).is_some());
         if removed {
-            self.save_to_disk();
+            self.persist_revocation()?;
         }
-        removed
+        Ok(removed)
     }
 
     pub fn revoke_all(&mut self) -> usize {
+        self.revoke_all_durable().unwrap_or_else(|e| {
+            eprintln!("[agent-sign] {e}");
+            0
+        })
+    }
+
+    pub fn revoke_all_durable(&mut self) -> Result<usize, String> {
         let count = self.leases.len();
         self.leases.clear();
-        self.save_to_disk();
-        count
+        self.persist_revocation()?;
+        Ok(count)
+    }
+
+    fn persist_revocation(&self) -> Result<(), String> {
+        match &self.storage_path {
+            Some(path) => self.write_lease_file(path).map_err(|e| format!("revoked in memory but could not save revocation ({e}); old grants may return after restart. Repair the lease store before restarting; durable revocation was NOT confirmed")),
+            None if self.storage_unavailable => Err("revoked in memory, but the existing lease store was unreadable; old grants may return after restart. Repair it before restarting; durable revocation was NOT confirmed".into()),
+            None => Ok(()), // Explicitly memory-only engines have no persistent grants.
+        }
     }
 
     pub fn get_status(&self, repo: &str) -> (bool, Option<String>, Option<String>, Option<u64>) {

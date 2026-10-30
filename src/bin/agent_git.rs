@@ -467,7 +467,16 @@ struct AgentRun {
 /// token, so a commit it makes fails instead of going unsigned.
 fn prepare_agent_run(real_git: &Path, global: &[String], identity: AgentIdentity) -> AgentRun {
     let place = get_repo_and_branch(real_git, global);
-    let config = Config::load(place.as_ref().map(|(repo, _)| Path::new(repo.as_str())));
+    let config = match Config::try_load(place.as_ref().map(|(repo, _)| Path::new(repo.as_str()))) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("[agent-git] Refused invalid selected config: {e}");
+            return AgentRun {
+                token: None,
+                names: Vec::new(),
+            };
+        }
+    };
     let token = match &place {
         None => Err("agent-sign couldn't identify the repository".to_string()),
         Some((_, branch)) if wrapper_protects(&config, branch) => Err(protected(branch)),
@@ -717,7 +726,13 @@ fn handle_agent_commit(
     let socket_path = client_socket_path();
 
     let repo_path = Path::new(&repo);
-    let config = Config::load(Some(repo_path));
+    let config = match Config::try_load(Some(repo_path)) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("[agent-git] Refused invalid selected config: {e}");
+            return ExitCode::from(1);
+        }
+    };
 
     // 0. Enterprise Guardrails: protected branches (with the repository's
     // additions), staged paths, diff size, and commit message
@@ -1030,22 +1045,7 @@ fn validate_guardrails(
 }
 
 fn matches_glob(path: &str, pattern: &str) -> bool {
-    let path = path.trim_start_matches("./");
-    let pattern = pattern.trim_start_matches("./");
-
-    if pattern == "*" {
-        return true;
-    }
-    if let Some(prefix) = pattern.strip_suffix("/*") {
-        return path == prefix || path.starts_with(&format!("{}/", prefix));
-    }
-    if let Some(suffix) = pattern.strip_prefix("*.") {
-        return path.ends_with(&format!(".{}", suffix));
-    }
-    if let Some(prefix) = pattern.strip_suffix('*') {
-        return path.starts_with(prefix);
-    }
-    path == pattern
+    agent_sign::guardrails::matches_glob(path, pattern)
 }
 
 fn extract_commit_message(args: &[String]) -> Option<String> {
@@ -1060,16 +1060,6 @@ fn extract_commit_message(args: &[String]) -> Option<String> {
     None
 }
 
-fn is_conventional_commit(msg: &str) -> bool {
-    let types = [
-        "feat", "fix", "docs", "style", "refactor", "perf", "test", "build", "ci", "chore",
-    ];
-    let first_line = msg.lines().next().unwrap_or("").trim();
-    for t in types {
-        if first_line.starts_with(&format!("{}:", t)) || first_line.starts_with(&format!("{}(", t))
-        {
-            return true;
-        }
-    }
-    false
+fn is_conventional_commit(message: &str) -> bool {
+    agent_sign::guardrails::is_conventional_commit(message)
 }

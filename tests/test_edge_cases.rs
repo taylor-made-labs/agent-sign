@@ -330,8 +330,19 @@ fn a_forged_or_reused_token_signs_nothing() {
     .unwrap();
     assert!(matches!(forged, Response::Error { .. }), "{forged:?}");
 
-    let w_r = s.home.join("w/r");
-    fs::create_dir_all(w_r.join(".git")).unwrap();
+    let real_repo = s.repo("token-fixture", "feat/a");
+    let tree = git(&real_repo, &["rev-parse", "HEAD^{tree}"]);
+    let parent = git(&real_repo, &["rev-parse", "HEAD"]);
+    let candidate = format!(
+        "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\ntest: one-use fixture\n",
+        String::from_utf8_lossy(&tree.stdout).trim(),
+        String::from_utf8_lossy(&parent.stdout).trim()
+    );
+    let buffer = base64::Engine::encode(
+        &base64::engine::general_purpose::STANDARD,
+        candidate.as_bytes(),
+    );
+    let w_r = real_repo;
     // The service names repositories by their canonical path (identity
     // review, 28 Oct 2026), and the signature must name the token's.
     let w_r = fs::canonicalize(&w_r).unwrap().display().to_string();

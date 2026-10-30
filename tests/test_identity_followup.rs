@@ -763,6 +763,11 @@ fn installer(w: &World) -> Installer {
         }
     }
     fs::write(scripts.join("check-binary-clean.sh"), "#!/bin/sh\nexit 0\n").unwrap();
+    fs::write(
+        src.join("Cargo.toml"),
+        "[package]\nname = \"installer-fixture\"\nversion = \"0.0.0\"\n",
+    )
+    .unwrap();
     let release = src.join("target/release");
     fs::create_dir_all(&release).unwrap();
     for (name, built) in [
@@ -783,7 +788,7 @@ fn installer(w: &World) -> Installer {
         ("pkill", 1),
         ("pgrep", 1),
         ("curl", 1),
-        ("cargo", 1),
+        ("cargo", 0),
     ] {
         let stub = fakebin.join(name);
         fs::write(

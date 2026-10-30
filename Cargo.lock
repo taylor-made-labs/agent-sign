@@ -11,6 +11,7 @@ dependencies = [
  "block2",
  "clap",
  "ed25519-dalek",
+ "libc",
  "objc2",
  "objc2-foundation",
  "objc2-local-authentication",

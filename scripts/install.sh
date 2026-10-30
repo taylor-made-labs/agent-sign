@@ -70,12 +70,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOT="$(dirname "$SCRIPT_DIR")"
 
 HOMEBREW_PREFIX_ARG=""
+RELEASE_ARCHIVE=""
+EXPECTED_SHA256=""
 ASSUME_YES=false
 while [ $# -gt 0 ]; do
     case "$1" in
         --yes|-y)
             ASSUME_YES=true
             shift
+            ;;
+        --archive)
+            RELEASE_ARCHIVE="${2:-}"
+            [ -n "$RELEASE_ARCHIVE" ] || { echo "--archive needs a file" >&2; exit 2; }
+            shift 2
+            ;;
+        --sha256)
+            EXPECTED_SHA256="${2:-}"
+            [ -n "$EXPECTED_SHA256" ] || { echo "--sha256 needs the independently trusted archive digest" >&2; exit 2; }
+            shift 2
             ;;
         --from-homebrew)
             HOMEBREW_PREFIX_ARG="${2:-}"
@@ -107,6 +119,29 @@ echo -e "${BOLD}╔════════════════════�
 echo -e "${BOLD}║            agent-sign Installer (pre-release)          ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════════════════╝${NC}"
 echo ""
+
+# Resolve trust before extracting or installing any release bytes. The expected
+# digest comes from the caller's independent review, never from the same mutable
+# download as the archive. Extracted release binaries alone are not admitted.
+if [ -n "$RELEASE_ARCHIVE" ] || [ -n "$EXPECTED_SHA256" ]; then
+    [ -n "$RELEASE_ARCHIVE" ] && [[ "$EXPECTED_SHA256" =~ ^[0-9a-fA-F]{64}$ ]] \
+        || { echo "Release installation requires --archive FILE --sha256 TRUSTED-DIGEST" >&2; exit 2; }
+    [ -z "$HOMEBREW_PREFIX_ARG" ] || { echo "Choose either a release archive or Homebrew" >&2; exit 2; }
+    [ -f "$RELEASE_ARCHIVE" ] || { echo "Release archive is not a file" >&2; exit 2; }
+    RELEASE_TMP=$(mktemp -d)
+    trap 'rm -rf "$RELEASE_TMP"' EXIT
+    # Verify and extract the same private copy, not a caller path that can
+    # change while the installation question is open.
+    cp "$RELEASE_ARCHIVE" "$RELEASE_TMP/input.tar.gz"
+    RELEASE_ARCHIVE="$RELEASE_TMP/input.tar.gz"
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL_SHA256=$(sha256sum "$RELEASE_ARCHIVE" | awk '{print $1}')
+    else
+        ACTUAL_SHA256=$(shasum -a 256 "$RELEASE_ARCHIVE" | awk '{print $1}')
+    fi
+    [ "$(printf '%s' "$ACTUAL_SHA256" | tr 'A-F' 'a-f')" = "$(printf '%s' "$EXPECTED_SHA256" | tr 'A-F' 'a-f')" ] \
+        || { echo "Release archive digest differs; nothing extracted or installed" >&2; exit 1; }
+fi
 
 # ─── What there is now ───────────────────────────────────────────────────────
 # Your own SSH signing: git's gpg.ssh.program, which becomes agent-ssh-sign.
@@ -226,75 +261,24 @@ install_from_homebrew() {
 }
 
 if [ -n "$HOMEBREW_PREFIX_ARG" ]; then
-    info "Using the programs Homebrew installed in $HOMEBREW_PREFIX_ARG"
+    info "Using the explicitly selected Homebrew installation in $HOMEBREW_PREFIX_ARG"
     install_from_homebrew "$HOMEBREW_PREFIX_ARG"
-    INSTALLED_FROM_RELEASE=true
-# Programs next to this script: a release archive (bin/) or a built checkout
-# (target/release/).
-elif [ -x "$SOURCE_ROOT/bin/agent-signd" ] && [ -x "$SOURCE_ROOT/bin/agent-git" ]; then
-    info "Using the programs in this release archive"
-    install_binaries "$SOURCE_ROOT/bin"
-    INSTALLED_FROM_RELEASE=true
-elif [ -f "$SOURCE_ROOT/target/release/agent-signd" ] && [ -f "$SOURCE_ROOT/target/release/agent-sign" ] && [ -f "$SOURCE_ROOT/target/release/agent-ssh-sign" ] && [ -f "$SOURCE_ROOT/target/release/agent-git" ]; then
-    info "Using existing local release binaries from target/release/"
+elif [ -n "$RELEASE_ARCHIVE" ]; then
+    mkdir -p "$RELEASE_TMP/unpacked"
+    tar -xzf "$RELEASE_ARCHIVE" -C "$RELEASE_TMP/unpacked"
+    # Standard release archives contain exactly one top-level product folder.
+    RELEASE_ROOTS=("$RELEASE_TMP/unpacked"/agent-sign-*)
+    [ "${#RELEASE_ROOTS[@]}" -eq 1 ] && [ -d "${RELEASE_ROOTS[0]}/bin" ] \
+        || { err "Unexpected release layout"; exit 1; }
+    install_binaries "${RELEASE_ROOTS[0]}/bin"
+elif [ -f "$SOURCE_ROOT/Cargo.toml" ]; then
+    command -v cargo >/dev/null 2>&1 || { err "Building this selected source requires Rust/Cargo. No release download was attempted."; exit 1; }
+    info "Building the selected source (existing target/release binaries are not used without rebuilding)"
+    (cd "$SOURCE_ROOT" && cargo build --release --locked)
     install_binaries "$SOURCE_ROOT/target/release"
-    INSTALLED_FROM_RELEASE=true
-fi
-
-# If not already installed and no cargo, or if running via curl/standalone, attempt GitHub Release download
-if [ "$INSTALLED_FROM_RELEASE" = false ]; then
-    OS="$(uname -s)"
-    ARCH="$(uname -m)"
-    TARGET_TRIPLE=""
-
-    if [ "$OS" = "Darwin" ]; then
-        if [ "$ARCH" = "arm64" ]; then
-            TARGET_TRIPLE="aarch64-apple-darwin"
-        else
-            TARGET_TRIPLE="x86_64-apple-darwin"
-        fi
-    elif [ "$OS" = "Linux" ]; then
-        if [ "$ARCH" = "x86_64" ]; then
-            TARGET_TRIPLE="x86_64-unknown-linux-gnu"
-        elif [ "$ARCH" = "aarch64" ] || [ "$ARCH" = "arm64" ]; then
-            TARGET_TRIPLE="aarch64-unknown-linux-gnu"
-        fi
-    fi
-
-    if [ -n "$TARGET_TRIPLE" ] && command -v curl &>/dev/null; then
-        TARBALL="agent-sign-${TARGET_TRIPLE}.tar.gz"
-        URL="https://github.com/${REPO}/releases/download/${VERSION}/${TARBALL}"
-        info "Attempting to download pre-compiled release: ${TARBALL}..."
-
-        TMP_DIR=$(mktemp -d)
-        if curl -fsSL "$URL" -o "$TMP_DIR/$TARBALL" 2>/dev/null; then
-            tar -xzf "$TMP_DIR/$TARBALL" -C "$TMP_DIR"
-            EXTRACTED_DIR="$TMP_DIR/agent-sign-${TARGET_TRIPLE}"
-            if [ -x "$EXTRACTED_DIR/bin/agent-signd" ]; then
-                install_binaries "$EXTRACTED_DIR/bin"
-                ok "Downloaded and installed pre-compiled binaries for ${TARGET_TRIPLE}"
-                INSTALLED_FROM_RELEASE=true
-            fi
-            rm -rf "$TMP_DIR"
-        else
-            rm -rf "$TMP_DIR"
-            info "Release download not available or failed — checking for local Cargo build..."
-        fi
-    fi
-fi
-
-# Fallback to local Cargo build if needed
-if [ "$INSTALLED_FROM_RELEASE" = false ]; then
-    if ! command -v cargo &>/dev/null; then
-        err "Rust/Cargo not found and pre-compiled binary could not be downloaded."
-        err "Please install Rust from https://rustup.rs or download a release from:"
-        err "https://github.com/${REPO}/releases"
-        exit 1
-    fi
-    info "Building from source with Cargo..."
-    (cd "$SOURCE_ROOT" && cargo build --release --locked --quiet 2>&1 | tail -5)
-    install_binaries "$SOURCE_ROOT/target/release"
-    ok "Build and installation from source complete"
+else
+    err "No selected source or trusted release archive. Use this reviewed installer with --archive FILE --sha256 TRUSTED-DIGEST, or explicitly select --from-homebrew PREFIX."
+    exit 1
 fi
 
 chmod +x "$INSTALL_DIR/agent-signd"

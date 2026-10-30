@@ -161,3 +161,16 @@ remove it there (Settings, SSH and GPG keys) yourself.
 Run the installer again from the new version. The key, leases and config
 carry over, with no new approval. [MIGRATION.md](MIGRATION.md) lists what
 changed since the first agent-sign.
+
+## Source and release selection after the October 29 review
+
+From a source checkout the installer rebuilds that source with Cargo, even when
+old release programs exist. A missing toolchain or failed build stops it; there
+is no automatic release download. To install a reviewed archive, run a separately
+reviewed installer with `--archive FILE --sha256 DIGEST`. Obtain DIGEST through
+your independent review/trusted channel before running it: this option checks
+bytes, not the trustworthiness of whoever supplied the digest. It checks the
+archive before extraction. An already unpacked binary folder is not accepted as
+source. An explicitly selected Homebrew prefix retains package-manager trust.
+See the [repair record](security-review-2026-10-29.md) for the isolated Linux
+validation, exact source hashes and remaining host assumptions.

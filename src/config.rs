@@ -355,15 +355,20 @@ pub fn parse_duration_string(s: &str) -> Option<Duration> {
     if let Some(val) = s.strip_suffix('h') {
         val.parse::<u64>()
             .ok()
-            .map(|h| Duration::from_secs(h * 3600))
+            .and_then(|h| h.checked_mul(3600))
+            .map(Duration::from_secs)
     } else if let Some(val) = s.strip_suffix('m') {
-        val.parse::<u64>().ok().map(|m| Duration::from_secs(m * 60))
+        val.parse::<u64>()
+            .ok()
+            .and_then(|m| m.checked_mul(60))
+            .map(Duration::from_secs)
     } else if let Some(val) = s.strip_suffix('s') {
         val.parse::<u64>().ok().map(Duration::from_secs)
     } else if let Some(val) = s.strip_suffix('d') {
         val.parse::<u64>()
             .ok()
-            .map(|d| Duration::from_secs(d * 86400))
+            .and_then(|d| d.checked_mul(86400))
+            .map(Duration::from_secs)
     } else {
         s.parse::<u64>().ok().map(Duration::from_secs)
     }
@@ -561,7 +566,12 @@ impl Config {
         }
         Self::check_file(path)?;
         let content = std::fs::read_to_string(path)?;
-        let config: Config = toml::from_str(&content)?;
+        let parsed: toml::Value = toml::from_str(&content)?;
+        if let Some(what) = unknown_key(&parsed) {
+            return Err(format!("{} has {what}", path.display()).into());
+        }
+        let config: Config = parsed.try_into()?;
+        config.validate_selected_security()?;
         Ok(config)
     }
 
@@ -574,6 +584,94 @@ impl Config {
     /// 4. Overlaid with environment variables (`AGENT_SIGN_*`)
     pub fn load(repo_path: Option<&Path>) -> Self {
         Self::load_in_home(&paths::home_dir(), repo_path)
+    }
+
+    fn validate_selected_security(&self) -> Result<(), String> {
+        if parse_duration_string(&self.security.default_lease_duration).is_none() {
+            return Err("default_lease_duration is not a valid duration".into());
+        }
+        self.security.max_ceiling_duration()?;
+        self.security.idle_limit_duration()?;
+        self.security.refusal_backoff_duration()?;
+        Ok(())
+    }
+
+    /// Production callers must distinguish missing settings from failed loading.
+    pub fn try_load(repo_path: Option<&Path>) -> Result<Self, String> {
+        Self::try_load_in_home(&paths::home_dir(), repo_path)
+    }
+
+    /// Reload the explicitly selected service config, then apply only the
+    /// repository's permitted tightening rules. No selected-file failure falls
+    /// back to defaults.
+    pub fn try_load_selected(file: Option<&Path>, repo: Option<&Path>) -> Result<Self, String> {
+        let mut config = match file {
+            Some(file) => Self::load_from_file(file).map_err(|e| e.to_string())?,
+            None => Self::try_load(None)?,
+        };
+        if let Some(repo) = repo {
+            config.tighten_repository(repo)?;
+        }
+        Ok(config)
+    }
+
+    pub fn tighten_repository(&mut self, repo: &Path) -> Result<(), String> {
+        for name in paths::REPO_CONFIG_FILES {
+            let file = repo.join(name);
+            let content = match std::fs::read_to_string(&file) {
+                Ok(content) => content,
+                Err(e)
+                    if e.kind() == std::io::ErrorKind::NotFound
+                        && std::fs::symlink_metadata(&file).is_err() =>
+                {
+                    continue;
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "couldn't read selected policy {}: {e}",
+                        file.display()
+                    ));
+                }
+            };
+            let overlay = toml::from_str::<toml::Value>(&content)
+                .map_err(|e| format!("selected policy {} is invalid: {e}", file.display()))?;
+            if let Some(security) = overlay.get("security") {
+                let table = security
+                    .as_table()
+                    .ok_or("selected [security] policy must be a table")?;
+                for name in ["forbidden_paths", "block_branches"] {
+                    if let Some(value) = table.get(name)
+                        && !value
+                            .as_array()
+                            .is_some_and(|items| items.iter().all(|v| v.as_str().is_some()))
+                    {
+                        return Err(format!(
+                            "selected policy {}: {name} must be an array of strings",
+                            file.display()
+                        ));
+                    }
+                }
+                if let Some(value) = table.get("max_diff_lines")
+                    && !value
+                        .as_integer()
+                        .is_some_and(|n| usize::try_from(n).is_ok())
+                {
+                    return Err(format!(
+                        "selected policy {}: max_diff_lines must be a nonnegative integer",
+                        file.display()
+                    ));
+                }
+            }
+            let ignored = tighten_with_repo_file(self, &overlay);
+            if !ignored.is_empty() {
+                eprintln!(
+                    "[agent-sign] {}: ignored {}: a repository's file can only add forbidden_paths and block_branches, or lower max_diff_lines",
+                    file.display(),
+                    ignored.join(", ")
+                );
+            }
+        }
+        Ok(())
     }
 
     /// Whether the person's config file in `home` (if there is one) reads as
@@ -637,42 +735,38 @@ impl Config {
     /// [`Config::load`] for an explicit home directory, so loading can be
     /// tested against temporary homes without changing the process's `HOME`.
     pub fn load_in_home(home: &Path, repo_path: Option<&Path>) -> Self {
+        Self::try_load_in_home(home, repo_path).unwrap_or_default()
+    }
+
+    pub fn try_load_in_home(home: &Path, repo_path: Option<&Path>) -> Result<Self, String> {
+        Self::check_file_in_home(home)?;
         let mut defaults = Config::default();
         defaults.ssh.agent_key_path = key_path_in(home);
         let default_str = toml::to_string(&defaults).unwrap_or_default();
         let mut base_val: toml::Value = toml::from_str(&default_str)
             .unwrap_or_else(|_| toml::Value::Table(toml::map::Map::new()));
 
-        // 1. Overlay global user config
+        // Only an absent file selects defaults; read/parse races still fail.
         let global_config = paths::state_dir_in(home).join("config.toml");
-        if let Ok(content) = std::fs::read_to_string(&global_config)
-            && let Ok(overlay) = toml::from_str::<toml::Value>(&content)
-        {
-            merge_toml(&mut base_val, overlay);
-        }
-
-        let mut config: Config = base_val.try_into().unwrap_or_default();
-
-        // 2. The repository's file, which can only tighten [security] rules
-        // (see tighten_with_repo_file). What it tried to set otherwise is
-        // named once, so a repository that expected more isn't silently
-        // half-applied.
-        if let Some(repo) = repo_path {
-            for name in paths::REPO_CONFIG_FILES {
-                let repo_config = repo.join(name);
-                if let Ok(content) = std::fs::read_to_string(&repo_config)
-                    && let Ok(overlay) = toml::from_str::<toml::Value>(&content)
-                {
-                    let ignored = tighten_with_repo_file(&mut config, &overlay);
-                    if !ignored.is_empty() {
-                        eprintln!(
-                            "[agent-sign] {}: ignored {}: a repository's file can only add forbidden_paths and block_branches, or lower max_diff_lines",
-                            repo_config.display(),
-                            ignored.join(", ")
-                        );
-                    }
+        match std::fs::read_to_string(&global_config) {
+            Ok(content) => {
+                let overlay = toml::from_str::<toml::Value>(&content)
+                    .map_err(|e| format!("{}: {e}", global_config.display()))?;
+                if let Some(what) = unknown_key(&overlay) {
+                    return Err(format!("{} has {what}", global_config.display()));
                 }
+                merge_toml(&mut base_val, overlay);
             }
+            Err(e)
+                if e.kind() == std::io::ErrorKind::NotFound
+                    && std::fs::symlink_metadata(&global_config).is_err() => {}
+            Err(e) => return Err(format!("{}: {e}", global_config.display())),
+        }
+        let mut config: Config = base_val
+            .try_into()
+            .map_err(|e| format!("invalid selected config: {e}"))?;
+        if let Some(repo) = repo_path {
+            config.tighten_repository(repo)?;
         }
 
         // 3. Environment overrides
@@ -729,6 +823,7 @@ impl Config {
             config.ssh.fallback_program = val;
         }
 
-        config
+        config.validate_selected_security()?;
+        Ok(config)
     }
 }

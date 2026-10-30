@@ -673,3 +673,15 @@ the sensor or read the prompt; see check F10 in
 `docs/RELEASE_CHECKLIST.md`). The installer and
 uninstaller are covered on Linux by `scripts/release/install-test.sh`, and in
 part (with stand-ins for the service manager) by `test_identity_followup.rs`.
+
+## October 29 signature-boundary contract amendment
+
+The [security repair record](docs/security-review-2026-10-29.md) specifies the
+source repair: exact UTF-8 candidate bytes and first-parent object delta checked
+before every signature; strict selected guardrail loading; both token types bound
+to an unchanged lease ID with validity rechecked after blocking reads; durable
+explicit revocation acknowledged only after file and directory synchronization.
+No wire format changes. Startup lease-policy semantics, cooperative caller/host
+trust and replayed authors are retained. The record binds isolated Linux runtime
+validation (330 tests and 35 installer checks) to exact source hashes and states
+remaining assumptions and untested platforms.

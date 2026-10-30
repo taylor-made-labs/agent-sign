@@ -38,9 +38,10 @@ tell an aim from a guarantee.
   directory), that isn't valid TOML, that has a table or key it doesn't
   know, or that has a value it can't read (`max_lease_ceiling`,
   `approval`, ...); only a missing file means the defaults, and it logs the
-  approval mode in effect when it starts. The wrapper and signing program
-  still fall back to the defaults on a bad file, which is safe only because
-  the service then won't start.
+  approval mode in effect when it starts. Production wrapper, signing and
+  signature-boundary paths now refuse failed selected configuration reads;
+  a malformed file cannot silently remove rules while a daemon keeps running.
+  Startup lease-policy changes still require a restart.
 - What isn't the person's can't change the person's rules.
   *Today:* a repository's `.agent-sign.toml` can only tighten them (see
   `config::tighten_with_repo_file`); what else it sets is ignored, with a

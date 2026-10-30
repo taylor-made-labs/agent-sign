@@ -41,6 +41,7 @@ sha2 = "0.10"
 rand = "0.8"
 base64 = "0.22"
 zeroize = "1.8"
+libc = "=0.2.189"
 # OpenSSH certificates for agents' signing keys: the service issues each agent
 # session a short-lived certificate for its principal, from the agents'
 # certificate authority, and git and ssh-keygen verify commits through it.

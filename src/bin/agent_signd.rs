@@ -79,6 +79,7 @@ struct DaemonState {
     /// Each agent session's key and certificate, by principal; memory only.
     signers: SessionSigners,
     _config: Config,
+    config_file: Option<PathBuf>,
     /// Single-use commit tokens: when each was issued, and as whom, in which
     /// repository and on which branch it signs.
     valid_tokens: HashMap<String, (Instant, RunToken)>,
@@ -118,10 +119,12 @@ struct PendingAsk {
 /// A token's terms: as whom it signs, for which repository and branch (the
 /// lease it was issued under), and when it was issued. Single-use commit
 /// tokens carry the same terms, so every signature is checked against them.
+#[derive(Clone)]
 struct RunToken {
     identity: AgentIdentity,
     repo: String,
     branch: String,
+    lease_id: String,
     issued: Instant,
 }
 
@@ -315,7 +318,7 @@ fn run_daemon(
         // A setting that doesn't read (a misspelt approval mode, say) would
         // otherwise fall back to the defaults without a word.
         Config::check_file_in_home(&agent_sign::paths::home_dir())?;
-        Config::load(None)
+        Config::try_load(None)?
     };
     let max_ceiling = config.security.max_ceiling_duration()?;
     let idle_limit = config.security.idle_limit_duration()?;
@@ -331,6 +334,7 @@ fn run_daemon(
     // shared agent key of earlier versions (`agent_ed25519`) is no longer
     // used.
     let base_dir = get_state_dir();
+    agent_sign::hardening::disable_core_dumps()?;
     let ca = start_authority(&base_dir)?;
 
     let socket_path = custom_socket
@@ -389,6 +393,7 @@ fn run_daemon(
         ca: Box::new(ca),
         signers: SessionSigners::default(),
         _config: config,
+        config_file: custom_config.map(Path::to_path_buf),
         valid_tokens: HashMap::new(),
         run_tokens: HashMap::new(),
         approval,
@@ -640,26 +645,9 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             repo,
             branch,
         } => {
-            let mut st = state.lock().unwrap();
-            prune_tokens(&mut st);
-            match signer_for_signature(&mut st, &token, repo, branch) {
+            match sign_candidate(&state, &token, &buffer_b64, repo, branch) {
+                Ok(signature_pem) => Response::Signed { signature_pem },
                 Err(message) => Response::Error { message },
-                Ok(identity) => {
-                    match base64::engine::general_purpose::STANDARD.decode(buffer_b64) {
-                        Ok(buffer) => {
-                            let st = &mut *st;
-                            match st.signers.signer_for(st.ca.as_ref(), &identity.principal) {
-                                Ok(signer) => Response::Signed {
-                                    signature_pem: signer.sign_git_buffer(&buffer),
-                                },
-                                Err(message) => Response::Error { message },
-                            }
-                        }
-                        Err(e) => Response::Error {
-                            message: format!("Base64 decode error: {}", e),
-                        },
-                    }
-                }
             }
         }
         Request::GetStatus { repo } => {
@@ -727,24 +715,18 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             all,
         } => {
             let mut st = state.lock().unwrap();
-            if all {
-                st.lease_engine.revoke_all();
-                Response::Success
-            } else if st.lease_engine.revoke_lease(&repo)
-                // Leases are filed under canonical paths; one named through a
-                // link (or macOS's /var for /private/var) is the same lease.
-                || st.lease_engine.revoke_lease(&canonical_repo(&repo))
-            {
-                Response::Success
+            let result = if all {
+                st.lease_engine.revoke_all_durable().map(|_| true)
             } else {
-                // Saying "revoked" here would leave the person believing
-                // access had ended when nothing matched.
-                Response::Error {
-                    message: format!(
-                        "no lease for '{}': give the repository's or folder's full path, or `everywhere`, as `agent-sign leases` shows it",
-                        repo
-                    ),
+                match st.lease_engine.revoke_lease_durable(&repo) {
+                    Ok(false) => st.lease_engine.revoke_lease_durable(&canonical_repo(&repo)),
+                    result => result,
                 }
+            };
+            match result {
+                Ok(true) => Response::Success,
+                Ok(false) => Response::Error { message: format!("no lease for '{repo}': give the repository's or folder's full path, or everywhere, as agent-sign leases shows it") },
+                Err(message) => Response::Error { message },
             }
         }
     };
@@ -782,57 +764,95 @@ fn canonical_repo(repo: &str) -> String {
 /// token its lease must still be in force and the repository's rate window
 /// not full (each signature counts). A single-use token is burned whatever
 /// the answer.
-fn signer_for_signature(
+fn consume_signature_token(
     st: &mut DaemonState,
     token: &str,
     repo: Option<String>,
     branch: Option<String>,
-) -> Result<AgentIdentity, String> {
+) -> Result<(RunToken, bool), String> {
+    prune_tokens(st);
     let (terms, run) = match st.valid_tokens.remove(token) {
         Some((_, terms)) => (terms, false),
         None => match st.run_tokens.get(token) {
-            Some(run) => (
-                RunToken {
-                    identity: run.identity.clone(),
-                    repo: run.repo.clone(),
-                    branch: run.branch.clone(),
-                    issued: run.issued,
-                },
-                true,
-            ),
-            None => {
-                return Err("Invalid, expired, or already consumed AGENT_EVENT_TOKEN".to_string());
-            }
+            Some(run) => (run.clone(), true),
+            None => return Err("Invalid, expired, or already consumed AGENT_EVENT_TOKEN".into()),
         },
     };
     let (Some(repo), Some(branch)) = (repo, branch) else {
-        return Err(
-            "the signing program didn't say which repository and branch it is signing for (it is older than the service): run agent-sign's installer again".to_string(),
-        );
+        return Err("the signing program didn't identify its repository and branch".into());
     };
-    let repo = canonical_repo(&repo);
-    if repo != terms.repo || branch != terms.branch {
-        eprintln!(
-            "[agent-signd] Refused a signature as {}: its token is for {} on branch '{}', but the git run is writing {repo} on branch '{branch}'",
-            terms.identity.principal, terms.repo, terms.branch
-        );
-        return Err(format!(
-            "this token signs only in {} on branch '{}', but git is writing {repo} on branch '{branch}'",
-            terms.repo, terms.branch
-        ));
+    if canonical_repo(&repo) != terms.repo || branch != terms.branch {
+        return Err("this token signs only for its own repository and branch".into());
     }
-    if st.lease_engine.is_branch_blocked(&branch) {
-        return Err(format!(
-            "Branch '{branch}' is protected: agents can't sign commits there"
-        ));
+    Ok((terms, run))
+}
+
+fn sign_candidate(
+    state: &Arc<Mutex<DaemonState>>,
+    token: &str,
+    encoded: &str,
+    repo: Option<String>,
+    branch: Option<String>,
+) -> Result<String, String> {
+    // Burn a one-use token even when candidate/config checking refuses it.
+    let (terms, run, selected_config) = {
+        let mut st = state.lock().unwrap();
+        let (terms, run) = consume_signature_token(&mut st, token, repo, branch)?;
+        (terms, run, st.config_file.clone())
+    };
+    let buffer = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| "candidate is not valid base64")?;
+    let config =
+        Config::try_load_selected(selected_config.as_deref(), Some(Path::new(&terms.repo)))?;
+    if agent_sign::lease::branch_matches_blocked(
+        &terms.branch,
+        &config.security.repo_block_branches,
+    ) {
+        return Err("candidate branch is protected by the selected repository policy".into());
     }
+    agent_sign::guardrails::validate_candidate(Path::new(&terms.repo), &config, &buffer)?;
+    let mut st = state.lock().unwrap();
+    // Complete all potentially blocking object/work reads before the last
+    // time, generation and lease check and the actual signature.
+    end_finished_work(&mut st);
     if run {
-        // A run token signs only while the lease it was issued under is
-        // still in force (revoking it stops the run), and each signature
-        // counts against the repository's rate limit.
-        st.lease_engine.record_signature(&repo, &branch)?;
+        let current = st
+            .lease_engine
+            .find_lease(&terms.repo, &terms.branch)
+            .ok_or("the signing lease has ended or was revoked")?;
+        if current.id != terms.lease_id {
+            return Err("the original signing lease was revoked or replaced".into());
+        }
+        st.lease_engine
+            .record_signature(&terms.repo, &terms.branch)?;
     }
-    Ok(terms.identity)
+    if st.lease_engine.is_branch_blocked(&terms.branch) {
+        return Err(format!(
+            "Branch '{}' is protected: no signature was made",
+            terms.branch
+        ));
+    }
+    let lifetime = if run {
+        RUN_TOKEN_LIFETIME
+    } else {
+        COMMIT_TOKEN_LIFETIME
+    };
+    if terms.issued.elapsed() >= lifetime {
+        return Err("token expired while checking its candidate".into());
+    }
+    let lease = st
+        .lease_engine
+        .find_lease(&terms.repo, &terms.branch)
+        .ok_or("the signing lease has ended or was revoked")?;
+    if lease.id != terms.lease_id {
+        return Err("the original signing lease was revoked or replaced".into());
+    }
+    let st = &mut *st;
+    Ok(st
+        .signers
+        .signer_for(st.ca.as_ref(), &terms.identity.principal)?
+        .sign_git_buffer(&buffer))
 }
 
 /// Issues a token that signs as `identity` in `repo` on `branch`: a
@@ -866,10 +886,20 @@ fn issue_token(
                 if run { "A git run" } else { "A commit" },
                 identity.principal
             );
+            let Some(lease_id) = st
+                .lease_engine
+                .find_lease(&repo, &branch)
+                .map(|l| l.id.clone())
+            else {
+                return Response::Error {
+                    message: "lease expired before its token could be issued".into(),
+                };
+            };
             let terms = RunToken {
                 identity,
                 repo,
                 branch,
+                lease_id,
                 issued: Instant::now(),
             };
             if run {

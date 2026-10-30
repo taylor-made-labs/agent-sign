@@ -508,11 +508,20 @@ impl World {
     /// `SignCommit` with the repository and branch the signing program
     /// reports.
     fn sign(&self, token: &str, repo: &str, branch: &str) -> Response {
+        // Real object/header fixture independent of the candidate validator:
+        // it changes no paths, retaining this test's original token assertions.
+        let tree = self.git_ok(Path::new(repo), &["rev-parse", "HEAD^{tree}"]);
+        let parent = self.git_ok(Path::new(repo), &["rev-parse", "HEAD"]);
+        let buffer = format!(
+            "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\ntest: token fixture\n",
+            tree.trim(),
+            parent.trim()
+        );
         self.ask_raw(serde_json::json!({
             "type": "SignCommit",
             "payload": {
                 "token": token,
-                "buffer_b64": base64::engine::general_purpose::STANDARD.encode(b"tree x\n"),
+                "buffer_b64": base64::engine::general_purpose::STANDARD.encode(buffer.as_bytes()),
                 "repo": repo,
                 "branch": branch,
             }

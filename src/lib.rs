@@ -24,6 +24,8 @@ pub mod crypto;
 #[cfg(target_os = "macos")]
 pub mod device_owner;
 pub mod git_place;
+pub mod guardrails;
+pub mod hardening;
 pub mod interceptor;
 pub mod lease;
 pub mod multiplexer;

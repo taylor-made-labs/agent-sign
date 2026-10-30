@@ -9,6 +9,7 @@ Type=simple
 ExecStart=%h/.agent-sign/bin/agent-signd
 Restart=always
 RestartSec=2
+LimitCORE=0
 StandardOutput=journal
 StandardError=journal
 
