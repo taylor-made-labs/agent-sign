@@ -480,7 +480,13 @@ fn run_doctor() -> ExitCode {
     let mut warnings = 0;
     let mut failures = 0;
 
-    let config = Config::load(None);
+    let config = match Config::try_load(None) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("[agent-sign] Invalid selected config: {e}");
+            return ExitCode::from(1);
+        }
+    };
 
     // 1. Check Git configuration
     let gpg_format = Command::new("git")

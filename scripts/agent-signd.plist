@@ -18,7 +18,7 @@
     <array>
         <string>/bin/sh</string>
         <string>-c</string>
-        <string>exec "$HOME/.agent-sign/agent-sign.app/Contents/MacOS/agent-signd"</string>
+        <string>ulimit -c 0 &amp;&amp; exec "$HOME/.agent-sign/agent-sign.app/Contents/MacOS/agent-signd"</string>
     </array>
     <key>RunAtLoad</key>
     <true/>

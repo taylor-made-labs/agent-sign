@@ -77,7 +77,15 @@ in_home() {
         GIT_CONFIG_NOSYSTEM=1 "$@" </dev/null
 }
 
-install() { (cd "$SRC" && in_home "$1" bash scripts/install.sh) >"$1/install.log" 2>&1; }
+PACKAGE_ROOT="$WORK/package/agent-sign-fixture"
+mkdir -p "$PACKAGE_ROOT/bin"
+for name in agent-signd agent-sign agent-ssh-sign agent-git; do
+    cp "$SRC/target/release/$name" "$PACKAGE_ROOT/bin/$name"
+done
+PACKAGE_ARCHIVE="$WORK/agent-sign-fixture.tar.gz"
+tar -czf "$PACKAGE_ARCHIVE" -C "$WORK/package" agent-sign-fixture
+PACKAGE_DIGEST=$(sha256sum "$PACKAGE_ARCHIVE" | awk '{print $1}')
+install() { (cd "$SRC" && in_home "$1" bash scripts/install.sh --archive "$PACKAGE_ARCHIVE" --sha256 "$PACKAGE_DIGEST") >"$1/install.log" 2>&1; }
 uninstall() { (cd "$SRC" && in_home "$1" bash scripts/uninstall.sh) >"$1/uninstall.log" 2>&1; }
 
 wait_for_service() {

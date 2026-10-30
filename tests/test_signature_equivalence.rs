@@ -165,6 +165,17 @@ fn every_signing_name_signs_as_the_agent_and_the_library_signer_is_unchanged() {
         .status()
         .unwrap();
     assert!(init.success());
+    let empty_tree = Command::new("git")
+        .args(["hash-object", "-w", "-t", "tree", "/dev/null"])
+        .current_dir(&golden_dir)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .output()
+        .unwrap();
+    assert!(empty_tree.status.success());
+    assert_eq!(
+        String::from_utf8_lossy(&empty_tree.stdout).trim(),
+        "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+    );
     let golden = fs::canonicalize(&golden_dir).unwrap().display().to_string();
 
     match send_request(

@@ -56,7 +56,13 @@ pub fn run(args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    let config = Config::load(None);
+    let config = match Config::try_load(None) {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("[agent-ssh-sign] Refused invalid selected config: {e}");
+            return ExitCode::from(1);
+        }
+    };
     let fallback_prog = config.ssh.fallback_program.clone();
     let multiplexer = Multiplexer::new(config);
 

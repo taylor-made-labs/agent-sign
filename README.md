@@ -73,8 +73,10 @@ it from source.
    the agent's own identity: the service gives each agent session a signing
    key that lives only in its memory, with a 12-hour OpenSSH certificate
    from the agents' certificate authority naming the agent's principal. The
-   authority is made in the service's memory each time it starts, and its
-   private key is never written anywhere. In every attribution mode the
+   authority is made in the service's memory each time it starts. The daemon
+   disables ordinary core dumps before generating private keys and does not
+   explicitly persist them; swap and privileged memory access remain host
+   assumptions. In every attribution mode the
    agent is both author and committer.
 5. Commands that make commits by themselves (`merge`, `pull`, `rebase`,
    `cherry-pick`, `revert`, `am`, aliases for those, and shell aliases) are
@@ -85,8 +87,9 @@ it from source.
    in the repository and on the branch it was issued for: the signing
    program tells the service where each commit is going, and a run that
    moves elsewhere (`git rebase feature main` from `feature`, or a `cd` into
-   another repository) gets nothing signed there. Every signature counts
-   against the rate limit.
+   another repository) gets nothing signed there. The service also checks
+   the actual candidate tree and message against local rules before every
+   signature. Each direct commit or Git run counts once against the rate limit.
 6. Leases are saved, so a crash, a restart, or your laptop sleeping changes
    nothing. `agent-sign leases` lists them; `agent-sign revoke` ends them.
 
@@ -484,3 +487,11 @@ agent-sign is licensed under either of
 
 at your option. This is the same pair most Rust projects use: pick whichever
 your organization already accepts.
+
+## October 29 security repair scope
+
+The [security repair record](docs/security-review-2026-10-29.md) describes exact
+candidate checks, lease-generation binding, explicit persistence failures,
+trusted release inputs and remaining host assumptions. Isolated Linux validation
+passed 330 tests and 35 installer checks; the record identifies the exact source,
+commands and untested platforms, separately from independent source review.
