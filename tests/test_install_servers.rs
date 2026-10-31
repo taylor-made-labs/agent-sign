@@ -195,7 +195,9 @@ impl Lab {
         ] {
             write_executable(
                 &fakebin.join(name),
-                &format!("#!/bin/sh\necho \"{name} $*\" >> \"$HOME/stand-ins.log\"\nexit {status}\n"),
+                &format!(
+                    "#!/bin/sh\necho \"{name} $*\" >> \"$HOME/stand-ins.log\"\nexit {status}\n"
+                ),
             );
         }
         // The service managers: log the call, keep the config as it is at
@@ -266,7 +268,9 @@ impl Lab {
     /// `install.sh --yes <args>`, with no terminal.
     fn install(&self, args: &[&str]) -> Output {
         let mut cmd = self.cmd("/bin/bash");
-        cmd.arg(self.src.join("scripts/install.sh")).arg("--yes").args(args);
+        cmd.arg(self.src.join("scripts/install.sh"))
+            .arg("--yes")
+            .args(args);
         run_within(cmd, "install.sh")
     }
 
@@ -401,7 +405,12 @@ fn machine_is_added_to_an_existing_config_without_identity() {
     .unwrap();
     let out = lab.install(&["--machine", "hetzner"]);
     assert!(out.status.success(), "install: {}", text(&out));
-    assert_eq!(lab.machine().as_deref(), Some("hetzner"), "{:?}", lab.config_text());
+    assert_eq!(
+        lab.machine().as_deref(),
+        Some("hetzner"),
+        "{:?}",
+        lab.config_text()
+    );
     let config = lab.config().expect("config.toml should still parse");
     assert_eq!(
         config["security"]["max_commits_per_minute"].as_integer(),
@@ -455,7 +464,11 @@ fn installing_again_with_the_same_machine_changes_nothing() {
     assert!(second.status.success(), "second install: {}", text(&second));
     let after_second = lab.config_text().unwrap();
     assert_eq!(after_first, after_second);
-    assert_eq!(after_second.matches("[identity]").count(), 1, "{after_second}");
+    assert_eq!(
+        after_second.matches("[identity]").count(),
+        1,
+        "{after_second}"
+    );
     let machine_lines = after_second
         .lines()
         .filter(|l| l.trim_start().starts_with("machine"))
@@ -471,7 +484,14 @@ fn installing_again_with_the_same_machine_changes_nothing() {
 #[test]
 fn valid_machine_labels_are_accepted() {
     let longest = "a".repeat(63);
-    for label in ["a", "0", "pi-4", "x1-2-3", "ubuntu-16gb-hel1-1", longest.as_str()] {
+    for label in [
+        "a",
+        "0",
+        "pi-4",
+        "x1-2-3",
+        "ubuntu-16gb-hel1-1",
+        longest.as_str(),
+    ] {
         let lab = Lab::new();
         let out = lab.install(&["--machine", label]);
         assert!(
@@ -479,7 +499,12 @@ fn valid_machine_labels_are_accepted() {
             "--machine {label:?} is a valid label and should be accepted:\n{}",
             text(&out)
         );
-        assert_eq!(lab.machine().as_deref(), Some(label), "{:?}", lab.config_text());
+        assert_eq!(
+            lab.machine().as_deref(),
+            Some(label),
+            "{:?}",
+            lab.config_text()
+        );
     }
 }
 
@@ -542,7 +567,11 @@ fn a_missing_or_empty_machine_value_is_refused() {
         let lab = Lab::new();
         let out = lab.install(&args);
         let shown = all_output(&out);
-        assert!(!out.status.success(), "{args:?} should be refused:\n{}", text(&out));
+        assert!(
+            !out.status.success(),
+            "{args:?} should be refused:\n{}",
+            text(&out)
+        );
         assert!(
             !shown.contains("Unknown option"),
             "{args:?} was refused only because the installer doesn't know the option:\n{shown}"
@@ -560,7 +589,10 @@ fn assert_nothing_changed(lab: &Lab, what: &str) {
     assert!(
         lab.calls().iter().all(|c| !c.starts_something()),
         "{what}: the service was started although the label was refused: {:?}",
-        lab.calls().iter().map(|c| c.args.clone()).collect::<Vec<_>>()
+        lab.calls()
+            .iter()
+            .map(|c| c.args.clone())
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         lab.global_git("gpg.ssh.program"),
@@ -656,7 +688,10 @@ mod launcher_units {
         let lab = Lab::new();
         let out = lab.install(&["--launcher-unit", "foo.service"]);
         assert!(out.status.success(), "install: {}", text(&out));
-        assert_eq!(lines_of(&drop_in(&lab, "foo.service")), expected_lines(&lab));
+        assert_eq!(
+            lines_of(&drop_in(&lab, "foo.service")),
+            expected_lines(&lab)
+        );
     }
 
     /// The installer must never restart (or stop, start or signal) a launcher
@@ -669,7 +704,12 @@ mod launcher_units {
     #[test]
     fn the_installer_never_restarts_a_launcher_unit_and_prints_the_command() {
         let lab = Lab::new();
-        let out = lab.install(&["--launcher-unit", "foo.service", "--launcher-unit", "bar.service"]);
+        let out = lab.install(&[
+            "--launcher-unit",
+            "foo.service",
+            "--launcher-unit",
+            "bar.service",
+        ]);
         assert!(out.status.success(), "install: {}", text(&out));
         for unit in ["foo.service", "bar.service"] {
             for call in lab.calls() {
@@ -747,10 +787,18 @@ mod launcher_units {
         let users_text = "[Service]\nEnvironment=MINE=1\n";
         fs::write(&users_own, users_text).unwrap();
 
-        let out = lab.install(&["--launcher-unit", "foo.service", "--launcher-unit", "bar.service"]);
+        let out = lab.install(&[
+            "--launcher-unit",
+            "foo.service",
+            "--launcher-unit",
+            "bar.service",
+        ]);
         assert!(out.status.success(), "install: {}", text(&out));
         for unit in ["foo.service", "bar.service"] {
-            assert!(drop_in(&lab, unit).is_file(), "no drop-in for {unit} after install");
+            assert!(
+                drop_in(&lab, unit).is_file(),
+                "no drop-in for {unit} after install"
+            );
         }
         assert_eq!(fs::read_to_string(&users_own).unwrap(), users_text);
 

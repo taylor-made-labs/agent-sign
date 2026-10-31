@@ -35,8 +35,8 @@
 //! NOTE for the builder: existing tests sign fixtures whose committer date is
 //! the fixed 1700000000 (`test_identity_review_fixes.rs`, `test_edge_cases.rs`,
 //! `test_security_boundary.rs`) and some name agents with
-//! `AGENT_SIGN_AGENT_NAME` values outside the built-in list (`Cursor`,
-//! `My Bot 2`, in `test_agent_name.rs` and others). Both are exactly what
+//! `AGENT_SIGN_AGENT_NAME` values outside the allowed list (`My Bot 2`, in
+//! `test_per_agent_identity.rs` and others). Both are exactly what
 //! this change refuses, so those tests must be updated as part of it; that
 //! is a deliberate change to them, made for this reason, not a way to make
 //! them pass.
@@ -623,7 +623,9 @@ fn regression_guard_the_built_in_tool_slugs_are_accepted() {
     let mut w = World::new(&config_with(""));
     w.start_service();
     let repo = w.repo();
-    let cases: Vec<(&str, Vec<(&str, String)>, String)> = vec![
+    // (slug, the agent's own marks, the session they name)
+    type Case<'a> = (&'a str, Vec<(&'a str, String)>, String);
+    let cases: Vec<Case> = vec![
         (
             "claude-code",
             vec![
@@ -657,7 +659,11 @@ fn regression_guard_the_built_in_tool_slugs_are_accepted() {
     for (i, (what, marks, want)) in cases.iter().enumerate() {
         let out = w.agent_commit(&repo, marks, &format!("f{i}.txt"));
         assert_commit_ok(&w, &out, what);
-        assert_eq!(w.emails(&repo, "HEAD"), (want.clone(), want.clone()), "{what}");
+        assert_eq!(
+            w.emails(&repo, "HEAD"),
+            (want.clone(), want.clone()),
+            "{what}"
+        );
         let trust = w.trust_lines();
         assert_eq!(
             w.signature_under(&repo, "HEAD", &trust),
@@ -668,8 +674,8 @@ fn regression_guard_the_built_in_tool_slugs_are_accepted() {
 }
 
 /// Plan check 6a (a pass for a made-up agent name). With no `allowed_agents`
-/// at all, agents that name themselves `taylor`, `root`, `admin` or `Cursor`
-/// (not a built-in) get no certificate and no signature, and the message
+/// at all, agents that name themselves `taylor`, `root`, `admin` or `Totally
+/// Real Tool` (neither built in nor a widely used tool) get no certificate and no signature, and the message
 /// names `allowed_agents`. A built-in agent's commit in the same world
 /// first shows the service works. Fails today because every slug gets a
 /// certificate: a `taylor` commit is signed and verifies Good.
@@ -679,7 +685,7 @@ fn a_made_up_agent_name_gets_no_certificate_and_no_signature() {
     w.start_service();
     let repo = w.repo();
     w.claude_commit_ok(&repo, "control.txt");
-    for (i, name) in ["taylor", "Taylor", "root", "admin", "Cursor"]
+    for (i, name) in ["taylor", "Taylor", "root", "admin", "Totally Real Tool"]
         .iter()
         .enumerate()
     {
@@ -764,21 +770,24 @@ impl World {
 
 /// Plan check 6a (the way in). A slug listed in `[identity] allowed_agents`
 /// gets a certificate and a Good signature under its own principal, as
-/// `Cursor` (slug `cursor`) and `My Bot 2` (`my-bot-2`) do here, at the
+/// `Totally Real Tool` (slug `totally-real-tool`) and `My Bot 2` (`my-bot-2`) do here, at the
 /// daemon too; a built-in agent still works; a name not listed (`taylor`)
 /// is still refused, with the message. Fails today because the service
 /// stops at start on the unknown `[identity]` table.
 #[test]
 fn a_slug_listed_in_allowed_agents_is_accepted_and_others_are_still_refused() {
     let mut w = World::new(&config_with(
-        "[identity]\nallowed_agents = [\"cursor\", \"my-bot-2\"]\n",
+        "[identity]\nallowed_agents = [\"totally-real-tool\", \"my-bot-2\"]\n",
     ));
     w.start_service();
     let repo = w.repo();
     w.claude_commit_ok(&repo, "control.txt");
-    for (i, (name, slug)) in [("Cursor", "cursor"), ("My Bot 2", "my-bot-2")]
-        .iter()
-        .enumerate()
+    for (i, (name, slug)) in [
+        ("Totally Real Tool", "totally-real-tool"),
+        ("My Bot 2", "my-bot-2"),
+    ]
+    .iter()
+    .enumerate()
     {
         let out = w.named_commit(&repo, name, &format!("listed-{i}.txt"));
         assert_commit_ok(&w, &out, &format!("agent named {name:?}"));
@@ -794,7 +803,7 @@ fn a_slug_listed_in_allowed_agents_is_accepted_and_others_are_still_refused() {
 
     let canonical = w.canonical(&repo);
     w.lease(&canonical, "work");
-    let granted = w.slug_token_request("IssueIdentifiedToken", &canonical, "cursor");
+    let granted = w.slug_token_request("IssueIdentifiedToken", &canonical, "totally-real-tool");
     assert!(
         matches!(granted, Response::TokenIssued { .. }),
         "daemon token for a listed slug: {granted:?}"
@@ -893,7 +902,12 @@ fn the_service_refuses_to_sign_a_commit_dated_outside_the_certificates_window() 
     let cases: [(&str, u64, u64, bool); 7] = [
         ("committer date now", 1_700_000_000, t, true),
         ("committer date an hour ahead", t, t + HOUR, true),
-        ("old author date, committer date now", 1_600_000_000, t, true),
+        (
+            "old author date, committer date now",
+            1_600_000_000,
+            t,
+            true,
+        ),
         ("committer date two days ago", t, t - 48 * HOUR, false),
         ("committer date an hour ago", t, t - HOUR, false),
         ("committer date 13 hours ahead", t, t + 13 * HOUR, false),

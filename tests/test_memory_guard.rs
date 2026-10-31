@@ -150,13 +150,17 @@ fn readable_address(maps: &str) -> u64 {
         let range = fields.next().unwrap_or("");
         let perms = fields.next().unwrap_or("");
         let name = line.split_whitespace().nth(5).unwrap_or("");
-        if !perms.starts_with('r') || name == "[vvar]" || name == "[vsyscall]" || name == "[vvar_vclock]" {
+        if !perms.starts_with('r')
+            || name == "[vvar]"
+            || name == "[vsyscall]"
+            || name == "[vvar_vclock]"
+        {
             continue;
         }
-        if let Some((start, _)) = range.split_once('-') {
-            if let Ok(addr) = u64::from_str_radix(start, 16) {
-                return addr;
-            }
+        if let Some((start, _)) = range.split_once('-')
+            && let Ok(addr) = u64::from_str_radix(start, 16)
+        {
+            return addr;
         }
     }
     panic!("no readable mapping in:\n{maps}");

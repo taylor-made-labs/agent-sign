@@ -583,10 +583,7 @@ fn regression_guard_no_machine_set_keeps_agents_local_everywhere() {
             "trust-line changed with no machine set: {line:?}"
         );
     }
-    assert_eq!(
-        w.signature_under(&repo, "HEAD", &trust),
-        ("G".into(), want)
-    );
+    assert_eq!(w.signature_under(&repo, "HEAD", &trust), ("G".into(), want));
 }
 
 // ---------------------------------------------------------------------------
@@ -603,7 +600,8 @@ fn regression_guard_no_machine_set_keeps_agents_local_everywhere() {
 fn the_trust_line_and_the_managed_block_are_scoped_to_the_machine() {
     let mut w = World::new(&machine_config("hetzner"));
     let allowed = w.home.join("allowed_signers");
-    let before = "dev@example.com namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUserKeyLine\n";
+    let before =
+        "dev@example.com namespaces=\"git\" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUserKeyLine\n";
     fs::write(&allowed, format!("{before}{BLOCK_BEGIN}\n{BLOCK_END}\n")).unwrap();
     w.name_allowed_signers_file(&allowed);
     w.start_service();
@@ -790,10 +788,7 @@ fn a_repository_file_cant_change_the_machine_the_user_set() {
             (mine.clone(), mine.clone()),
             "a repository's file changed the machine of an agent commit"
         );
-        assert_eq!(
-            w.signature_under(&repo, "HEAD", &trust),
-            ("G".into(), mine)
-        );
+        assert_eq!(w.signature_under(&repo, "HEAD", &trust), ("G".into(), mine));
     } else {
         assert_eq!(
             w.rev(&repo, "HEAD"),
