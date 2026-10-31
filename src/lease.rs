@@ -151,6 +151,16 @@ pub struct Work {
     pub base: String,
 }
 
+/// One lease's work, gathered for a finished-work check made away from the
+/// engine (see [`LeaseEngine::work_to_check`]): the lease's key and id, so
+/// the answer ends only that same lease, and the work to check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkToCheck {
+    pub key: String,
+    pub lease_id: String,
+    pub work: Work,
+}
+
 impl Lease {
     /// Whether the end recorded at approval has passed. The service uses
     /// [`LeaseEngine::is_lease_active`], which also applies the current config.
@@ -531,22 +541,66 @@ impl LeaseEngine {
     /// Ends every lease whose work is finished, as `check` reports it (the
     /// service passes [`crate::work::work_state`]). Returns each lease ended,
     /// with why. Leases with no recorded work are left to the other rules.
+    ///
+    /// This runs `check` while the engine is borrowed. The service instead
+    /// splits it in two, [`Self::work_to_check`] and
+    /// [`Self::end_checked_work`], so that git runs outside its lock.
     pub fn end_finished_work(
         &mut self,
         check: impl Fn(&Work) -> crate::work::WorkState,
     ) -> Vec<(Lease, crate::work::WorkState)> {
-        use crate::work::WorkState;
-        let finished: Vec<(String, WorkState)> = self
-            .leases
-            .iter()
-            .filter_map(|(key, lease)| {
-                let state = check(lease.work.as_ref()?);
-                (state != WorkState::Ongoing).then(|| (key.clone(), state))
+        let checked = self
+            .work_to_check(|_| true)
+            .into_iter()
+            .map(|item| {
+                let state = check(&item.work);
+                (item, state)
             })
             .collect();
-        let ended: Vec<(Lease, WorkState)> = finished
+        self.end_checked_work(checked)
+    }
+
+    /// The recorded work of every lease `include` picks, to be checked
+    /// with [`crate::work::work_state`] away from the engine (the git runs
+    /// can take a while, and the service must not hold its lock meanwhile),
+    /// then handed back to [`Self::end_checked_work`]. Leases with no
+    /// recorded work are left out.
+    pub fn work_to_check(&self, include: impl Fn(&Lease) -> bool) -> Vec<WorkToCheck> {
+        self.leases
+            .iter()
+            .filter(|(_, lease)| include(lease))
+            .filter_map(|(key, lease)| {
+                Some(WorkToCheck {
+                    key: key.clone(),
+                    lease_id: lease.id.clone(),
+                    work: lease.work.clone()?,
+                })
+            })
+            .collect()
+    }
+
+    /// Ends the leases whose checked work is finished, but only those that
+    /// are still there unchanged: the same lease (by id) for the same work.
+    /// A lease revoked, replaced or granted again while its check ran is
+    /// left alone, so a stale answer never ends a newer approval. Returns
+    /// each lease ended, with why.
+    pub fn end_checked_work(
+        &mut self,
+        checked: Vec<(WorkToCheck, crate::work::WorkState)>,
+    ) -> Vec<(Lease, crate::work::WorkState)> {
+        use crate::work::WorkState;
+        let ended: Vec<(Lease, WorkState)> = checked
             .into_iter()
-            .filter_map(|(key, state)| self.leases.remove(&key).map(|l| (l, state)))
+            .filter(|(_, state)| *state != WorkState::Ongoing)
+            .filter_map(|(item, state)| {
+                let unchanged = self.leases.get(&item.key).is_some_and(|lease| {
+                    lease.id == item.lease_id && lease.work.as_ref() == Some(&item.work)
+                });
+                unchanged
+                    .then(|| self.leases.remove(&item.key))
+                    .flatten()
+                    .map(|lease| (lease, state))
+            })
             .collect();
         if !ended.is_empty() {
             self.save_to_disk();

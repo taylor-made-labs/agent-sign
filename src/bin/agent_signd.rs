@@ -8,6 +8,17 @@
 //! when `[security] approval = "device-owner"`, asks the person to approve new
 //! leases. `agent-signd` can be a link to this program; the LaunchAgent and
 //! systemd unit installed by agent-sign start it by that name.
+//!
+//! **Finished work, off the commit's path.** A lease ends when the work it
+//! was approved for is merged or deleted (`agent_sign::work`), which takes a
+//! git run per lease. An agent commit checks only the lease it uses, at the
+//! lease request, the token and the signature, so its cost doesn't grow with
+//! the number of open leases (it used to check every lease each time, a few
+//! hundred git runs at 20 leases: backlog d37fd952). Every other lease is
+//! checked when the leases are listed, and by a background sweep every
+//! [`WORK_SWEEP_INTERVAL`]. No git runs while the state lock is held: the
+//! work to check is gathered under the lock, checked without it, and only
+//! leases still there unchanged are ended (`end_finished_work_of`).
 
 use std::collections::HashMap;
 use std::fs;
@@ -29,7 +40,7 @@ use agent_sign::approval::{
 };
 use agent_sign::attribution::AgentIdentity;
 use agent_sign::config::{ApprovalMode, Config};
-use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy};
+use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy, WorkToCheck};
 use agent_sign::protocol::{
     PendingInfo, RUN_TOKEN_LIFETIME, Request, Response, default_socket_path, send_response,
 };
@@ -94,6 +105,9 @@ struct DaemonState {
     pending: HashMap<String, Arc<PendingAsk>>,
     /// Holds new requests back after a refused one (see `RefusalBackoff`).
     backoff: RefusalBackoff,
+    /// When every lease's work was last checked, by a listing or the
+    /// background sweep; the sweep waits [`WORK_SWEEP_INTERVAL`] from here.
+    last_work_sweep: Instant,
 }
 
 /// One approval request waiting for the person. Every commit asking for the
@@ -130,6 +144,13 @@ struct RunToken {
 
 /// How long a single-use commit token can wait to be used.
 const COMMIT_TOKEN_LIFETIME: Duration = Duration::from_secs(60);
+
+/// How often the background sweep checks every lease's work, counted from
+/// the last full check (a listing counts). A minute: often enough that
+/// finished work's leases don't linger, rare enough that a sweep (a git run
+/// per lease) seldom coincides with a commit, and never within a minute of
+/// a listing. Off the commit's path either way, and outside the lock.
+const WORK_SWEEP_INTERVAL: Duration = Duration::from_secs(60);
 
 fn pending_key(repo: &str, branch: &str) -> String {
     format!("{repo}\n{branch}")
@@ -400,7 +421,14 @@ fn run_daemon(
         auto_approve: effective_auto_approve,
         pending: HashMap::new(),
         backoff: RefusalBackoff::new(refusal_backoff),
+        last_work_sweep: Instant::now(),
     }));
+
+    // Every lease's work, checked now and then, off any commit's path.
+    {
+        let state = Arc::clone(&state);
+        std::thread::spawn(move || sweep_finished_work(&state));
+    }
 
     // Leases that cover more than one repository can no longer be granted;
     // ones approved earlier still work, so say so in the log.
@@ -515,10 +543,27 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
                 );
                 return;
             }
+            // End the leases this request could use whose work is
+            // finished (the covering one, and the one that may follow the
+            // agent to this branch), until none of them is: then a wider
+            // lease left in force is checked too. Only these, so the cost
+            // doesn't grow with the leases open elsewhere.
+            while end_finished_work_of(&state, |st| {
+                let engine = &st.lease_engine;
+                let in_use: Vec<String> = [
+                    engine.find_lease(&repo, &branch),
+                    engine.get_active_lease(&repo),
+                ]
+                .into_iter()
+                .flatten()
+                .map(|lease| lease.id.clone())
+                .collect();
+                engine.work_to_check(|lease| in_use.contains(&lease.id))
+            }) > 0
+            {}
             // Check active lease state without holding the lock across the prompt
             let (blocked, covering, can_follow, grant_unasked, terms, reach, ends) = {
-                let mut st = state.lock().unwrap();
-                end_finished_work(&mut st);
+                let st = state.lock().unwrap();
                 let engine = &st.lease_engine;
                 let covering = engine
                     .find_lease(&repo, &branch)
@@ -662,8 +707,9 @@ fn handle_client(stream: &mut UnixStream, state: Arc<Mutex<DaemonState>>) {
             }
         }
         Request::ListLeases => {
-            let mut st = state.lock().unwrap();
-            end_finished_work(&mut st);
+            // Every lease's work, so the listing shows only what's in force.
+            end_all_finished_work(&state);
+            let st = state.lock().unwrap();
             let leases = st.lease_engine.list_leases();
             Response::LeaseList { leases }
         }
@@ -812,10 +858,15 @@ fn sign_candidate(
         return Err("candidate branch is protected by the selected repository policy".into());
     }
     agent_sign::guardrails::validate_candidate(Path::new(&terms.repo), &config, &buffer)?;
-    let mut st = state.lock().unwrap();
     // Complete all potentially blocking object/work reads before the last
-    // time, generation and lease check and the actual signature.
-    end_finished_work(&mut st);
+    // time, generation and lease check and the actual signature. Only the
+    // token's own lease is checked for finished work (an ended one is
+    // refused below); the others are left to the listing and the sweep.
+    end_finished_work_of(state, |st| {
+        st.lease_engine
+            .work_to_check(|lease| lease.id == terms.lease_id)
+    });
+    let mut st = state.lock().unwrap();
     if run {
         let current = st
             .lease_engine
@@ -871,8 +922,18 @@ fn issue_token(
         return Response::Error { message };
     }
     let repo = canonical_repo(&repo);
+    // End the lease this token would be issued under if its work is
+    // finished, then any wider one found next; only these, as for a lease
+    // request.
+    while end_finished_work_of(state, |st| {
+        let engine = &st.lease_engine;
+        let in_use = engine
+            .find_lease(&repo, &branch)
+            .map(|lease| lease.id.clone());
+        engine.work_to_check(|lease| Some(&lease.id) == in_use.as_ref())
+    }) > 0
+    {}
     let mut st = state.lock().unwrap();
-    end_finished_work(&mut st);
     prune_tokens(&mut st);
     let issued = if run {
         st.lease_engine.issue_run_token(&repo, &branch)
@@ -926,23 +987,79 @@ fn work_at(repo: &str, branch: &str) -> Option<agent_sign::lease::Work> {
     })
 }
 
-/// Ends the leases whose work is finished, and says so in the service's log.
-fn end_finished_work(st: &mut DaemonState) {
-    let ended = st.lease_engine.end_finished_work(|w| {
-        agent_sign::work::work_state(Path::new(&w.repo), &w.branch, &w.base)
-    });
-    for (lease, why) in ended {
+/// Ends the leases `pick` chooses whose work is finished, and says so in the
+/// service's log. Returns how many ended.
+///
+/// The git runs (`agent_sign::work::work_state`) happen without the state
+/// lock, so a slow check never holds up another client: `pick` gathers the
+/// work under the lock, the lock is released while git runs, and it is taken
+/// again to end only the leases still there unchanged (same lease, same
+/// work; see `LeaseEngine::end_checked_work`).
+fn end_finished_work_of(
+    state: &Arc<Mutex<DaemonState>>,
+    pick: impl FnOnce(&mut DaemonState) -> Vec<WorkToCheck>,
+) -> usize {
+    use agent_sign::work::WorkState;
+    let to_check = pick(&mut state.lock().unwrap());
+    if to_check.is_empty() {
+        return 0;
+    }
+    let checked: Vec<(WorkToCheck, WorkState)> = to_check
+        .into_iter()
+        .map(|item| {
+            let w = &item.work;
+            let found = agent_sign::work::work_state(Path::new(&w.repo), &w.branch, &w.base);
+            (item, found)
+        })
+        .collect();
+    if checked
+        .iter()
+        .all(|(_, found)| *found == WorkState::Ongoing)
+    {
+        return 0;
+    }
+    let ended = state.lock().unwrap().lease_engine.end_checked_work(checked);
+    for (lease, why) in &ended {
         let why = match why {
-            agent_sign::work::WorkState::Merged => "was merged",
+            WorkState::Merged => "was merged",
             _ => "was deleted",
         };
         eprintln!(
             "[agent-signd] Ended the approval for {} ({}): branch '{}' {}",
             lease.repo,
             lease.coverage.describe(),
-            lease.work.map(|w| w.branch).unwrap_or_default(),
+            lease
+                .work
+                .as_ref()
+                .map(|w| w.branch.as_str())
+                .unwrap_or_default(),
             why
         );
+    }
+    ended.len()
+}
+
+/// Checks every lease's work (a listing, or the background sweep) and ends
+/// the finished ones, restarting the sweep's interval.
+fn end_all_finished_work(state: &Arc<Mutex<DaemonState>>) {
+    end_finished_work_of(state, |st| {
+        st.last_work_sweep = Instant::now();
+        st.lease_engine.work_to_check(|_| true)
+    });
+}
+
+/// The background sweep: every [`WORK_SWEEP_INTERVAL`] after the last full
+/// check, every lease's work is checked, so leases for finished work end
+/// even when nobody lists them and no agent commits under them.
+fn sweep_finished_work(state: &Arc<Mutex<DaemonState>>) {
+    loop {
+        let due = state.lock().unwrap().last_work_sweep + WORK_SWEEP_INTERVAL;
+        let now = Instant::now();
+        if now < due {
+            std::thread::sleep(due - now);
+            continue;
+        }
+        end_all_finished_work(state);
     }
 }
 
