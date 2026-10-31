@@ -9,11 +9,24 @@
   the one in ~/.agent-sign/bin: the system's Touch ID prompt names the
   program that asked, and from the app bundle that name is "agent-sign"
   instead of "agent-signd" (see scripts/agent-sign.Info.plist).
+
+  AGENT_SIGN_REAL_GIT is the git the service runs. launchd starts it with
+  PATH=/usr/bin:..., where git is /usr/bin/git, Apple's shim that looks up
+  the real git through xcrun on every run (about 0.14 s each time). The
+  installer fills in the real one (the git xcrun finds, or the first git
+  outside ~/.agent-sign) when it copies this file, and leaves the whole
+  EnvironmentVariables entry out when it finds none. A path that no longer
+  exists is ignored by the service, which then looks for git itself.
 -->
 <plist version="1.0">
 <dict>
     <key>Label</key>
     <string>com.agentsign.agent-signd</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>AGENT_SIGN_REAL_GIT</key>
+        <string>@AGENT_SIGN_REAL_GIT@</string>
+    </dict>
     <key>ProgramArguments</key>
     <array>
         <string>/bin/sh</string>

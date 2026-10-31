@@ -376,7 +376,9 @@ fn run_daemon(
         "[agent-signd] agents' names: <agent>.<session>@{}",
         identity.domain
     );
-    agent_sign::hardening::disable_core_dumps()?;
+    // Before any private key exists: no core files, and (Linux) no other
+    // program of this user can read this memory. Fails closed.
+    agent_sign::hardening::protect_process_memory()?;
     let ca = start_authority(&base_dir, &identity.domain)?;
 
     let socket_path = custom_socket
