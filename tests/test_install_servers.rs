@@ -111,6 +111,8 @@ impl Call {
             .unwrap_or("")
     }
 
+    // Used only by the Linux-only launcher-unit tests below.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     fn mentions(&self, unit: &str) -> bool {
         self.args.split_whitespace().any(|a| a == unit)
     }
@@ -274,6 +276,8 @@ impl Lab {
         run_within(cmd, "install.sh")
     }
 
+    // Used only by the Linux-only launcher-unit tests below.
+    #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
     fn uninstall(&self) -> Output {
         let mut cmd = self.cmd("/bin/bash");
         cmd.arg(self.src.join("scripts/uninstall.sh"));
