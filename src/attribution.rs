@@ -99,15 +99,14 @@ pub const BUILT_IN_AGENT_SLUGS: &[&str] = &["claude-code", "codex", "gemini-cli"
 /// Widely used agent tools that have no mark of their own, so their users
 /// name them with `AGENT_SIGN_AGENT_NAME`: allowed by default, so those users
 /// need no setting (Aider and Antigravity have guides in
-/// `docs/integrations`). Cursor is deliberately not here: the eval for this change
-/// (tests/test_allowed_agents.rs) uses it as the example of a name that must
-/// be listed in `[identity] allowed_agents` first. Any other name, such as
-/// "My Bot 2" (`my-bot-2`), is listed there too.
+/// `docs/integrations`). Any other name, such as "My Bot 2" (`my-bot-2`),
+/// must be listed in `[identity] allowed_agents` first.
 pub const WIDELY_USED_AGENT_SLUGS: &[&str] = &[
     "aider",
     "antigravity",
     "cline",
     "copilot",
+    "cursor",
     "opencode",
     "windsurf",
 ];
