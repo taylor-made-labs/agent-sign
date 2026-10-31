@@ -44,10 +44,22 @@ impl Drop for TestDaemon {
     }
 }
 
+/// The person's config lines that allow the agent these scenarios name,
+/// "Test Agent" (`test-agent`). Requirement change (plan "next: real use on
+/// servers", check 6a, 30 Oct 2026): the service now certifies only built-in
+/// agent names and those listed in `[identity] allowed_agents`, so a test
+/// that names its agent itself lists it, as a user would.
+const ALLOW_TEST_AGENT: &str = "[identity]\nallowed_agents = [\"test-agent\"]\n";
+
 fn start_test_daemon(dir: &Path, bins: &Bins) -> TestDaemon {
     let socket_path = dir.join("test_daemon.sock");
     let keys_dir = dir.join("keys");
     fs::create_dir_all(&keys_dir).unwrap();
+    let config = dir.join(".agent-sign/config.toml");
+    if !config.exists() {
+        fs::create_dir_all(dir.join(".agent-sign")).unwrap();
+        fs::write(&config, ALLOW_TEST_AGENT).unwrap();
+    }
 
     let daemon_bin = &bins.daemon;
 
@@ -340,6 +352,8 @@ fn scenario_allow_main_branch_when_configured(bins: &Bins) {
     fs::create_dir_all(&keys_dir).unwrap();
 
     let daemon_bin = &bins.daemon;
+    fs::create_dir_all(dir.path().join(".agent-sign")).unwrap();
+    fs::write(dir.path().join(".agent-sign/config.toml"), ALLOW_TEST_AGENT).unwrap();
 
     // Spawn daemon with --allow-main and --auto-approve
     let mut child = Command::new(daemon_bin)
@@ -589,7 +603,7 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
     fs::create_dir_all(&state_dir).unwrap();
     fs::write(
         state_dir.join("config.toml"),
-        "[attribution]\nmode = \"trailers\"\n",
+        format!("[attribution]\nmode = \"trailers\"\n\n{ALLOW_TEST_AGENT}"),
     )
     .unwrap();
 

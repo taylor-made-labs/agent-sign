@@ -84,6 +84,12 @@ impl World {
             ],
         );
         fs::create_dir(home.join(".agent-sign")).unwrap();
+        // Requirement change (plan "next: real use on servers", check 6a,
+        // 30 Oct 2026): the service certifies only built-in agent names and
+        // those in `[identity] allowed_agents`, so the agent these tests name
+        // ("Fixture Agent", both through the wrapper and in direct token
+        // requests) is listed, as a user would list it.
+        let settings = format!("{settings}\n[identity]\nallowed_agents = [\"fixture-agent\"]\n");
         fs::write(home.join(".agent-sign/config.toml"), settings).unwrap();
         let socket = home.join("service.sock");
         let service = isolated(Path::new(env!("CARGO_BIN_EXE_agent-signd")), &home)
@@ -122,7 +128,11 @@ impl World {
     }
     fn token(&self, run: bool) -> String {
         let repo = self.repo.display().to_string();
-        let identity = AgentIdentity::new("fixture", "Fixture Agent", Some("security-boundary"));
+        // The wrapper's slug for "Fixture Agent" (it was "fixture", which is
+        // also this repository's user name: a person's name is never an
+        // allowed agent, see `IdentityConfig::check_against`).
+        let identity =
+            AgentIdentity::new("fixture-agent", "Fixture Agent", Some("security-boundary"));
         let request = if run {
             Request::IssueRunToken {
                 repo,
@@ -144,7 +154,13 @@ impl World {
     fn candidate(&self, message: &str) -> Vec<u8> {
         let tree = git(&self.repo, &["write-tree"]);
         let parent = git(&self.repo, &["rev-parse", "HEAD"]);
-        format!("tree {tree}\nparent {parent}\nauthor Original Author <original@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\n{message}\n").into_bytes()
+        // Requirement change (plan "next: real use on servers", check 6c, 30
+        // Oct 2026): the service signs only a committer date inside the
+        // signing certificate's window, so the committer date is now (it was
+        // the fixed 1700000000); the author date stays old, as a replayed
+        // commit's would.
+        let now = agent_sign::agents_ca::now_secs();
+        format!("tree {tree}\nparent {parent}\nauthor Original Author <original@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> {now} +0000\n\n{message}\n").into_bytes()
     }
     fn sign(&self, token: &str, candidate: &[u8]) -> Response {
         self.ask(Request::SignCommit {

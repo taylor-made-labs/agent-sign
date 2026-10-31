@@ -56,7 +56,10 @@ RETIRED_DIR="$KEYS_DIR/retired"
 # lines between these two at each start, and nothing outside them.
 TRUST_BLOCK_BEGIN="# agent-sign: agents' certificate authorities, managed; do not edit"
 TRUST_BLOCK_END="# agent-sign: end of agents' certificate authorities"
-TRUST_PREFIX='*@agents.local cert-authority,namespaces="git" '
+# A bare trust line an earlier version added (before the managed block): one
+# for plain *@agents.local, or for a machine's *@<machine>.agents.local (the
+# [identity] machine setting), as an awk regular expression.
+TRUST_LINE_PATTERN='^[*]@([a-z0-9-]+[.])?agents[.]local cert-authority,namespaces="git" '
 # git's signing program for your own SSH signatures, once routed.
 AGENT_SSH_SIGN="$INSTALL_DIR/agent-ssh-sign"
 SERVICE_LABEL="com.agentsign.agent-signd"
@@ -503,8 +506,8 @@ TRUST_LINES=$("$INSTALL_DIR/agent-sign" trust-line 2>/dev/null || true)
 write_trust_block() {
     local file="$1"
     [ -f "$file" ] || : > "$file"
-    BEGIN="$TRUST_BLOCK_BEGIN" END="$TRUST_BLOCK_END" LINES="$TRUST_LINES" PREFIX="$TRUST_PREFIX" awk '
-        BEGIN { b = ENVIRON["BEGIN"]; e = ENVIRON["END"]; lines = ENVIRON["LINES"]; prefix = ENVIRON["PREFIX"] }
+    BEGIN="$TRUST_BLOCK_BEGIN" END="$TRUST_BLOCK_END" LINES="$TRUST_LINES" PATTERN="$TRUST_LINE_PATTERN" awk '
+        BEGIN { b = ENVIRON["BEGIN"]; e = ENVIRON["END"]; lines = ENVIRON["LINES"]; pattern = ENVIRON["PATTERN"] }
         { all[NR] = $0 }
         $0 == b && !opened { opened = NR }
         $0 == e && opened && !closed { closed = NR }
@@ -516,7 +519,7 @@ write_trust_block() {
                     if (i == opened && lines != "") print lines
                 }
             } else {
-                for (i = 1; i <= NR; i++) if (index(all[i], prefix) != 1) print all[i]
+                for (i = 1; i <= NR; i++) if (all[i] !~ pattern) print all[i]
                 print b
                 if (lines != "") print lines
                 print e

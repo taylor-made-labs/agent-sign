@@ -9,7 +9,10 @@
 //! (`claude-code.1a2b3c4d@agents.local`, see [`crate::attribution`]). The
 //! allowed-signers lines from [`trust_lines`] then make git and `ssh-keygen`
 //! report every agent commit as a Good signature *for that agent*, and
-//! nothing else: each line only trusts an authority for `*@agents.local`.
+//! nothing else: each line only trusts an authority for `*@agents.local`,
+//! or, when the user's config names the machine, `*@<machine>.agents.local`
+//! ([`trust_lines_in`]), so one machine's authority never vouches for
+//! another machine's agents, even in a trust file that holds both.
 //!
 //! Keys are never stored unprotected (Taylor, 28 Oct 2026: "never create
 //! keys unprotected, they must be protected from the start"). A private key
@@ -68,7 +71,16 @@ pub const CAS_HISTORY_FILE: &str = "agents_cas.pub";
 
 /// What comes before an authority's key on an allowed-signers line: trust
 /// it to vouch for `*@agents.local` principals, for git signatures only.
+/// With a machine named, the prefix is [`trust_line_prefix`] for its domain.
 pub const TRUST_LINE_PREFIX: &str = "*@agents.local cert-authority,namespaces=\"git\"";
+
+/// [`TRUST_LINE_PREFIX`] for the agents' domain `domain` (see
+/// [`crate::attribution::agents_domain`]): `*@<domain> cert-authority,...`.
+/// The domain is `agents.local` or a checked machine label under it, so it
+/// holds no space, comma or quote that could reshape the line.
+pub fn trust_line_prefix(domain: &str) -> String {
+    format!("*@{domain} cert-authority,namespaces=\"git\"")
+}
 
 /// The line that opens the managed block in the user's allowed-signers
 /// file. The service rewrites what lies between it and [`BLOCK_END`].
@@ -104,8 +116,13 @@ pub fn ca_pub_path_in(state_dir: &Path) -> PathBuf {
 /// is `ca_pub_line`: its key type and key only, without any comment (such
 /// as the date in [`CAS_HISTORY_FILE`]).
 pub fn trust_line(ca_pub_line: &str) -> String {
+    trust_line_in(crate::attribution::AGENTS_DOMAIN, ca_pub_line)
+}
+
+/// [`trust_line`] scoped to the agents' domain `domain`.
+pub fn trust_line_in(domain: &str, ca_pub_line: &str) -> String {
     let key: Vec<&str> = ca_pub_line.split_whitespace().take(2).collect();
-    format!("{TRUST_LINE_PREFIX} {}", key.join(" "))
+    format!("{} {}", trust_line_prefix(domain), key.join(" "))
 }
 
 /// One allowed-signers line per authority the service has started with, in
@@ -114,10 +131,19 @@ pub fn trust_line(ca_pub_line: &str) -> String {
 /// in [`CA_PUB_FILE`] is never trusted: its private key sat in a plain file,
 /// so it counts as exposed.
 pub fn trust_lines(keys_dir: &Path) -> Vec<String> {
+    trust_lines_in(keys_dir, crate::attribution::AGENTS_DOMAIN)
+}
+
+/// [`trust_lines`] scoped to the agents' domain `domain`: what the service
+/// and `agent-sign trust-line` use, with the domain from the user's
+/// `[identity] machine`. Every authority in the history is scoped to the
+/// current domain, so a machine should be named before the service's first
+/// start (the installer's `--machine` does that).
+pub fn trust_lines_in(keys_dir: &Path, domain: &str) -> Vec<String> {
     let text = fs::read_to_string(keys_dir.join(CAS_HISTORY_FILE)).unwrap_or_default();
     let mut lines: Vec<String> = Vec::new();
     for line in text.lines().filter(|l| l.split_whitespace().count() >= 2) {
-        let trust = trust_line(line);
+        let trust = trust_line_in(domain, line);
         if !lines.contains(&trust) {
             lines.push(trust);
         }
@@ -150,11 +176,12 @@ pub fn refuse_unprotected_key(keys_dir: &Path) -> Result<(), String> {
 /// [`CAS_HISTORY_FILE`], and writes it as the current [`CA_PUB_FILE`]. An
 /// authority an earlier development build left in [`CA_PUB_FILE`] is not
 /// carried over (see [`trust_lines`]). Returns the trust lines now in force
-/// ([`trust_lines`]).
+/// for the agents' domain `domain` ([`trust_lines_in`]).
 pub fn record_authority(
     keys_dir: &Path,
     ca_pub_line: &str,
     now: u64,
+    domain: &str,
 ) -> std::io::Result<Vec<String>> {
     fs::create_dir_all(keys_dir)?;
     fs::set_permissions(keys_dir, fs::Permissions::from_mode(0o700))?;
@@ -172,7 +199,7 @@ pub fn record_authority(
     fs::write(&tmp, format!("{}\n", ca_pub_line.trim()))?;
     fs::set_permissions(&tmp, fs::Permissions::from_mode(0o644))?;
     fs::rename(&tmp, &current)?;
-    Ok(trust_lines(keys_dir))
+    Ok(trust_lines_in(keys_dir, domain))
 }
 
 /// `content` with its managed block's lines replaced by `lines`, or `None`
@@ -420,6 +447,7 @@ impl CertificateIssuer for AgentsCa {
 pub struct SessionSigner {
     key: SigningKey,
     cert_blob: Vec<u8>,
+    valid_after: u64,
     valid_before: u64,
 }
 
@@ -429,6 +457,7 @@ impl SessionSigner {
         let key = SigningKey::generate(&mut OsRng);
         let cert = ca.issue(principal, &key.verifying_key(), now)?;
         Ok(Self {
+            valid_after: cert.valid_after(),
             valid_before: cert.valid_before(),
             cert_blob: cert.to_bytes().map_err(ssh_err)?,
             key,
@@ -438,6 +467,31 @@ impl SessionSigner {
     /// Whether the certificate is still good for a while yet.
     pub fn is_fresh(&self, now: u64) -> bool {
         now + RENEW_MARGIN_SECS < self.valid_before
+    }
+
+    /// Whether the commit `buffer` (a commit object, as git hands it to its
+    /// signing program) has a committer date this signer's certificate is
+    /// valid at: from its `valid_after` up to, not including, its
+    /// `valid_before`, which is how OpenSSH reads the window. git verifies an
+    /// SSH certificate at the commit's own committer date, so a commit dated
+    /// outside the window would never verify; but signing it anyway gave a
+    /// backdated or postdated commit a signature, which a later window (or a
+    /// checker that ignores the date) could accept. The author date isn't
+    /// looked at: a rebase or cherry-pick keeps old author dates. A buffer
+    /// without exactly one readable committer date is refused.
+    pub fn check_commit_date(&self, buffer: &[u8]) -> Result<(), String> {
+        let when = committer_time(buffer)
+            .ok_or("the commit has no committer date agent-sign can read, so it wasn't signed")?;
+        if when < self.valid_after || when >= self.valid_before {
+            return Err(format!(
+                "the commit's committer date ({}) is outside its signing certificate's \
+                 validity ({} to {}), so it wasn't signed: commit with the current date",
+                utc_timestamp(when),
+                utc_timestamp(self.valid_after),
+                utc_timestamp(self.valid_before)
+            ));
+        }
+        Ok(())
     }
 
     /// The certificate's OpenSSH wire encoding.
@@ -450,6 +504,28 @@ impl SessionSigner {
     pub fn sign_git_buffer(&self, buffer: &[u8]) -> String {
         sshsig_armored(&self.cert_blob, &self.key, buffer)
     }
+}
+
+/// The committer timestamp (seconds since the epoch) of the commit object
+/// `buffer`: the second-to-last field of its one `committer` header line
+/// (`committer Name <email> 1793196192 +0000`). `None` when the headers have
+/// no such line, more than one, or a timestamp that isn't a plain
+/// non-negative number.
+pub fn committer_time(buffer: &[u8]) -> Option<u64> {
+    let text = std::str::from_utf8(buffer).ok()?;
+    let headers = text.split_once("\n\n").map_or(text, |(h, _)| h);
+    let mut committers = headers.lines().filter_map(|l| l.strip_prefix("committer "));
+    let line = committers.next()?;
+    if committers.next().is_some() {
+        return None;
+    }
+    let mut fields = line.rsplitn(3, ' ');
+    let _zone = fields.next()?;
+    let secs = fields.next()?;
+    if secs.is_empty() || !secs.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    secs.parse().ok()
 }
 
 /// A session signer not used for this long is dropped: its session has
@@ -574,6 +650,51 @@ mod tests {
         );
     }
 
+    #[test]
+    fn a_machines_trust_line_is_scoped_to_its_own_domain() {
+        assert_eq!(
+            trust_line_in("hetzner.agents.local", "ssh-ed25519 AAAA x"),
+            "*@hetzner.agents.local cert-authority,namespaces=\"git\" ssh-ed25519 AAAA"
+        );
+    }
+
+    #[test]
+    fn the_committer_date_is_read_from_the_committer_line_only() {
+        let buffer = b"tree 4b82\nauthor A B <a@x> 1600000000 +0000\ncommitter C D <c@x> 1700000000 -0500\n\ncommitter E <e@x> 5 +0000\n";
+        assert_eq!(committer_time(buffer), Some(1_700_000_000));
+        assert_eq!(
+            committer_time(b"tree 4b82\nauthor A <a@x> 1 +0000\n\nm\n"),
+            None
+        );
+        assert_eq!(
+            committer_time(b"tree 4b82\ncommitter A <a@x> -1 +0000\n\nm\n"),
+            None
+        );
+        assert_eq!(
+            committer_time(
+                b"tree 4b82\ncommitter A <a@x> 1 +0000\ncommitter A <a@x> 2 +0000\n\nm\n"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_commit_is_signed_only_within_its_certificates_window() {
+        let ca = AgentsCa::from_seed([9u8; 32], "test-host");
+        let now = 1_000_000;
+        let signer = SessionSigner::new(&ca, "codex.12345678@agents.local", now).unwrap();
+        let at = |t: u64| format!("tree 4b82\ncommitter A <a@x> {t} +0000\n\nm\n");
+        for ok in [now, now - CERT_BACKDATE_SECS, now + CERT_LIFETIME_SECS - 1] {
+            assert!(signer.check_commit_date(at(ok).as_bytes()).is_ok(), "{ok}");
+        }
+        for bad in [now - CERT_BACKDATE_SECS - 1, now + CERT_LIFETIME_SECS, 0] {
+            assert!(
+                signer.check_commit_date(at(bad).as_bytes()).is_err(),
+                "{bad}"
+            );
+        }
+    }
+
     /// The certificate blob of `principal`'s signer at `now`.
     fn cert_at(
         signers: &mut SessionSigners,
@@ -645,13 +766,14 @@ mod tests {
         fs::create_dir_all(&keys).unwrap();
         fs::write(keys.join(CA_PUB_FILE), "ssh-ed25519 AAAAold\n").unwrap();
         assert!(trust_lines(&keys).is_empty());
-        let lines = record_authority(&keys, "ssh-ed25519 AAAAnew", 86_400).unwrap();
+        let lines = record_authority(&keys, "ssh-ed25519 AAAAnew", 86_400, "agents.local").unwrap();
         assert_eq!(lines, [trust_line("ssh-ed25519 AAAAnew")]);
         assert_eq!(
             fs::read_to_string(keys.join(CAS_HISTORY_FILE)).unwrap(),
             "ssh-ed25519 AAAAnew 1970-01-02T00:00:00Z\n"
         );
-        let lines = record_authority(&keys, "ssh-ed25519 AAAAthird", 86_401).unwrap();
+        let lines =
+            record_authority(&keys, "ssh-ed25519 AAAAthird", 86_401, "agents.local").unwrap();
         assert_eq!(lines.len(), 2);
         assert_eq!(
             fs::read_to_string(keys.join(CA_PUB_FILE)).unwrap(),

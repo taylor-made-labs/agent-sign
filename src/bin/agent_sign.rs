@@ -89,14 +89,23 @@ fn print_help() {
 }
 
 /// Prints the allowed-signers lines that trust the agents' certificate
-/// authorities for `*@agents.local`, one per authority the service has
+/// authorities for `*@agents.local` (or `*@<machine>.agents.local` when the
+/// user's config sets `[identity] machine`, as the service's own managed
+/// block does), one per authority the service has
 /// started with (it makes a new one, in memory, at each start), oldest
 /// first: added to the file git's `gpg.ssh.allowedSignersFile` names, they
 /// make every agent commit show as a Good signature for that agent's own
 /// principal, including commits certified before a restart.
 fn run_trust_line() -> ExitCode {
     let keys = agent_sign::agents_ca::keys_dir_in(&agent_sign::paths::state_dir());
-    let lines = agent_sign::agents_ca::trust_lines(&keys);
+    let settings = match agent_sign::config::IdentityConfig::load_user() {
+        Ok(settings) => settings,
+        Err(e) => {
+            eprintln!("agent-sign: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let lines = agent_sign::agents_ca::trust_lines_in(&keys, &settings.domain());
     if lines.is_empty() {
         eprintln!(
             "agent-sign: no agents' certificate authority in {} yet. One is made each time the \

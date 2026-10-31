@@ -512,8 +512,13 @@ impl World {
         // it changes no paths, retaining this test's original token assertions.
         let tree = self.git_ok(Path::new(repo), &["rev-parse", "HEAD^{tree}"]);
         let parent = self.git_ok(Path::new(repo), &["rev-parse", "HEAD"]);
+        // Requirement change (plan "next: real use on servers", check 6c,
+        // 30 Oct 2026): the service signs only a committer date inside the
+        // signing certificate's window, so the fixture is dated now (it was
+        // the fixed 1700000000).
+        let now = agent_sign::agents_ca::now_secs();
         let buffer = format!(
-            "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\ntest: token fixture\n",
+            "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> {now} +0000\ncommitter Fixture <fixture@example.invalid> {now} +0000\n\ntest: token fixture\n",
             tree.trim(),
             parent.trim()
         );

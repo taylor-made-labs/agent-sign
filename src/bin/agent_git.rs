@@ -18,6 +18,13 @@
 //! under git's own names, with no lease and nothing asked (identity review,
 //! 28 Oct 2026). Before, it was signed as an "unidentified agent", which put
 //! an agent's name on the person's own commits.
+//!
+//! An agent's principal is in this machine's agents' domain: the wrapper
+//! reads `[identity] machine` from the user's own config (only that file,
+//! and without running git: see `agent_identity_here`), and refuses an
+//! agent's commit when the setting is invalid rather than fall back to
+//! `@agents.local`. The service reads the same setting and is the authority:
+//! it refuses a token for any other domain.
 
 use std::env;
 use std::io::IsTerminal;
@@ -96,7 +103,15 @@ fn main() -> ExitCode {
         );
     }
 
-    let identity = agent_sign::attribution::identify_agent();
+    let identity = match agent_identity_here() {
+        Ok(identity) => identity,
+        Err(e) if !is_interactive_human => {
+            eprintln!("[agent-git] {e}");
+            return ExitCode::from(1);
+        }
+        // The person's own commit doesn't depend on agent-sign's settings.
+        Err(_) => None,
+    };
 
     // A commit that asks not to be signed (--no-gpg-sign, or commit.gpgsign
     // set to false for this command or this repository, as test fixtures
@@ -404,12 +419,27 @@ fn exec_for_agent(
         || subcommand_index
             .and_then(|at| args.get(at))
             .is_some_and(|sub| MAKES_COMMITS.contains(&sub.as_str()));
-    let run = match agent_sign::attribution::identify_agent() {
-        Some(identity) if makes_commits => {
-            let global = &args[..subcommand_index.unwrap_or(0)];
-            Some(prepare_agent_run(real_git, global, identity))
+    let run = if makes_commits {
+        match agent_identity_here() {
+            Ok(Some(identity)) => {
+                let global = &args[..subcommand_index.unwrap_or(0)];
+                Some(prepare_agent_run(real_git, global, identity))
+            }
+            Ok(None) => None,
+            Err(e) => {
+                // Fail closed: signing on, no token, so any commit this run
+                // makes fails rather than go unsigned or reach the person's key.
+                eprintln!(
+                    "[agent-git] {e}. agent-sign won't sign commits this git command makes; any commit it needs to make will fail."
+                );
+                Some(AgentRun {
+                    token: None,
+                    names: Vec::new(),
+                })
+            }
         }
-        _ => None,
+    } else {
+        None
     };
 
     let signing_key = signing_key_file(None);
@@ -451,6 +481,25 @@ fn exec_for_agent(
         }
     }
     run_git(cmd, real_git)
+}
+
+/// The agent behind this process (see `agent_sign::attribution::identify_agent`),
+/// named in this machine's agents' domain: `@<machine>.agents.local` when the
+/// user's own config sets `[identity] machine`, else `@agents.local`.
+/// `Ok(None)` when no agent is behind it; then the config isn't read at all,
+/// so the person's own commands never depend on it. An error (an invalid
+/// machine name, a config that can't be read) names the setting: the
+/// caller refuses the agent's commit rather than sign it under another
+/// domain. Only the user's file is read, never a repository's, and no git
+/// runs (the hot path of every agent commit).
+fn agent_identity_here() -> Result<Option<AgentIdentity>, String> {
+    let Some(identity) = agent_sign::attribution::identify_agent() else {
+        return Ok(None);
+    };
+    let settings = agent_sign::config::IdentityConfig::load_user().map_err(|e| {
+        format!("agent-sign's [identity] settings (the machine name) can't be used: {e}")
+    })?;
+    Ok(Some(identity.in_domain(&settings.domain())))
 }
 
 /// What an identified agent's commit-making git run needs: the run token
