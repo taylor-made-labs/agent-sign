@@ -8,6 +8,15 @@
 //! when `[security] approval = "device-owner"`, asks the person to approve new
 //! leases. `agent-signd` can be a link to this program; the LaunchAgent and
 //! systemd unit installed by agent-sign start it by that name.
+//!
+//! The service is the authority on whose names get certificates: it reads
+//! `[identity]` from the user's own config at start, and refuses a token for
+//! an identity outside this machine's agents' domain or with an agent name
+//! that isn't allowed (see `agent_sign::attribution::IdentityPolicy`), and it
+//! refuses to sign a commit whose committer date lies outside the signing
+//! certificate's validity window (`SessionSigner::check_commit_date`): git
+//! checks a certificate at the commit's own date, so a commit backdated or
+//! postdated into another window must not get a signature at all.
 
 use std::collections::HashMap;
 use std::fs;
@@ -27,7 +36,7 @@ use agent_sign::approval::{
     Approval, Asked, BranchReach, MAX_PENDING_REQUESTS, RefusalBackoff, auth_reason, confirm,
     has_unsafe_display_chars, platform_authenticator,
 };
-use agent_sign::attribution::AgentIdentity;
+use agent_sign::attribution::{AgentIdentity, IdentityPolicy};
 use agent_sign::config::{ApprovalMode, Config};
 use agent_sign::lease::{Coverage, LeaseEngine, LeasePolicy};
 use agent_sign::protocol::{
@@ -78,6 +87,9 @@ struct DaemonState {
     ca: Box<dyn CertificateIssuer>,
     /// Each agent session's key and certificate, by principal; memory only.
     signers: SessionSigners,
+    /// Which identities may get certificates: this machine's agents' domain
+    /// and the allowed agent names, from the user's own `[identity]`.
+    identity: IdentityPolicy,
     _config: Config,
     config_file: Option<PathBuf>,
     /// Single-use commit tokens: when each was issued, and as whom, in which
@@ -230,8 +242,9 @@ fn run_setup() -> Result<(), Box<dyn std::error::Error>> {
 /// refusing a private key an earlier build left in a file; records its
 /// public key (`agent_sign::agents_ca::record_authority`); and rewrites the
 /// managed block in the person's allowed-signers file, if it has one, so the
-/// new authority is trusted with no step of theirs.
-fn start_authority(base_dir: &Path) -> Result<AgentsCa, Box<dyn std::error::Error>> {
+/// new authority is trusted with no step of theirs. The block's lines trust
+/// the authorities for `domain` only (this machine's agents).
+fn start_authority(base_dir: &Path, domain: &str) -> Result<AgentsCa, Box<dyn std::error::Error>> {
     let keys_dir = agent_sign::agents_ca::keys_dir_in(base_dir);
     agent_sign::agents_ca::refuse_unprotected_key(&keys_dir)?;
     let ca = AgentsCa::generate(&agent_sign::agents_ca::hostname());
@@ -239,6 +252,7 @@ fn start_authority(base_dir: &Path) -> Result<AgentsCa, Box<dyn std::error::Erro
         &keys_dir,
         &ca.public_key_openssh(),
         agent_sign::agents_ca::now_secs(),
+        domain,
     )?;
     eprintln!(
         "[agent-signd] made this start's agents' certificate authority in memory ({} trusted in all)",
@@ -334,8 +348,15 @@ fn run_daemon(
     // shared agent key of earlier versions (`agent_ed25519`) is no longer
     // used.
     let base_dir = get_state_dir();
+    // The config's [identity] was checked when it loaded (a bad machine name
+    // stops the service there, before the authority is made).
+    let identity = config.identity.policy();
+    eprintln!(
+        "[agent-signd] agents' names: <agent>.<session>@{}",
+        identity.domain
+    );
     agent_sign::hardening::disable_core_dumps()?;
-    let ca = start_authority(&base_dir)?;
+    let ca = start_authority(&base_dir, &identity.domain)?;
 
     let socket_path = custom_socket
         .map(PathBuf::from)
@@ -392,6 +413,7 @@ fn run_daemon(
         lease_engine: LeaseEngine::new_with_storage(policy, storage_path),
         ca: Box::new(ca),
         signers: SessionSigners::default(),
+        identity,
         _config: config,
         config_file: custom_config.map(Path::to_path_buf),
         valid_tokens: HashMap::new(),
@@ -849,10 +871,11 @@ fn sign_candidate(
         return Err("the original signing lease was revoked or replaced".into());
     }
     let st = &mut *st;
-    Ok(st
+    let signer = st
         .signers
-        .signer_for(st.ca.as_ref(), &terms.identity.principal)?
-        .sign_git_buffer(&buffer))
+        .signer_for(st.ca.as_ref(), &terms.identity.principal)?;
+    signer.check_commit_date(&buffer)?;
+    Ok(signer.sign_git_buffer(&buffer))
 }
 
 /// Issues a token that signs as `identity` in `repo` on `branch`: a
@@ -867,7 +890,8 @@ fn issue_token(
     identity: AgentIdentity,
     run: bool,
 ) -> Response {
-    if let Err(message) = identity.check() {
+    let policy = state.lock().unwrap().identity.clone();
+    if let Err(message) = policy.check(&identity) {
         return Response::Error { message };
     }
     let repo = canonical_repo(&repo);

@@ -295,6 +295,12 @@ impl World {
                 PathBuf::from(env!("CARGO_BIN_EXE_agent-ssh-sign"))
             }
         };
+        // Requirement change (plan "next: real use on servers", check 6a,
+        // 30 Oct 2026): the service certifies only built-in agent names and
+        // those in `[identity] allowed_agents`, so the config lists "My Bot
+        // 2", the name `explicit_name_and_session_override_the_agents_own_mark`
+        // gives its agent, as a user would.
+        agent_sign_config.push_str("[identity]\nallowed_agents = [\"my-bot-2\"]\n");
         let state = self.home.join(".agent-sign");
         fs::create_dir_all(&state).unwrap();
         fs::write(state.join("config.toml"), agent_sign_config).unwrap();

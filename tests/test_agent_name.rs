@@ -106,18 +106,22 @@ fn author_of_agent_commit(marks: &[(&str, &str)], config_name: Option<&str>) -> 
     let home = dir.path();
     let repo = home.join("repo");
     fs::create_dir_all(&repo).unwrap();
+    // Requirement change (plan "next: real use on servers", check 6a, 30 Oct
+    // 2026): the service certifies only built-in agent names and those in
+    // `[identity] allowed_agents`, so the config lists Cursor, the name
+    // `an_agent_started_with_a_name_gets_that_name` gives its agent.
+    let mut config = String::from("[identity]\nallowed_agents = [\"cursor\"]\n");
     if let Some(name) = config_name {
-        let state = home.join(".agent-sign");
-        fs::create_dir_all(&state).unwrap();
         // A configured name is used by the attribution modes that read
         // `[agent]` ("split" here). The default mode, "agent", takes the
         // identity from the environment only, so no config can rename it.
-        fs::write(
-            state.join("config.toml"),
-            format!("[attribution]\nmode = \"split\"\n\n[agent]\nname = \"{name}\"\n"),
-        )
-        .unwrap();
+        config.push_str(&format!(
+            "\n[attribution]\nmode = \"split\"\n\n[agent]\nname = \"{name}\"\n"
+        ));
     }
+    let state = home.join(".agent-sign");
+    fs::create_dir_all(&state).unwrap();
+    fs::write(state.join("config.toml"), config).unwrap();
 
     let socket = home.join("s.sock");
     let _svc = Service(

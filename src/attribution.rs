@@ -9,6 +9,19 @@
 //! is the email on the agent's commits and the principal of the certificate
 //! the service signs them with (see [`crate::agents_ca`]).
 //!
+//! Two settings in the user's own config (`[identity]`, never a
+//! repository's file) shape this (plan "next: real use on servers", 30 Oct
+//! 2026):
+//! - `machine`: an optional name for this machine. With it the principal is
+//!   `<tool>.<session8>@<machine>.agents.local` ([`agents_domain`]), so an
+//!   agent's name says where it ran, and each machine's trust line covers
+//!   only its own agents. Without it everything stays `@agents.local`, as
+//!   before, so existing installs are unchanged.
+//! - `allowed_agents`: the agent names the service will certify besides the
+//!   built-in ones ([`IdentityPolicy`]). Before, any well-formed name got a
+//!   certificate, so an agent could name itself after the person (`taylor`)
+//!   and get a Good signature under that name.
+//!
 //! These are claims made by processes running as the same user as the
 //! person: attribution, not a security boundary, until agents run under
 //! their own OS accounts.
@@ -39,10 +52,136 @@ pub enum AttributionMode {
     Alias,
 }
 
-/// The domain every agent principal is in. The trust line
-/// (`agent-sign trust-line`) trusts the agents' certificate authority for
-/// `*@agents.local` only, so a certificate can never vouch for a real email.
+/// The domain every agent principal is in when no machine is named. The
+/// trust line (`agent-sign trust-line`) trusts the agents' certificate
+/// authority for `*@agents.local` only, so a certificate can never vouch for
+/// a real email. A named machine's agents are in a sub-domain of it (see
+/// [`agents_domain`]).
 pub const AGENTS_DOMAIN: &str = "agents.local";
+
+/// The longest machine name: one DNS label.
+pub const MAX_MACHINE_LEN: usize = 63;
+
+/// The domain this machine's agents are in: `<machine>.agents.local` when the
+/// user's config names the machine (`[identity] machine`), else
+/// [`AGENTS_DOMAIN`]. The machine must already have passed
+/// [`check_machine_label`].
+pub fn agents_domain(machine: Option<&str>) -> String {
+    match machine {
+        Some(machine) => format!("{machine}.{AGENTS_DOMAIN}"),
+        None => AGENTS_DOMAIN.to_string(),
+    }
+}
+
+/// Whether `label` may name a machine: `^[a-z0-9]+(-[a-z0-9]+)*$`, at most
+/// [`MAX_MACHINE_LEN`] characters. No `@` or `.`, because OpenSSH's `*` in an
+/// allowed-signers line also matches `@` and `.`, so either would let one
+/// machine's trust line reach another domain; and an empty name is an error,
+/// not "no machine" (leave the setting out for that). The message names the
+/// setting, so the user knows what to fix. A machine name is never taken
+/// from the host's own name: host names often break these rules
+/// (`ubuntu-16gb-hel1-1` doesn't, `MacBook-Pro.local` does) and can change.
+pub fn check_machine_label(label: &str) -> Result<(), String> {
+    if label.len() > MAX_MACHINE_LEN || !is_slug(label) {
+        return Err(format!(
+            "[identity] machine = {label:?} isn't a valid machine name: use 1 to {MAX_MACHINE_LEN} \
+             lowercase letters and digits, in words joined by single '-' (such as \"hetzner\" or \"my-box-2\"), \
+             or leave machine out"
+        ));
+    }
+    Ok(())
+}
+
+/// The slugs of the agents [`identify_agent_with`] recognizes by their own
+/// marks. They always get certificates.
+pub const BUILT_IN_AGENT_SLUGS: &[&str] = &["claude-code", "codex", "gemini-cli"];
+
+/// Widely used agent tools that have no mark of their own, so their users
+/// name them with `AGENT_SIGN_AGENT_NAME`: allowed by default, so those users
+/// need no setting (Aider and Antigravity have guides in
+/// `docs/integrations`). Cursor is deliberately not here: the eval for this change
+/// (tests/test_allowed_agents.rs) uses it as the example of a name that must
+/// be listed in `[identity] allowed_agents` first. Any other name, such as
+/// "My Bot 2" (`my-bot-2`), is listed there too.
+pub const WIDELY_USED_AGENT_SLUGS: &[&str] = &[
+    "aider",
+    "antigravity",
+    "cline",
+    "copilot",
+    "opencode",
+    "windsurf",
+];
+
+/// Which identities the service certifies: the machine's domain, and the
+/// agent names allowed in it. Built from the user's own config by the
+/// service (which is authoritative) and the git wrapper.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct IdentityPolicy {
+    /// [`agents_domain`] for the configured machine.
+    pub domain: String,
+    /// `[identity] allowed_agents`: slugs allowed besides
+    /// [`BUILT_IN_AGENT_SLUGS`] and [`WIDELY_USED_AGENT_SLUGS`].
+    pub allowed_agents: Vec<String>,
+}
+
+impl Default for IdentityPolicy {
+    /// No machine and nothing listed: `@agents.local`, built-in and widely
+    /// used agents only.
+    fn default() -> Self {
+        Self {
+            domain: AGENTS_DOMAIN.to_string(),
+            allowed_agents: Vec::new(),
+        }
+    }
+}
+
+impl IdentityPolicy {
+    /// The policy for a machine (already checked) and a list of allowed slugs.
+    pub fn new(machine: Option<&str>, allowed_agents: &[String]) -> Self {
+        Self {
+            domain: agents_domain(machine),
+            allowed_agents: allowed_agents.to_vec(),
+        }
+    }
+
+    /// Whether `slug` is an agent name this policy certifies.
+    pub fn allows_slug(&self, slug: &str) -> bool {
+        BUILT_IN_AGENT_SLUGS.contains(&slug)
+            || WIDELY_USED_AGENT_SLUGS.contains(&slug)
+            || self.allowed_agents.iter().any(|a| a == slug)
+    }
+
+    /// Whether the service may certify `identity`: its principal is in this
+    /// machine's domain (not another machine's, and not plain
+    /// `@agents.local` once a machine is named), it is well formed
+    /// ([`AgentIdentity::check_in`]), and its slug is allowed. Each refusal
+    /// says which setting decides it.
+    pub fn check(&self, identity: &AgentIdentity) -> Result<(), String> {
+        let domain = identity
+            .principal
+            .rsplit_once('@')
+            .map(|(_, d)| d)
+            .unwrap_or("");
+        if domain != self.domain {
+            return Err(format!(
+                "agent identity refused: {} is not in this machine's agents' domain @{} \
+                 (set by [identity] machine in agent-sign's config.toml); the git wrapper and \
+                 the service must read the same machine setting",
+                identity.principal, self.domain
+            ));
+        }
+        identity.check_in(&self.domain)?;
+        if !self.allows_slug(&identity.slug) {
+            return Err(format!(
+                "agent identity refused: `{}` is not an allowed agent name, so agent-sign won't \
+                 certify it. To allow it, add \"{}\" to allowed_agents under [identity] in \
+                 ~/.agent-sign/config.toml (a person's own name is never allowed)",
+                identity.slug, identity.slug
+            ));
+        }
+        Ok(())
+    }
+}
 
 /// The longest slug or display name an identity keeps.
 const MAX_NAME_LEN: usize = 64;
@@ -60,17 +199,32 @@ pub struct AgentIdentity {
 impl AgentIdentity {
     /// The identity for a tool `slug`, display `name`, and session id
     /// (`None`: a marked agent that gave none, `nosession`).
+    /// It is in [`AGENTS_DOMAIN`]; [`AgentIdentity::in_domain`] moves it to a
+    /// named machine's.
     pub fn new(slug: &str, name: &str, session: Option<&str>) -> Self {
         let session8 = session.map(session8).unwrap_or_else(|| "nosession".into());
-        Self::with_session8(slug, name, &session8)
+        Self::with_session8(slug, name, &session8, AGENTS_DOMAIN)
     }
 
-    fn with_session8(slug: &str, name: &str, session8: &str) -> Self {
+    fn with_session8(slug: &str, name: &str, session8: &str, domain: &str) -> Self {
         Self {
             slug: slug.to_string(),
             name: name.to_string(),
-            principal: format!("{slug}.{session8}@{AGENTS_DOMAIN}"),
+            principal: format!("{slug}.{session8}@{domain}"),
         }
+    }
+
+    /// The same identity in `domain` (see [`agents_domain`]): what the git
+    /// wrapper does once it has read the machine setting, so an agent's
+    /// principal names the machine it ran on.
+    pub fn in_domain(mut self, domain: &str) -> Self {
+        let local = self
+            .principal
+            .rsplit_once('@')
+            .map(|(local, _)| local.to_string())
+            .unwrap_or_else(|| self.principal.clone());
+        self.principal = format!("{local}@{domain}");
+        self
     }
 
     /// A placeholder for an [`AttributionEngine`] built without an identity.
@@ -81,7 +235,7 @@ impl AgentIdentity {
     /// under git's own names, because they are as likely to be the person's
     /// own editor as an agent's.
     pub fn unidentified() -> Self {
-        Self::with_session8("agent", "Agent", "unidentified")
+        Self::with_session8("agent", "Agent", "unidentified", AGENTS_DOMAIN)
     }
 
     /// `Name <principal>`, as git shows an author.
@@ -102,7 +256,16 @@ impl AgentIdentity {
     /// check let the authority certify principals no session can have, such
     /// as `codex.admin@agents.local` or `---.a@agents.local`, which a reader
     /// of `git log` could take for something they aren't.
+    ///
+    /// This is the shape in [`AGENTS_DOMAIN`]; the service checks with
+    /// [`IdentityPolicy::check`], which also holds the machine's domain and
+    /// the allowed agent names.
     pub fn check(&self) -> Result<(), String> {
+        self.check_in(AGENTS_DOMAIN)
+    }
+
+    /// [`AgentIdentity::check`] for principals in `domain`.
+    pub fn check_in(&self, domain: &str) -> Result<(), String> {
         let bad = |why: &str| Err(format!("agent identity refused: {why}"));
         if self.slug.len() > MAX_NAME_LEN || !is_slug(&self.slug) {
             return bad(
@@ -112,9 +275,11 @@ impl AgentIdentity {
         let Some(rest) = self
             .principal
             .strip_prefix(&format!("{}.", self.slug))
-            .and_then(|r| r.strip_suffix(&format!("@{AGENTS_DOMAIN}")))
+            .and_then(|r| r.strip_suffix(&format!("@{domain}")))
         else {
-            return bad("the principal must be <tool>.<session>@agents.local");
+            return Err(format!(
+                "agent identity refused: the principal must be <tool>.<session>@{domain}"
+            ));
         };
         if !is_session_part(rest) {
             return bad("the session part must be 8 lowercase hex digits, or 'nosession'");
@@ -127,6 +292,13 @@ impl AgentIdentity {
         }
         Ok(())
     }
+}
+
+/// Whether `slug` can name an agent: what [`slug_of`] makes, 1 to 64
+/// lowercase letters and digits in words joined by single `-`. Entries of
+/// `[identity] allowed_agents` must be one.
+pub fn is_agent_slug(slug: &str) -> bool {
+    slug.len() <= MAX_NAME_LEN && is_slug(slug)
 }
 
 /// Whether `slug` matches `^[a-z0-9]+(-[a-z0-9]+)*$`: words of lowercase
@@ -518,6 +690,52 @@ mod identity_tests {
         assert_eq!(id.principal, "my-bot-2.nosession@agents.local");
         assert!(id.check().is_ok());
         assert_eq!(slug_of("!!!"), "agent");
+    }
+
+    #[test]
+    fn machine_labels_are_dns_labels_without_dots() {
+        for ok in ["a", "pi", "my-box-2", "9lives", &"a".repeat(63)] {
+            assert!(check_machine_label(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "",
+            "a.b",
+            "a@b",
+            "A",
+            "-a",
+            "a-",
+            "a--b",
+            "a_b",
+            &"a".repeat(64),
+        ] {
+            let e = check_machine_label(bad).unwrap_err();
+            assert!(e.contains("machine"), "{e}");
+        }
+        assert_eq!(agents_domain(None), "agents.local");
+        assert_eq!(agents_domain(Some("pi")), "pi.agents.local");
+    }
+
+    #[test]
+    fn the_policy_holds_the_machines_domain_and_the_allowed_names() {
+        let policy = IdentityPolicy::new(Some("hetzner"), &["my-bot-2".to_string()]);
+        let here =
+            |slug: &str| AgentIdentity::new(slug, "N", Some("s")).in_domain("hetzner.agents.local");
+        assert!(policy.check(&here("claude-code")).is_ok());
+        assert!(policy.check(&here("aider")).is_ok());
+        assert!(policy.check(&here("my-bot-2")).is_ok());
+        let e = policy.check(&here("taylor")).unwrap_err();
+        assert!(e.contains("allowed_agents") && e.contains("taylor"), "{e}");
+        for other in ["agents.local", "pi.agents.local", "x.hetzner.agents.local"] {
+            let id = AgentIdentity::new("codex", "Codex", Some("s")).in_domain(other);
+            assert!(policy.check(&id).is_err(), "{other}");
+        }
+        let plain = IdentityPolicy::default();
+        assert!(
+            plain
+                .check(&AgentIdentity::new("codex", "Codex", Some("s")))
+                .is_ok()
+        );
+        assert!(plain.check(&here("codex")).is_err());
     }
 
     #[test]

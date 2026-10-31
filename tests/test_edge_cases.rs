@@ -86,6 +86,11 @@ impl Setup {
             Some(rest) => format!("{opt_in}{rest}"),
             None => format!("{opt_in}{config}"),
         };
+        // Requirement change (plan "next: real use on servers", check 6a,
+        // 30 Oct 2026): the service certifies only built-in agent names and
+        // those in `[identity] allowed_agents`, so these tests list the
+        // agent they name, "Test Agent", as a user would.
+        let config = format!("{config}\n[identity]\nallowed_agents = [\"test-agent\"]\n");
         fs::write(state.join("config.toml"), config).unwrap();
 
         let fakebin = home.join("fakebin");
@@ -333,8 +338,13 @@ fn a_forged_or_reused_token_signs_nothing() {
     let real_repo = s.repo("token-fixture", "feat/a");
     let tree = git(&real_repo, &["rev-parse", "HEAD^{tree}"]);
     let parent = git(&real_repo, &["rev-parse", "HEAD"]);
+    // Requirement change (plan "next: real use on servers", check 6c, 30 Oct
+    // 2026): the service signs only a committer date inside the signing
+    // certificate's window, so the fixture is dated now (it was the fixed
+    // 1700000000, Nov 2023).
+    let now = agent_sign::agents_ca::now_secs();
     let candidate = format!(
-        "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\ntest: one-use fixture\n",
+        "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> {now} +0000\ncommitter Fixture <fixture@example.invalid> {now} +0000\n\ntest: one-use fixture\n",
         String::from_utf8_lossy(&tree.stdout).trim(),
         String::from_utf8_lossy(&parent.stdout).trim()
     );

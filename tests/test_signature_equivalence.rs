@@ -35,6 +35,21 @@ const TEST_SEED: [u8; 32] = [7u8; 32];
 
 const BUFFER: &[u8] = b"tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor Agent <agent@local.internal> 1700000000 +0000\ncommitter Taylor <person@example.com> 1700000000 +0000\n\nfeat: golden signature buffer\n";
 
+/// [`BUFFER`] with the committer date now, for the signing programs.
+/// Requirement change (plan "next: real use on servers", check 6c, 30 Oct
+/// 2026): the service signs only a commit whose committer date lies inside
+/// the signing certificate's window, so the programs sign this; the library's
+/// golden signature is still over the unchanged [`BUFFER`].
+fn program_buffer() -> Vec<u8> {
+    let now = agent_sign::agents_ca::now_secs();
+    String::from_utf8_lossy(BUFFER)
+        .replace(
+            "committer Taylor <person@example.com> 1700000000",
+            &format!("committer Taylor <person@example.com> {now}"),
+        )
+        .into_bytes()
+}
+
 const GOLDEN_AGENT_SIGN_SIG: &str = "-----BEGIN SSH SIGNATURE-----
 U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAg6kpsY+KcUgq+9VB7Ey7F+ZVHdq
 6+vnuSQh7qaRRG0iwAAAADZ2l0AAAAAAAAAAZzaGE1MTIAAABTAAAAC3NzaC1lZDI1NTE5
@@ -98,7 +113,8 @@ fn token(socket: &Path, repo: &str) -> String {
     }
 }
 
-/// Runs a signing program the way git does and returns the `.sig` it wrote.
+/// Runs a signing program the way git does over `file` (which the caller
+/// has written) and returns the `.sig` it wrote.
 fn sign_with(
     program: &Path,
     env_prefix: &str,
@@ -108,7 +124,6 @@ fn sign_with(
     file: &Path,
     repo: &Path,
 ) -> String {
-    fs::write(file, BUFFER).unwrap();
     let out = Command::new(program)
         .current_dir(repo)
         .env("AGENT_SIGN_AGENT_RUN", "1")
@@ -129,11 +144,18 @@ fn sign_with(
     fs::read_to_string(format!("{}.sig", file.display())).unwrap()
 }
 
-/// Runs `ssh-keygen -Y verify` on `sig` over `BUFFER` for `principal`
+/// Runs `ssh-keygen -Y verify` on `sig` over `buffer` for `principal`
 /// against `allowed`, and fails the test with its output if it refuses.
-fn assert_verifies(home: &Path, allowed: &Path, principal: &str, sig: &str, what: &str) {
+fn assert_verifies(
+    home: &Path,
+    allowed: &Path,
+    principal: &str,
+    sig: &str,
+    what: &str,
+    buffer: &[u8],
+) {
     let data = home.join("data");
-    fs::write(&data, BUFFER).unwrap();
+    fs::write(&data, buffer).unwrap();
     fs::write(home.join("data.sig"), sig).unwrap();
     let verify = Command::new("ssh-keygen")
         .args(["-Y", "verify", "-n", "git", "-I", principal, "-f"])
@@ -218,23 +240,19 @@ fn every_signing_name_signs_as_the_agent_and_the_library_signer_is_unchanged() {
         ),
     )
     .unwrap();
+    let buffer = program_buffer();
     for (i, (program, prefix)) in programs.iter().enumerate() {
         let tok = token(&socket, &golden);
-        let sig = sign_with(
-            program,
-            prefix,
-            home,
-            &socket,
-            &tok,
-            &home.join(format!("buf{i}")),
-            &golden_dir,
-        );
+        let file = home.join(format!("buf{i}"));
+        fs::write(&file, &buffer).unwrap();
+        let sig = sign_with(program, prefix, home, &socket, &tok, &file, &golden_dir);
         assert_verifies(
             home,
             &trusted,
             &golden_agent().principal,
             &sig,
             &program.display().to_string(),
+            &buffer,
         );
     }
 
@@ -258,6 +276,7 @@ fn every_signing_name_signs_as_the_agent_and_the_library_signer_is_unchanged() {
         "agent@local.internal",
         GOLDEN_AGENT_SIGN_SIG,
         "the golden signature",
+        BUFFER,
     );
 }
 

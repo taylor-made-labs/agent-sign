@@ -11,6 +11,11 @@
 //! read, or on a key it doesn't know (see [`Config::check_file`]), since a
 //! misspelt `approval` that fell back to the default would quietly mean no
 //! approval at all.
+//!
+//! `[identity]` (the machine's name and the allowed agent names, see
+//! [`IdentityConfig`]) is read only from the user's own file: a repository's
+//! file can't set it (it is ignored there, like every table but
+//! `[security]`), since it decides whose names the service certifies.
 
 use crate::attribution::AttributionMode;
 use crate::paths;
@@ -31,6 +36,129 @@ pub struct Config {
     pub security: SecurityConfig,
     #[serde(default)]
     pub ssh: SshConfig,
+    #[serde(default)]
+    pub identity: IdentityConfig,
+}
+
+/// `[identity]`: which names this machine's agents get. Read only from the
+/// user's own `~/.agent-sign/config.toml` (or the service's `--config`
+/// file), never from a repository's `.agent-sign.toml`.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct IdentityConfig {
+    /// This machine's name, such as "hetzner": agents' principals become
+    /// `<tool>.<session8>@<machine>.agents.local`, and the service certifies
+    /// only names in that domain. Unset (the default) keeps `@agents.local`.
+    /// It must pass [`crate::attribution::check_machine_label`]; an empty
+    /// string is an error, not "unset". Never taken from the host name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub machine: Option<String>,
+    /// Agent names (slugs, such as "cursor" or "my-bot-2") the service
+    /// certifies besides the built-in and widely used ones (see
+    /// [`crate::attribution::IdentityPolicy`]). A person's own name is
+    /// refused here (see [`IdentityConfig::check_against`]).
+    #[serde(default)]
+    pub allowed_agents: Vec<String>,
+}
+
+impl IdentityConfig {
+    /// The service's and the wrapper's [`crate::attribution::IdentityPolicy`]
+    /// for these settings (which must have been checked).
+    pub fn policy(&self) -> crate::attribution::IdentityPolicy {
+        crate::attribution::IdentityPolicy::new(self.machine.as_deref(), &self.allowed_agents)
+    }
+
+    /// The agents' domain these settings give (see
+    /// [`crate::attribution::agents_domain`]).
+    pub fn domain(&self) -> String {
+        crate::attribution::agents_domain(self.machine.as_deref())
+    }
+
+    /// Whether these settings read: a valid machine name if one is set, and
+    /// every allowed agent a slug. Needs nothing but the settings, so the git
+    /// wrapper can check them without running git.
+    pub fn check(&self) -> Result<(), String> {
+        if let Some(machine) = &self.machine {
+            crate::attribution::check_machine_label(machine)?;
+        }
+        for slug in &self.allowed_agents {
+            if !crate::attribution::is_agent_slug(slug) {
+                return Err(format!(
+                    "[identity] allowed_agents lists {slug:?}, which isn't an agent name: use the \
+                     name's slug, 1 to 64 lowercase letters and digits in words joined by single \
+                     '-' (\"My Bot 2\" is \"my-bot-2\")"
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// [`IdentityConfig::check`], and no allowed agent is the person's own
+    /// name: the slug of `human`'s name, any word of it, or the part of their
+    /// email before the `@`. An agent named after the person would get a Good
+    /// signature under the person's name, which is what per-agent identities
+    /// exist to prevent, so such a config is refused rather than the entry
+    /// silently skipped.
+    pub fn check_against(&self, human: &HumanConfig) -> Result<(), String> {
+        self.check()?;
+        let full = crate::attribution::slug_of(&human.name);
+        let mut persons: Vec<String> = full.split('-').map(str::to_string).collect();
+        persons.push(full);
+        if let Some((local, _)) = human.email.split_once('@') {
+            persons.push(crate::attribution::slug_of(local));
+        }
+        if let Some(slug) = self
+            .allowed_agents
+            .iter()
+            .find(|slug| persons.iter().any(|p| p == *slug))
+        {
+            return Err(format!(
+                "[identity] allowed_agents lists {slug:?}, which is the person's own name \
+                 ({:?} <{}>): agent-sign never certifies an agent under a person's name. \
+                 Remove it from allowed_agents",
+                human.name, human.email
+            ));
+        }
+        Ok(())
+    }
+
+    /// The `[identity]` settings in the user's own config file in `home`
+    /// (`~/.agent-sign/config.toml`), checked with [`IdentityConfig::check`],
+    /// or the defaults when there is no file. Reads only that file and runs
+    /// nothing, so the git wrapper can name an agent without a full
+    /// [`Config::try_load`] (which runs git for the person's name). A file
+    /// that can't be read or parsed is an error, never the defaults, so a
+    /// broken setting can't quietly drop the machine name.
+    pub fn load_user_in(home: &Path) -> Result<Self, String> {
+        let path = paths::state_dir_in(home).join("config.toml");
+        let content = match std::fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(e)
+                if e.kind() == std::io::ErrorKind::NotFound
+                    && std::fs::symlink_metadata(&path).is_err() =>
+            {
+                return Ok(Self::default());
+            }
+            Err(e) => return Err(format!("{}: {e}", path.display())),
+        };
+        let file: toml::Value =
+            toml::from_str(&content).map_err(|e| format!("{}: {e}", path.display()))?;
+        let identity: IdentityConfig = match file.get("identity") {
+            None => Self::default(),
+            Some(table) => table
+                .clone()
+                .try_into()
+                .map_err(|e| format!("{}: [identity] can't be read: {e}", path.display()))?,
+        };
+        identity
+            .check()
+            .map_err(|e| format!("{}: {e}", path.display()))?;
+        Ok(identity)
+    }
+
+    /// [`IdentityConfig::load_user_in`] for the current `HOME`.
+    pub fn load_user() -> Result<Self, String> {
+        Self::load_user_in(&paths::home_dir())
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -426,8 +554,13 @@ fn merge_toml(base: &mut toml::Value, overlay: toml::Value) {
 /// has written is either a field of [`Config`] or listed here.
 const RETIRED_KEYS: &[(&str, &str)] = &[("security", "auto_revoke_on_branch_delete")];
 
+/// Keys [`Config`] reads that its defaults leave out (an unset `Option`
+/// isn't serialized), by table, so [`known_keys`] still knows them.
+const OPTIONAL_KEYS: &[(&str, &str)] = &[("identity", "machine")];
+
 /// Every table and key [`Config`] reads, from its own defaults (each field
-/// serializes, so none is missed), plus [`RETIRED_KEYS`].
+/// serializes, so none is missed), plus [`RETIRED_KEYS`] and
+/// [`OPTIONAL_KEYS`].
 fn known_keys() -> Vec<(String, Vec<String>)> {
     let defaults = toml::Value::try_from(Config::default())
         .unwrap_or(toml::Value::Table(toml::map::Map::new()));
@@ -445,7 +578,7 @@ fn known_keys() -> Vec<(String, Vec<String>)> {
                 .collect()
         })
         .unwrap_or_default();
-    for (table, key) in RETIRED_KEYS {
+    for (table, key) in RETIRED_KEYS.iter().chain(OPTIONAL_KEYS) {
         if let Some((_, keys)) = known.iter_mut().find(|(t, _)| t == table) {
             keys.push(key.to_string());
         }
@@ -495,8 +628,8 @@ fn unknown_key(file: &toml::Value) -> Option<String> {
 /// - `max_diff_lines` applies only when lower (0 means no limit, so any
 ///   limit is lower).
 ///
-/// Everything else (`[attribution]`, `[agent]`, `[human]`, `[ssh]`, any
-/// other `[security]` key, or a value of the wrong type) is ignored and
+/// Everything else (`[attribution]`, `[agent]`, `[human]`, `[ssh]`,
+/// `[identity]`, any other `[security]` key, or a value of the wrong type) is ignored and
 /// named in the returned list, which the caller reports in one warning.
 /// That includes `max_commits_per_minute`: the rate is counted by the
 /// service, which reads only the person's own config, so a lower value here
@@ -572,6 +705,7 @@ impl Config {
         }
         let config: Config = parsed.try_into()?;
         config.validate_selected_security()?;
+        config.identity.check_against(&config.human)?;
         Ok(config)
     }
 
@@ -824,6 +958,71 @@ impl Config {
         }
 
         config.validate_selected_security()?;
+        config.identity.check_against(&config.human)?;
         Ok(config)
+    }
+}
+
+#[cfg(test)]
+mod identity_config_tests {
+    use super::*;
+
+    fn human(name: &str, email: &str) -> HumanConfig {
+        HumanConfig {
+            name: name.to_string(),
+            email: email.to_string(),
+            github_username: String::new(),
+        }
+    }
+
+    fn listing(slugs: &[&str]) -> IdentityConfig {
+        IdentityConfig {
+            machine: None,
+            allowed_agents: slugs.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn a_persons_own_name_is_never_an_allowed_agent() {
+        let dana = human("Dana Example", "dee@example.com");
+        assert!(
+            listing(&["cursor", "my-bot-2"])
+                .check_against(&dana)
+                .is_ok()
+        );
+        for slug in ["dana-example", "dana", "dee"] {
+            let e = listing(&[slug]).check_against(&dana).unwrap_err();
+            assert!(e.contains("allowed_agents"), "{e}");
+        }
+        assert!(listing(&["My Bot"]).check().is_err());
+    }
+
+    #[test]
+    fn identity_is_read_from_the_users_file_and_an_empty_machine_is_an_error() {
+        let home = tempfile::tempdir().unwrap();
+        let dir = paths::state_dir_in(home.path());
+        std::fs::create_dir_all(&dir).unwrap();
+        assert_eq!(
+            IdentityConfig::load_user_in(home.path()).unwrap(),
+            IdentityConfig::default()
+        );
+        std::fs::write(dir.join("config.toml"), "[identity]\nmachine = \"pi\"\n").unwrap();
+        let settings = IdentityConfig::load_user_in(home.path()).unwrap();
+        assert_eq!(settings.domain(), "pi.agents.local");
+        assert!(Config::check_file(&dir.join("config.toml")).is_ok());
+        std::fs::write(dir.join("config.toml"), "[identity]\nmachine = \"\"\n").unwrap();
+        let e = IdentityConfig::load_user_in(home.path()).unwrap_err();
+        assert!(e.contains("machine"), "{e}");
+    }
+
+    #[test]
+    fn a_repository_file_cant_set_identity() {
+        let mut config = Config::default();
+        let file: toml::Value =
+            toml::from_str("[identity]\nmachine = \"evil\"\nallowed_agents = [\"taylor\"]\n")
+                .unwrap();
+        let ignored = tighten_with_repo_file(&mut config, &file);
+        assert_eq!(ignored, ["[identity]"]);
+        assert_eq!(config.identity, IdentityConfig::default());
     }
 }
