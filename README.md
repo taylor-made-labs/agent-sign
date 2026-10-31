@@ -1,33 +1,39 @@
 # agent-sign
 
-**Each AI agent signs and commits as itself, never as you.** An agent's
-commit is authored, committed and signed by that agent's own identity, such
-as `Claude Code <claude-code.1a2b3c4d@agents.local>`, so `git log` tells
-agent work from yours, and nothing an agent makes is signed with your key.
+**AI agents commit and sign as themselves, never as you.** Each agent
+session gets its own short-lived certificate (12 hours), so its commits are
+authored, committed and signed by that agent's own identity, such as
+`Claude Code <claude-code.1a2b3c4d@agents.local>`. `git log` tells agent work
+from yours, nothing an agent makes is signed with your key, and nothing asks
+you anything. It runs on macOS and Linux, laptops and servers alike.
 
-- **No approval by default.** Agent commits don't stop for your fingerprint;
+- **No prompts for you.** Agent commits don't stop for your fingerprint;
   the service logs which agent committed where. If you want to approve
   each repository's agent work yourself, `approval = "device-owner"` brings
   back one Touch ID prompt per **lease** (one branch of one repository,
-  until it's merged; see [Leases](#leases)).
+  until it's merged; see [Leases](#leases)). That option is macOS only.
 - **One block of trust.** A marked block in your allowed-signers file trusts
-  agents' signatures for `*@agents.local` names only, never your email; the
-  installer adds it and the service keeps it current. Then
-  `git log --show-signature` shows a Good signature for the agent that made
-  each commit.
+  agents' signatures for agents' names only (`*@agents.local`, or
+  `*@<machine>.agents.local` once you [name the machine](#naming-the-machine)),
+  never your email; the installer adds it and the service keeps it current.
+  Then `git log --show-signature` shows a Good signature for the agent that
+  made each commit.
+- **Only names you allow.** Well-known agents are allowed out of the box;
+  any other agent name has to be listed first, and your own name never can
+  be ([Allowed agent names](#allowed-agent-names)).
 - **No private key on disk.** Each agent session's signing key, and the
   certificate authority that vouches for it, live only in the service's
-  memory, never in a file.
+  memory, never in a file. On Linux, other programs of your account can't
+  read that memory either.
 - **Your own signing is routed.** The installer points git's
   `gpg.ssh.program` at agent-sign's signing program, which passes your own
   signatures on to your signer (1Password, a hardware key, `ssh-keygen`)
   as before, and refuses any signing request from an agent's process.
   Commits you make in a terminal are signed as you, as before.
-- **Limits.** These identities are attribution, not a security boundary:
-  agents run as your user, and one agent could claim to be another. agent-sign
-  catches mistakes by agents that cooperate; it doesn't stop one set on getting
-  around it. See
-  [what it protects against, and what it doesn't](#what-it-protects-against-and-what-it-doesnt).
+- **Limits.** While agents run in the same OS account as agent-sign (the
+  usual setup today), a signature names the agent that agent-sign was told
+  about, which a misbehaving agent can lie about. See
+  [What a signature proves](#what-a-signature-proves).
 
 Why: if you sign your git commits with a hardware key, 1Password, or a
 passkey, an agent making twenty small commits stops twenty times for your
@@ -37,16 +43,19 @@ that cooperate: no agent commits on `main`, no changes to CI workflows or
 key files, a rate limit.
 
 **Status: pre-release (0.1.0).** Its author uses it daily on macOS for every
-agent commit. Linux builds and passes its tests, but has had little daily
-use (see [Linux](#linux)). There are no downloadable releases yet: you build
-it from source.
+agent commit, and Mac support stays first-class. On Linux it builds and
+passes its tests, runs as a systemd user service, and is now being put to
+real use on servers (see [Linux](#linux)). There are no downloadable
+releases yet: you build it from source.
 
 ## How it works
 
 1. The installer puts a `git` wrapper (`agent-git`) first on your shell's
    `PATH`. Agents started from that shell run `git` as usual. (An agent
-   started some other way, such as an app launched from the Dock, may not
-   get that `PATH`: check with `command -v git` from the agent.)
+   started some other way, such as an app launched from the Dock or a
+   background service on a server, may not get that `PATH`: check with
+   `command -v git` from the agent, and see
+   [Agents started by background services](#agents-started-by-background-services).)
 2. When an agent runs `git commit`, the wrapper checks the local rules: no
    changes to CI workflows (`.github/workflows/`, `.circleci/`) or key files
    (`*.pem`, `*.key`, `id_rsa*`, `id_ed25519*`). There's no limit on a
@@ -68,16 +77,21 @@ it from source.
    signed agent commits only, so such unsigned commits can land on `main`:
    a rule that every commit on `main` is signed (your own signed merges)
    keeps them out.
-4. If the branch isn't protected and the commit rate is under its limit,
-   the commit is signed through git's own SSH signing (`agent-ssh-sign`) as
-   the agent's own identity: the service gives each agent session a signing
-   key that lives only in its memory, with a 12-hour OpenSSH certificate
-   from the agents' certificate authority naming the agent's principal. The
-   authority is made in the service's memory each time it starts. The daemon
-   disables ordinary core dumps before generating private keys and does not
-   explicitly persist them; swap and privileged memory access remain host
-   assumptions. In every attribution mode the
-   agent is both author and committer.
+4. If the branch isn't protected, the agent's name is allowed, and the
+   commit rate is under its limit, the commit is signed through git's own
+   SSH signing (`agent-ssh-sign`) as the agent's own identity: the service
+   gives each agent session a signing key that lives only in its memory,
+   with a 12-hour OpenSSH certificate from the agents' certificate authority
+   naming the agent's principal. The authority is made in the service's
+   memory each time it starts. A commit whose committer date falls outside
+   that certificate's validity (from 5 minutes before it was issued to 12
+   hours after) isn't signed at all: git checks a certificate at the
+   commit's own date, so a backdated or postdated commit must not carry a
+   signature. The service disables ordinary core dumps before it makes any
+   private key, and, on Linux, makes its memory unreadable by other programs
+   of the same account; it never writes a private key anywhere. Swap, and
+   the administrator (root), remain outside its control. In every
+   attribution mode the agent is both author and committer.
 5. Commands that make commits by themselves (`merge`, `pull`, `rebase`,
    `cherry-pick`, `revert`, `am`, aliases for those, and shell aliases) are
    signed the same way for an agent that says who it is: the wrapper gets a
@@ -104,16 +118,18 @@ make agent work look like someone else's):
 | Claude Code | `CLAUDECODE` (not empty or `0`) | `CLAUDE_CODE_SESSION_ID` |
 | Codex | `CODEX_SESSION_ID` or `CODEX_THREAD_ID` | the first of those |
 | Gemini CLI | `GEMINI_CLI` | none of its own |
-| any other | `AGENT_SIGN_AGENT_NAME="Cursor"` (overrides the above) | `AGENT_SIGN_SESSION_ID` (overrides the above) |
+| any other | `AGENT_SIGN_AGENT_NAME="Aider"` (overrides the above) | `AGENT_SIGN_SESSION_ID` (overrides the above) |
 
 The identity's email, its **principal**, is `<tool>.<session>@agents.local`,
 where `<session>` is the first 8 hex characters of the SHA-256 of the
 session id (`nosession` when the agent gives none): `claude-code.1a2b3c4d@agents.local`.
-Two sessions get two principals, and two tools never share one. A name in
-`AGENT_SIGN_AGENT_NAME` becomes the tool part in lowercase letters and
-digits joined by single `-` ("My Bot (beta)" is `my-bot-beta`), and the
-service certifies nothing else: no principal it signs for has any other
-shape.
+On a [named machine](#naming-the-machine) it is
+`<tool>.<session>@<machine>.agents.local`. Two sessions get two principals,
+and two tools never share one. A name in `AGENT_SIGN_AGENT_NAME` becomes the
+tool part, its **slug**: lowercase letters and digits joined by single `-`
+("My Bot (beta)" is `my-bot-beta`). The service certifies nothing else: no
+principal it signs for has any other shape, and the slug must be an
+[allowed agent name](#allowed-agent-names).
 
 A commit with no terminal and no mark at all (your editor's commit button,
 a GUI, or an agent that doesn't say it's one) is left to git: unsigned,
@@ -122,6 +138,77 @@ your own, so it never puts an agent's name on it. If it asked to be signed
 (`-S`, or your `commit.gpgsign = true`), it's still made unsigned rather
 than failing, and one line says why: commit in a terminal to sign it as
 yourself.
+
+### Allowed agent names
+
+The service gives a certificate only to agent names it allows:
+
+- **Built in**, recognised by their own marks: `claude-code`, `codex`,
+  `gemini-cli`.
+- **Widely used agents**, which have no mark of their own, so you name them
+  with `AGENT_SIGN_AGENT_NAME`: `aider`, `antigravity`, `cline`, `copilot`,
+  `cursor`, `opencode`, `windsurf`. They need no setting.
+- **Any other name**: list its slug under `[identity]` in
+  `~/.agent-sign/config.toml`, then restart the service:
+
+  ```toml
+  [identity]
+  allowed_agents = ["my-bot-2"]   # for AGENT_SIGN_AGENT_NAME="My Bot 2"
+  ```
+
+  An entry must be a slug (lowercase letters and digits in words joined by
+  single `-`), or the service won't start. Until a name is listed, its
+  commits are refused with "agent identity refused: `my-bot-2` is not an
+  allowed agent name".
+
+**Your own name is never allowed.** If `allowed_agents` lists your name
+(your whole name or any word of it, as a slug, or the part of your email
+before the `@`), the service refuses to start and says which entry to
+remove. Your name and email are git's `user.name` and `user.email`, unless
+`[human]` in `config.toml` sets them. Without this rule an agent could name
+itself after you and get a Good signature under your name, which is what
+per-agent identities exist to prevent.
+
+`[identity]` is read only from your own `config.toml`: a repository's
+`.agent-sign.toml` can't set it.
+
+### Naming the machine
+
+If you run agent-sign on more than one machine, give each one a name:
+
+```toml
+[identity]
+machine = "build-1"
+```
+
+A machine name is 1 to 63 lowercase letters and digits, in words joined by
+single `-` (`build-1`, `pi-4`, `my-laptop`): no dots, capitals or spaces.
+agent-sign never takes it from the computer's own host name, which often
+breaks these rules and can change.
+
+With a name set:
+
+- agents' principals say where the agent ran:
+  `claude-code.1a2b3c4d@build-1.agents.local`;
+- the machine's trust lines cover only its own agents
+  (`*@build-1.agents.local cert-authority,...`), and its service certifies
+  only names in that domain. So if you gather several machines' trust lines
+  into one allowed-signers file, to check commits made on all of them, no
+  machine can vouch for another machine's agents. Without names, every
+  machine's authority is trusted for every `@agents.local` name.
+
+Leave it out and everything stays `@agents.local`, as before.
+
+**Set it before the service first starts.** The installer does that for
+you: `./scripts/install.sh --machine build-1` writes it into `config.toml`
+before it starts the service (see [docs/INSTALL.md](docs/INSTALL.md)). If you
+set it later, by hand, restart the service at once: the git wrapper reads the
+setting at every commit, the service only when it starts, and until both
+agree agent commits are refused ("not in this machine's agents' domain").
+Setting, changing or removing the name later also re-scopes every earlier
+authority's trust line to the new domain, so **agent commits already signed
+under the old domain (such as `@agents.local`) stop verifying** under the
+machine's lines.
 
 ### Trusting agents' signatures
 
@@ -135,6 +222,8 @@ signature, for its own principal only:
 # agent-sign: end of agents' certificate authorities
 ```
 
+(On a named machine the lines start `*@<machine>.agents.local`.)
+
 The service makes a new certificate authority, in memory, each time it
 starts, and adds its public key to `~/.agent-sign/keys/agents_cas.pub`
 (with the date; earlier ones stay). At each start it rewrites the lines
@@ -146,10 +235,10 @@ aren't there.
 
 Then `git log --show-signature` shows
 `Good "git" signature for claude-code.1a2b3c4d@agents.local`. Each line
-trusts an agents' authority for `@agents.local` principals and git
-signatures only: it can't vouch for your email or anyone else's. GitHub
-doesn't check signatures made with SSH certificates, so agents' commits show
-there as Unverified, which is accurate: they aren't yours.
+trusts an agents' authority for agents' principals and git signatures
+only: it can't vouch for your email or anyone else's. GitHub doesn't check
+signatures made with SSH certificates, so agents' commits show there as
+Unverified, which is accurate: they aren't yours.
 
 The wrapper tells you from an agent this way: if both its input and output
 are a terminal, and no agent has marked the command as its own (Claude Code,
@@ -159,20 +248,58 @@ git with your normal signing. Anything an agent marks (or names with
 terminal (which may be your own editor) is left as git makes it, unsigned,
 under git's own names.
 
+## What a signature proves
+
+A Good signature for `claude-code.1a2b3c4d@build-1.agents.local` proves
+that **agent-sign on that machine, or something running in the same OS
+account as agent-sign, signed that commit for that agent name**, with a
+committer date inside the certificate's 12 hours. It never proves anything
+about you: agents' trust lines can't vouch for your email.
+
+It doesn't prove which program really made the commit. If agents run in
+the same OS account as agent-sign, which is how agents run on a laptop
+today and how most servers are set up, a misbehaving agent could:
+
+- **claim another agent's name**: set `CLAUDECODE` or
+  `AGENT_SIGN_AGENT_NAME` itself, or ask the service's socket for a
+  certificate under any allowed name;
+- **make the machine trust a key of its own**: add a key to agent-sign's
+  list of authorities (`~/.agent-sign/keys/agents_cas.pub`), edit your
+  allowed-signers file, or replace agent-sign's programs or settings, so
+  that signatures it made itself verify on that machine.
+
+On Linux, other programs of the same account can't read agent-sign's
+memory, so an agent can't copy the authority or a session's key out of the
+running service. (The administrator, root, still can. On macOS, what
+another program of your account can read is up to macOS: agent-sign adds no
+protection of its own there.)
+
+**Planned, not available yet:** running agent-sign in an OS account of its
+own, which agents can't touch, on macOS and Linux alike, as an option beside
+today's zero-setup default. A signature would then prove that agent-sign
+itself signed it, under the rules you set. Agents that share one account
+could still claim each other's names; telling them apart needs each agent
+isolated from the others.
+
 ## What it protects against, and what it doesn't
 
 agent-sign catches mistakes by an agent that cooperates. It is **not** a security
-boundary against an agent that tries to get around it, when the agent runs
-as your own user account, which is how agents run on a laptop today.
+boundary against an agent that tries to get around it, while the agent runs
+in the same OS account as agent-sign (see [What a signature proves](#what-a-signature-proves)).
 
 It does:
 
 - keep your own signing key away from agents (they never talk to it), and
   ignore an agent's token that leaks into your own terminal
 - sign each agent's commits as that agent, never as you: its own name and
-  `@agents.local` principal as author and committer whatever the config
-  says, and a signature that git reports as Good for that principal only
-  under the trust lines
+  principal as author and committer whatever the config says, and a
+  signature that git reports as Good for that principal only under the
+  trust lines
+- certify only [allowed agent names](#allowed-agent-names), never one
+  matching your own name, and on a [named machine](#naming-the-machine)
+  only that machine's agents
+- refuse to sign a commit whose committer date lies outside its signing
+  certificate's validity
 - let a repository's `.agent-sign.toml` only tighten the rules (add
   forbidden paths and protected branches, lower `max_diff_lines`); anything
   else in it is ignored, with a warning, so a cloned repository can't loosen
@@ -182,6 +309,8 @@ It does:
   authority at each start), and are never written anywhere. A private key
   an earlier version stored in a file stops the service until it's gone;
   the installer deletes it, after asking
+- on Linux, keep other programs of the same account from reading the
+  service's memory
 - keep sessions apart: each session has its own key, with a 12-hour
   certificate for its own principal
 - refuse agent commits on protected branches (`main` and `master` by
@@ -201,16 +330,15 @@ It does:
 
 It does not, yet:
 
-- prove which agent made a commit. Identities are claims made by processes
-  running as your own user: any program can set `CLAUDECODE` or
-  `AGENT_SIGN_AGENT_NAME`, so one agent can sign as another. That's
-  attribution, not a security boundary, until agents run under their own
-  OS accounts
-- stop an agent running as your user from reading the service's memory
-  (with a debugger), asking the service over its socket for a certificate
-  for another agent's principal, editing agent-sign's config, starting its
-  own service, or calling the real git directly. None of these reaches your
-  email: the trust lines only cover `@agents.local`
+- prove which agent made a commit, or stop an agent in agent-sign's own OS
+  account from getting around it: claiming another agent's name, asking the
+  service over its socket for a certificate under any allowed name, making
+  the machine trust a key of its own, editing agent-sign's config, starting
+  its own service, or calling the real git directly (see
+  [What a signature proves](#what-a-signature-proves)). None of these
+  reaches your email: the trust lines only cover agents' names
+- on macOS, stop another program of your account from reading the service's
+  memory with a debugger, where macOS allows it
 - apply its rules to a commit that turns signing off (`--no-gpg-sign`, or
   `commit.gpgsign = false` for that command or repository): it goes to
   plain git unsigned, as calling the real git directly would, and may land
@@ -254,15 +382,16 @@ These are the next steps; see [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST
 
 This is planned, not built.
 
-- **Agents off your own computer.** agent-sign is meant for agents that run
-  on servers and in cloud sessions, each under its own account, not as you.
-  That turns its identities from labels into a boundary: an agent then
-  can't reach your keys or claim to be you.
+- **agent-sign in its own account.** An option to run agent-sign as an OS
+  account of its own that agents can't touch, on macOS and Linux (see
+  [What a signature proves](#what-a-signature-proves)). The zero-setup
+  default stays as it is.
 - **The authority in a vault.** Certificates are made through a small
   interface (`CertificateIssuer`). Today its only implementation keeps the
-  authority in the service's memory. The next is OpenBao's SSH engine, so
-  that no machine holds the authority, and cloud sessions with no
-  long-running service can get certificates too.
+  authority in the service's memory. The next is OpenBao's SSH engine, as
+  an option, so that the authority lasts across restarts, each machine can
+  check the others' agents, and cloud sessions with no long-running service
+  can get certificates too.
 - **Signing only what you committed to.** Before signing, agent-sign will
   ask a decision service whether this commit, by this agent session,
   follows from what you approved (your plan, its scope). It refuses
@@ -284,7 +413,7 @@ with Rust 1.88 or newer:
 git clone https://github.com/taylor-made-labs/agent-sign.git
 cd agent-sign
 cargo build --release --locked
-./scripts/install.sh
+./scripts/install.sh                  # or: ./scripts/install.sh --machine build-1
 ```
 
 Then open a new terminal and check the setup:
@@ -347,16 +476,93 @@ that; started bare, macOS names the prompt after the program, `agent-signd`.
 
 ## Linux
 
-With the default `approval = "none"`, agent commits work on Linux as on
-macOS. Linux can't approve leases interactively yet, so with
+agent-sign works on Linux as on macOS, with the default `approval = "none"`:
+each agent session gets its own certificate and signs as itself, with no
+prompts. This section is about running it on a server, where agents are
+often started by background services rather than from your shell.
+
+### The service
+
+The installer installs `agent-signd` as a **systemd user service**
+(`~/.config/systemd/user/agent-signd.service`), enables it and starts it.
+A user service runs in your account, never as root, and only while your
+user's service manager is running: normally while you're logged in. On a
+server you log out of, turn on **lingering**, so your services start at boot
+and keep running with nobody logged in:
+
+```sh
+loginctl enable-linger "$USER"
+```
+
+Some systems let only an administrator do this
+(`sudo loginctl enable-linger <user>`). Restart the service with
+`systemctl --user restart agent-signd`; its log is
+`journalctl --user -u agent-signd`.
+
+You can install over a non-interactive `ssh` command
+(`ssh build-1 'cd agent-sign && ./scripts/install.sh --yes'`). Such sessions
+don't always set `XDG_RUNTIME_DIR`, which `systemctl --user` needs; the
+installer then sets it to `/run/user/<your user id>` itself. See
+[docs/INSTALL.md](docs/INSTALL.md#servers-and-non-interactive-installs).
+
+### Several machines
+
+Give each machine its own name when you install, so agents' names say
+where they ran and each machine vouches only for its own agents:
+
+```sh
+./scripts/install.sh --machine build-1
+```
+
+See [Naming the machine](#naming-the-machine) for why to set it before the
+first start.
+
+### Agents started by background services
+
+The installer puts the wrapper first on `PATH` in your shell profiles. An
+agent started by a background service (a systemd user unit that runs agents
+or agent sessions) never reads those profiles, so it would run the real
+`git`, and its commits wouldn't be signed. Name each such unit:
+
+```sh
+./scripts/install.sh --launcher-unit my-agent-runner.service --launcher-unit other.service
+```
+
+(The option is for Linux only; macOS has no such units.)
+
+For each one, the installer writes a small systemd **drop-in** (an extra
+settings file for that unit,
+`~/.config/systemd/user/<unit>.d/agent-sign.conf`) that puts
+`~/.agent-sign/bin` first on the `PATH` it starts with. It never restarts the
+unit itself, since that would stop the agents it is running: it prints the
+command instead. Restart each unit when no agent it started is mid-task:
+
+```sh
+systemctl --user restart my-agent-runner.service
+```
+
+This covers your own user units, not system-wide ones.
+`./scripts/uninstall.sh` removes the drop-ins agent-sign wrote and leaves
+any of your own beside them.
+
+### Approval on Linux
+
+Linux can't approve leases interactively yet, so with
 `approval = "device-owner"` the service refuses every request there (unless
 `auto_approve` is on): agent-sign has no platform authenticator for Linux,
 and the two ways it could have asked anyway both let an agent approve for
 itself: a dialog any program can click, and a terminal prompt, which an
 agent can drive through a pseudo-terminal of its own or by typing into
 yours. Approving from another device, such as a passkey on your phone, is
-the planned next step and belongs to the agentic-credentials work; it isn't
-built.
+planned, not built.
+
+### Memory
+
+On Linux the service makes itself unreadable by other programs of the same
+account before it makes any private key: they can't read its memory or
+attach a debugger to it, not even the program that started it. Only the
+administrator (root) can. If the service can't turn this protection on, it
+doesn't start, rather than make keys other programs could read.
 
 ## Leases
 
@@ -377,6 +583,10 @@ Every lease also ends with its work: when the branch it was approved for is
 merged into `main` or `master` (counting only commits made since the
 approval, and a merge on GitHub once you've fetched it) or deleted. Detached
 HEAD has no branch to follow, so there only the other endings apply.
+agent-sign notices finished work at that lease's next agent commit, when
+the leases are listed (`agent-sign leases`), or within about a minute,
+whichever comes first. An agent commit checks only its own lease, so
+commits stay fast however many leases are open.
 
 With `approval = "device-owner"`, there is no prompt choice to widen a lease further: earlier versions offered
 "every repository under a folder" and "every repository on this computer" in
@@ -403,6 +613,7 @@ agent-sign pending           # approval requests waiting for your answer
 agent-sign deny --all        # answer no to all of them and close their prompts
 agent-sign status            # is the service running
 agent-sign doctor            # check the whole setup, with fixes
+agent-sign trust-line        # the allowed-signers lines for this machine's agents
 ```
 
 ## Uninstall
@@ -411,12 +622,12 @@ agent-sign doctor            # check the whole setup, with fixes
 ./scripts/uninstall.sh
 ```
 
-It removes the service, the `PATH` and editor changes, and agent-sign's
-block (and an earlier version's agent key line) from `allowed_signers`; puts
-your own signer back as git's `gpg.ssh.program` (from `fallback_program`, or
-unset if that was git's default, `ssh-keygen`); and deletes `~/.agent-sign`.
-It leaves git's `gpg.ssh.allowedSignersFile` setting, if the installer set
-it.
+It removes the service, the `PATH` and editor changes, the drop-ins it wrote
+for background services, and agent-sign's block (and an earlier version's
+agent key line) from `allowed_signers`; puts your own signer back as git's
+`gpg.ssh.program` (from `fallback_program`, or unset if that was git's
+default, `ssh-keygen`); and deletes `~/.agent-sign`. It leaves git's
+`gpg.ssh.allowedSignersFile` setting, if the installer set it.
 If an earlier version added the shared agent key to your GitHub account,
 remove it from your signing keys yourself.
 
@@ -425,6 +636,21 @@ remove it from your signing keys yourself.
 Run the installer again from the new version. Your leases and config carry
 over. Changes to know about:
 
+- **Only allowed agent names are signed.** Before, any well-formed
+  `AGENT_SIGN_AGENT_NAME` got a certificate. Now only the built-in and
+  widely used names do, plus those in `[identity] allowed_agents`
+  ([Allowed agent names](#allowed-agent-names)); add any other name you use
+  there and restart the service.
+- **An optional machine name.** `[identity] machine` scopes agents' names
+  and trust lines to one machine. Nothing changes without it; read
+  [Naming the machine](#naming-the-machine) before setting it on a machine
+  whose agents have already committed.
+- **Commits dated outside their certificate aren't signed.** A commit whose
+  committer date lies outside its signing certificate's validity is now
+  refused rather than signed (such a commit never verified anyway).
+- **Faster agent commits.** An agent commit no longer checks every open
+  lease's branch for finished work, which made each one wait several
+  seconds on a Mac with many leases open.
 - **Per-agent identities.** Agents no longer sign with the shared agent key
   (`~/.agent-sign/keys/agent_ed25519`): each signs as itself, through an
   agents' certificate authority the service makes in memory at each start.
@@ -472,7 +698,7 @@ What changed since the first agent-sign: [docs/MIGRATION.md](docs/MIGRATION.md).
 
 ## More
 
-- [docs/INSTALL.md](docs/INSTALL.md): installing, what changes, headless machines
+- [docs/INSTALL.md](docs/INSTALL.md): installing, what changes, servers and headless machines
 - [SPEC.md](SPEC.md): the components, invariants and config
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): when a commit is refused
 - [docs/integrations/](docs/integrations/): notes for Claude Code, Cursor, Aider and Antigravity

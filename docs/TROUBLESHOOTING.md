@@ -31,6 +31,10 @@ log says which file and which key:
 | `... config.toml exists but can't be read (...)` | Fix its permissions (`chmod 600 ~/.agent-sign/config.toml`), or move it aside to use the defaults. |
 | `... config.toml is a link to a file that doesn't exist` | Point the link at your config, or remove it. |
 | `... keys/agents_ca_ed25519 holds an agents' certificate authority private key, stored unprotected by an earlier development build` | Run the installer again (it deletes the file after asking), or delete it yourself. The authority now lives only in the service's memory. |
+| `couldn't keep other programs from reading agent-signd's memory (PR_SET_DUMPABLE 0): ...; not starting, so no key is made` (Linux) | The service couldn't make its memory unreadable to other programs of your account, so it stopped before making any key. The text after the colon is the system's reason. On Linux agent-sign doesn't run without this protection, so fix what that reason names. |
+| `[identity] machine = "Build-1" isn't a valid machine name: use 1 to 63 lowercase letters and digits, in words joined by single '-' ...` | Fix the name (`build-1`), or leave `machine` out. An empty `machine = ""` is an error too, not "no machine". Then restart the service. Read [Naming the machine](../README.md#naming-the-machine) first if this machine's agents have already committed. |
+| `[identity] allowed_agents lists "My Bot", which isn't an agent name: use the name's slug ...` | List the name's slug instead: lowercase letters and digits in words joined by single `-` ("My Bot" is `my-bot`). |
+| `[identity] allowed_agents lists "sam", which is the person's own name (...): agent-sign never certifies an agent under a person's name. Remove it from allowed_agents` | Remove that entry. A person's name is your whole name or any word of it (as a slug), or the part of your email before the `@`, taken from git's `user.name` and `user.email` (or `[human]` in `config.toml`). If an agent's name happens to match, start it under a different `AGENT_SIGN_AGENT_NAME`. |
 
 Then restart the service. When it starts, its log says the approval mode in
 effect (`approval = "none"` or `approval = "device-owner"`). Keys that only
@@ -50,7 +54,10 @@ agent-sign's service is `agent-signd`:
 changing the config.** `agent-sign status` says whether it's running.
 
 On a Linux machine you log out of (a server), a user service stops when you
-log out, unless lingering is on: `loginctl enable-linger "$USER"`.
+log out, unless lingering is on: `loginctl enable-linger "$USER"`. If
+`systemctl --user` says it can't connect to the bus over a non-interactive
+`ssh` command, set `XDG_RUNTIME_DIR=/run/user/$(id -u)` first (see
+[Servers and non-interactive installs](INSTALL.md#servers-and-non-interactive-installs)).
 
 ## An agent commit was refused
 
@@ -61,7 +68,11 @@ The wrapper prints why, starting `[agent-git]`.
 | `Unable to connect to the agent-sign service` | `agent-signd` isn't running. | Restart it (above), then `agent-sign status`. |
 | `No signing lease: Branch 'main' is protected` | Agents never commit on `main` or `master` (`block_branches`). | Have the agent work on another branch. |
 | `agent-sign won't sign commits this git command makes for <principal>: ...`, then `gpg failed to sign the data` | An agent's merge, rebase, cherry-pick, revert, am, pull or alias needed to make a commit, and the service refused a token for it (a protected branch, say) or didn't answer. No commit is made. | Fix what the message names (work on another branch, or start the service). |
-| `agent identity refused: ...` | The identity the wrapper sent isn't one agent-sign makes (a tool name other than lowercase words joined by single `-`, a session part other than 8 hex digits or `nosession`, a display name with `<` or `>`). | Check `AGENT_SIGN_AGENT_NAME`: letters, digits and spaces work. If a hand-written client sent it, use the shape the wrapper makes. |
+| ``Token issuance failed: agent identity refused: `my-bot-2` is not an allowed agent name, so agent-sign won't certify it. To allow it, add "my-bot-2" to allowed_agents under [identity] in ~/.agent-sign/config.toml (a person's own name is never allowed)`` | The agent's name (from `AGENT_SIGN_AGENT_NAME`) isn't built in, isn't one of the widely used agents, and isn't in `[identity] allowed_agents`. | Add the slug it names to `allowed_agents`, then restart the service (it reads the list only when it starts). See [Allowed agent names](../README.md#allowed-agent-names). |
+| `agent identity refused: claude-code.1a2b3c4d@agents.local is not in this machine's agents' domain @build-1.agents.local (set by [identity] machine in agent-sign's config.toml); the git wrapper and the service must read the same machine setting` | The wrapper and the service disagree about the machine name: usually `[identity] machine` was set, changed or removed after the service started (the wrapper reads it at every commit, the service only when it starts). | Restart the service. |
+| `agent-sign's [identity] settings (the machine name) can't be used: ...` | The wrapper couldn't read `[identity]` in `~/.agent-sign/config.toml` (an invalid machine name, say), so it refused the agent's commit rather than sign it under another machine's domain. | Fix what the message names. Your own commits in a terminal aren't affected. |
+| `agent identity refused: ...` (other reasons) | The identity the wrapper sent isn't one agent-sign makes (a tool name other than lowercase words joined by single `-`, a session part other than 8 hex digits or `nosession`, a display name with `<` or `>`). | Check `AGENT_SIGN_AGENT_NAME`: letters, digits and spaces work. If a hand-written client sent it, use the shape the wrapper makes. |
+| `Signing rejected by the agent-sign service: the commit's committer date (...) is outside its signing certificate's validity (... to ...), so it wasn't signed: commit with the current date`, then `gpg failed to sign the data` | The commit's committer date lies outside the 12-hour certificate's window (from 5 minutes before it was issued). Usually `GIT_COMMITTER_DATE` is set in the agent's environment, or a rebase used `--committer-date-is-author-date`. git checks a certificate at the commit's own date, so such a commit would never verify; agent-sign refuses to sign it at all. | Commit with the current date: unset `GIT_COMMITTER_DATE`, and don't keep old committer dates in a rebase. (`--date` changes only the author date, which is fine.) |
 | `Security Policy Violation: branch '...' is protected (block_branches)` | The repository's `.agent-sign.toml` adds that branch to `block_branches`. | Have the agent work on another branch. |
 | `Signing rejected by the agent-sign service: this token signs only in ... on branch '...', but git is writing ...` | An agent's git run moved somewhere its token doesn't cover: `git rebase <other> main` from another branch, a `cd` into another repository inside an alias or `rebase --exec`, or a hook that commits elsewhere. Nothing was signed there. | Run the command from the branch and repository it writes (`git checkout main && git rebase ...` isn't for agents: they don't commit on protected branches). |
 | `this git wrapper is older than the agent-sign service` or `the signing program ... is older than the service` | An agent-sign program from before the identity review is still on `PATH`, or in git's `gpg.ssh.program`. | Run the installer again, and open a new terminal. |
@@ -120,6 +131,13 @@ agent called the real git directly; see the README's limits.
   stored unprotected), keeps its public half, and, while that line is still
   there, prints the exact commands to remove it and the key from your
   GitHub account; run them to stop old commits verifying as yours.
+- **Agent commits from before you set (or changed) `[identity] machine`
+  show "No principal matched":** expected. Once a machine is named, every
+  trust line agent-sign writes covers only that machine's agents
+  (`*@<machine>.agents.local`), so commits signed earlier under another
+  domain, such as plain `@agents.local`, no longer verify under them. Name
+  a machine before its service first starts (`install.sh --machine`) to
+  avoid this; see [Naming the machine](../README.md#naming-the-machine).
 - **Agent commits from before a restart show as unverified:** each start
   of the service makes a new authority. Its block in your allowed-signers
   file is rewritten at each start; if your file has no block (you added
