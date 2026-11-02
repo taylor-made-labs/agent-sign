@@ -102,7 +102,11 @@ allow_unattended() {
     local home="$1"
     sed -i 's/^auto_approve = false/auto_approve = true/' "$home/.agent-sign/config.toml"
     in_home "$home" systemctl --user restart agent-signd
-    wait_for_service "$home"
+    wait_for_service "$home" || return 1
+    # DELIBERATE EVAL CHANGE (caller identity, 1 Nov 2026): each start makes a new
+    # certificate authority, and `agent-sign trust install` is the only thing that
+    # trusts it; after a restart the commits it signs verify only once it has run.
+    in_home "$home" "$home/.agent-sign/bin/agent-sign" trust install
 }
 
 # Makes a repository with a first commit by the person, on a work branch.
@@ -115,15 +119,17 @@ new_repo() {
     echo "$repo"
 }
 
-# An agent commit through the installed `git` on PATH, marked the way
-# Claude Code marks the commands it runs. (Changed 28 Oct: a commit with no
-# terminal and no agent mark may be the user's own editor, so agent-sign now
-# leaves it to git, unsigned; an agent's commit names its session.)
+# An agent commit through the installed `git` on PATH, from an agent started
+# by the launcher (`agent-sign launch`). DELIBERATE EVAL CHANGE (P7/D1, 1 Nov
+# 2026): agent-sign signs an agent's commit only for a session a launcher
+# started; a process that merely carries an agent's marks (as this test did
+# until now) is committed unsigned. Same change as the other tests in
+# docs/caller-identity.md, "Tests moved onto the launcher" (S7).
 agent_commit() {
     local home="$1" repo="$2" file="$3"
     (cd "$repo" && echo "$file" > "$file" && in_home "$home" git add "$file" \
-        && in_home "$home" env CLAUDECODE=1 CLAUDE_CODE_SESSION_ID=install-test \
-            git commit -q -m "add $file")
+        && in_home "$home" agent-sign launch --agent claude-code -- \
+            "$home/.agent-sign/bin/git" commit -q -m "add $file")
 }
 
 verified() {
