@@ -29,7 +29,9 @@ SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 [ -x "$SRC/target/release/agent-signd" ] || { echo "Build first: cargo build --release --locked" >&2; exit 2; }
 [ "$(uname -s)" = "Linux" ] || { echo "This test is for Linux (it stands in for systemd)." >&2; exit 2; }
 
-WORK="$(mktemp -d)"
+# Not under /tmp: a launched agent gets a private /tmp (see docs/caller-identity.md), so the
+# throwaway home, and the agent-sign programs in it, must be somewhere else to be seen from the session.
+WORK="$(mktemp -d -p "${RUNNER_TEMP:-$HOME}" agent-sign-install-test.XXXXXX)"
 # Stop every service this test started; keep the homes (and their logs) only
 # if something failed.
 cleanup() {
