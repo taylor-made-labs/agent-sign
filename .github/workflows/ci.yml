@@ -64,6 +64,11 @@ jobs:
       - name: Rust Cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
+      # The launcher runs every agent under bubblewrap and refuses to run without it; the arm64 runner image has none.
+      - name: Install bubblewrap
+        if: runner.os == 'Linux'
+        run: command -v bwrap >/dev/null || sudo apt-get install -y --no-install-recommends bubblewrap
+
       - name: Check formatting
         run: cargo fmt --check
 
@@ -159,6 +164,10 @@ jobs:
 
       - name: Build
         run: cargo build --release --locked
+
+      # The launcher runs every agent under bubblewrap and refuses to run without it; the arm64 runner image has none.
+      - name: Install bubblewrap
+        run: command -v bwrap >/dev/null || sudo apt-get install -y --no-install-recommends bubblewrap
 
       - name: Fresh install, upgrade from agent-sign, linked state, uninstall
         run: scripts/release/install-test.sh
