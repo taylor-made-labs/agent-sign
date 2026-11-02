@@ -101,8 +101,14 @@ fn a_real_tailnet_name_is_found_and_the_example_is_not() {
 
 #[test]
 fn a_tailnet_address_is_found_unless_it_is_a_documentation_example() {
-    must_flag("tailnet-address", &[("a.md", format!("resolve = \"100.{}.214.99\"\n", 72))]);
-    must_flag("tailnet-address", &[("a.md", format!("{}.1.2\n", "100.127"))]);
+    must_flag(
+        "tailnet-address",
+        &[("a.md", format!("resolve = \"100.{}.214.99\"\n", 72))],
+    );
+    must_flag(
+        "tailnet-address",
+        &[("a.md", format!("{}.1.2\n", "100.127"))],
+    );
     let ok = "100.64.0.0/10, 100.100.100.100, 100.64.0.10, 100.63.1.1, 100.128.0.1\n".to_string();
     let d = repo_with(&[("a.md", ok)]);
     let (code, out) = scan(d.path());
@@ -113,7 +119,10 @@ fn a_tailnet_address_is_found_unless_it_is_a_documentation_example() {
 fn a_real_home_folder_is_found_and_a_placeholder_is_not() {
     let real = format!("HOME=/home/{}{}\n", "tay", "lor");
     must_flag("home-folder", &[("a.sh", real)]);
-    must_flag("user-folder", &[("a.sh", format!("/Users/{}{}/dev\n", "acc", "ount1"))]);
+    must_flag(
+        "user-folder",
+        &[("a.sh", format!("/Users/{}{}/dev\n", "acc", "ount1"))],
+    );
     let ok = "/home/<user>/x /home/agents /Users/me/dev /Users/<name>/x\n".to_string();
     let d = repo_with(&[("a.sh", ok)]);
     let (code, out) = scan(d.path());
@@ -122,7 +131,10 @@ fn a_real_home_folder_is_found_and_a_placeholder_is_not() {
 
 #[test]
 fn the_signing_key_map_and_real_machine_settings_are_found_by_path() {
-    must_flag("private-record", &[("docs/signing-step0/README.md", "x\n".into())]);
+    must_flag(
+        "private-record",
+        &[("docs/signing-step0/README.md", "x\n".into())],
+    );
     must_flag(
         "private-record",
         &[("scripts/sitting/files/machine-hetzner.env", "X=1\n".into())],

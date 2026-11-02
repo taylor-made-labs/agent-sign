@@ -90,6 +90,9 @@ jobs:
         uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # .gitleaks.toml uses [[allowlists]] with targetRules, which gitleaks reads only from 8.25.0; the action
+          # defaults to 8.24.3, which ignores them and flags the public keys in the shared test examples.
+          GITLEAKS_VERSION: 8.30.1
           # Empty on a push or a user's repository; an organization sets it.
           GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
