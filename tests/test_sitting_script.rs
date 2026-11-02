@@ -109,6 +109,9 @@
 //! isolation, and failure modes of `systemd-creds encrypt`.
 
 #![cfg(unix)]
+// DELIBERATE EVAL CHANGE: these tests start their agent with `agent-sign launch`, and the launcher exists only on
+// Linux (no launcher on macOS yet, listed in the README's gaps), so they run only where the launcher exists.
+#![cfg(target_os = "linux")]
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};

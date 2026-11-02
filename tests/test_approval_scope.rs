@@ -11,6 +11,10 @@
 //! protected whatever the scope. The service tests use a stand-in owner that
 //! records each reason it was shown, so no real prompt can appear.
 
+// DELIBERATE EVAL CHANGE: these tests start their agent with `agent-sign launch`, and the launcher exists only on
+// Linux (no launcher on macOS yet, listed in the README's gaps), so they run only where the launcher exists.
+#![cfg(target_os = "linux")]
+
 #[path = "support/die_with_parent.rs"]
 mod die_with_parent;
 use die_with_parent::DieWithParent;

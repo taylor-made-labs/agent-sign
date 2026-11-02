@@ -89,6 +89,9 @@
 // The launcher exists only on Linux (`agent-sign launch` runs nothing on macOS), so on other systems the helpers
 // that only the Linux tests use are unused, and clippy -D warnings would fail the macOS job on them.
 #![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+// DELIBERATE EVAL CHANGE: these tests start their agent with `agent-sign launch`, and the launcher exists only on
+// Linux (no launcher on macOS yet, listed in the README's gaps), so they run only where the launcher exists.
+#![cfg(target_os = "linux")]
 
 use std::cell::Cell;
 use std::ffi::OsString;

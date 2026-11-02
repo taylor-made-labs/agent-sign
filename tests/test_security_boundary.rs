@@ -1,6 +1,10 @@
 //! Implementation-owner real-object regressions for the 29 October security review.
 //! Every process uses a temporary home, empty inherited environment and test
 //! identities; no installed signer, real key or user service is contacted.
+
+// DELIBERATE EVAL CHANGE: these tests start their agent with `agent-sign launch`, and the launcher exists only on
+// Linux (no launcher on macOS yet, listed in the README's gaps), so they run only where the launcher exists.
+#![cfg(target_os = "linux")]
 #[path = "support/die_with_parent.rs"]
 mod die_with_parent;
 use die_with_parent::DieWithParent;

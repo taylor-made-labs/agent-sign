@@ -409,6 +409,10 @@ It does not, yet:
   reaches your email: the trust lines only cover agents' names
 - on macOS, stop another program of your account from reading the service's
   memory with a debugger, where macOS allows it (no hardened runtime yet)
+- run a launched session on macOS: `agent-sign launch` exists only on Linux
+  today (it needs bubblewrap and PID namespaces), so on a Mac an agent's
+  commit is unsigned and its tests run only on Linux. A macOS launcher is a
+  known gap, not yet built.
 - tell whether an agent's name, such as `cursor`, is true: names are labels
   the agents give themselves
 - apply its rules to a commit that turns signing off (`--no-gpg-sign`, or
