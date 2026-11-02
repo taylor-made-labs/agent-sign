@@ -45,6 +45,10 @@
 //! Run on a server, never on the Mac: `cargo test --test test_launcher_policy`,
 //! and `-- --ignored` for the known gap.
 
+// The launcher exists only on Linux (`agent-sign launch` runs nothing on macOS), so on other systems the helpers
+// that only the Linux tests use are unused, and clippy -D warnings would fail the macOS job on them.
+#![cfg_attr(not(target_os = "linux"), allow(dead_code))]
+
 use std::cell::Cell;
 use std::ffi::OsString;
 use std::fs;
