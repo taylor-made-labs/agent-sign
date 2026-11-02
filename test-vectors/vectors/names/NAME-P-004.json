@@ -1,0 +1,22 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-004",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [],
+  "about": "the service nats-hub has this one name",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local/service/nats-hub"
+  },
+  "expected": {
+    "result": "accepted",
+    "kind": "service",
+    "id": "nats-hub"
+  },
+  "today": {
+    "result": "accepted",
+    "agreesWithExpected": true
+  }
+}

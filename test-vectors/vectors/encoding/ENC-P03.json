@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-P03",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [],
+  "about": "string escapes: quote, backslash, slash, control characters, DEL, line separator",
+  "input": {
+    "json_text": "{\"s\":\"a\\\"b\\\\c\\/\\u0001\\u001f\\u007f\\u2028\\n\"}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b2273223a22615c22625c5c632f5c75303030315c75303031667fe280a85c6e227d",
+    "text": "{\"s\":\"a\\\"b\\\\c/\\u0001\\u001f \\n\"}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b2273223a22615c22625c5c632f5c75303030315c75303031667fe280a85c6e227d"
+      },
+      "L05": {
+        "bytes": "7b2273223a22615c22625c5c632f5c75303030315c75303031667fe280a85c6e227d"
+      },
+      "L09": {
+        "bytes": "7b2273223a22615c22625c5c632f5c75303030315c75303031667fe280a85c6e227d"
+      },
+      "L12": {
+        "bytes": "7b2273223a22615c22625c5c632f5c75303030315c75303031667fe280a85c6e227d"
+      },
+      "L13": {
+        "bytes": "7b2273223a22615c22625c5c632f5c75303030315c75303031667fe280a85c6e227d"
+      },
+      "L07": {
+        "bytes": "7b2273223a22615c22625c5c632f5c75303030315c75303031667fe280a85c6e227d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": true
+  }
+}

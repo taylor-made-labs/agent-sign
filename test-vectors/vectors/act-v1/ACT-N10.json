@@ -1,0 +1,69 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ACT-N10",
+  "family": "act-v1",
+  "legacy": "L06",
+  "kind": "negative",
+  "tags": [],
+  "about": "an empty domain",
+  "input": {
+    "act": {
+      "id": "a1",
+      "kind": "assert",
+      "party": "person:me",
+      "domain": "",
+      "seq": 1,
+      "claims": [
+        [
+          "_:self",
+          "rdf:type",
+          "ex:Thing"
+        ]
+      ],
+      "sig": {
+        "key": "k-me#1",
+        "ed25519": "TOHBeJiicm56IpP34CU+HQmrUow9tWSrOvJZTt/unkX6+6RiC1Ah2+++lh/urQMWK3Jz6hK+Twccs5jTV2xWCQ=="
+      }
+    },
+    "registry": {
+      "parties": {
+        "person:me": {
+          "person": true,
+          "keys": [
+            {
+              "id": "k-me#1",
+              "ed25519": "jqzHQeB0+6Wxef3qiXReaWOUqkbeSsD64FIx+3z7iAc="
+            }
+          ]
+        },
+        "agent:a1": {
+          "person": false,
+          "keys": [
+            {
+              "id": "k-a1#1",
+              "ed25519": "MmZLGOR7MLMctn3NzZYLd+rb0x4JEaauVYU0rcFxI/0="
+            }
+          ]
+        },
+        "agent:a2": {
+          "person": false,
+          "keys": [
+            {
+              "id": "k-a2#1",
+              "ed25519": "n7wjIS28znoCTlGROrnmfj8qhFXOH7wUpab/zydi+7s="
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "malformed"
+  },
+  "today": {
+    "counts": false,
+    "reason": "malformed: domain must be a non-empty string",
+    "agreesWithExpected": true
+  }
+}

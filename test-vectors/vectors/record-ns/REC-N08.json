@@ -1,0 +1,41 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "REC-N08",
+  "family": "record-ns",
+  "legacy": "L13",
+  "kind": "negative",
+  "tags": [],
+  "about": "no signature",
+  "input": {
+    "type": "tool-use-requested",
+    "payload": {
+      "id": "ev-1",
+      "envelope": {
+        "conversation": "c-1",
+        "turn": "t-1",
+        "causes": null,
+        "machine": "mac"
+      },
+      "data": {
+        "tool": "read",
+        "run": "run-1"
+      }
+    },
+    "identity": "id:requester",
+    "authorities": [
+      {
+        "id": "authority-1",
+        "publicKey": "MCowBQYDK2VwAyEAisqWuxrNF9YSeJb+YOFm800ifEEcpnRH0Us1vhfnZCw="
+      }
+    ],
+    "now": 1793448000000
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "unsigned"
+  },
+  "today": {
+    "problem": "it is not signed",
+    "agreesWithExpected": true
+  }
+}

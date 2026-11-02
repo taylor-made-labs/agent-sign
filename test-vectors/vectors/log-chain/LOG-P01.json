@@ -1,0 +1,28 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "LOG-P01",
+  "family": "log-chain",
+  "legacy": "L12",
+  "kind": "positive",
+  "tags": [],
+  "about": "a four-entry chain, including non-ASCII text and floats (0.1, 1e21, 5e-324), which today's encoder writes with JavaScript's number format",
+  "input": {
+    "lines": [
+      "{\"data\":{\"n\":1,\"text\":\"plain\"},\"datacontenttype\":\"application/json\",\"hash\":\"a2ea8a641b7852291135296f2d10713547a80eca6096d41d3295e5e7d560122d\",\"id\":\"9384593a-913e-40c6-a006-cd3f7435376c\",\"prevhash\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"source\":\"agent:test\",\"specversion\":\"1.0\",\"subject\":\"item-1\",\"time\":\"2026-10-31T20:05:30.187Z\",\"type\":\"wl.test.one\"}",
+      "{\"data\":{\"nested\":{\"a\":[1,2,{\"y\":1,\"z\":0}],\"b\":2},\"text\":\"café 日本 😀\"},\"datacontenttype\":\"application/json\",\"hash\":\"9c24df7827d85f1fa93db5b9b3e957175f6e143fd1afc9b42596e002d9aa77c6\",\"id\":\"7c2d9879-1033-43e0-b79a-9949b9b4b62f\",\"prevhash\":\"a2ea8a641b7852291135296f2d10713547a80eca6096d41d3295e5e7d560122d\",\"seq\":1,\"source\":\"agent:test\",\"specversion\":\"1.0\",\"subject\":\"item-1\",\"time\":\"2026-10-31T20:05:30.188Z\",\"type\":\"wl.test.two\"}",
+      "{\"data\":{\"big\":1e+21,\"ratio\":0.1,\"small\":5e-324},\"datacontenttype\":\"application/json\",\"hash\":\"acb70ebf94983e1e2df3f6f34f4c5f5ddf4da37107bec92dd128bb83431923ec\",\"id\":\"b13c9566-f9a8-4349-8eeb-91b45285d16e\",\"prevhash\":\"9c24df7827d85f1fa93db5b9b3e957175f6e143fd1afc9b42596e002d9aa77c6\",\"seq\":2,\"source\":\"agent:test\",\"specversion\":\"1.0\",\"subject\":\"item-2\",\"time\":\"2026-10-31T20:05:30.189Z\",\"type\":\"wl.test.three\"}",
+      "{\"data\":{\"empty\":{},\"flag\":true,\"none\":null},\"datacontenttype\":\"application/json\",\"hash\":\"9b807dbcb8537c5ccc3359dbd553b5b4967291573e219c542a7120475add8e13\",\"id\":\"1185eb82-8637-47ba-ac4f-48244dfc0d2d\",\"prevhash\":\"acb70ebf94983e1e2df3f6f34f4c5f5ddf4da37107bec92dd128bb83431923ec\",\"seq\":3,\"source\":\"agent:test\",\"specversion\":\"1.0\",\"subject\":\"item-2\",\"time\":\"2026-10-31T20:05:30.190Z\",\"type\":\"wl.test.four\"}"
+    ]
+  },
+  "expected": {
+    "result": "accepted",
+    "entries": 4,
+    "headHash": "9b807dbcb8537c5ccc3359dbd553b5b4967291573e219c542a7120475add8e13"
+  },
+  "today": {
+    "ok": true,
+    "entries": 4,
+    "break": null,
+    "agreesWithExpected": true
+  }
+}

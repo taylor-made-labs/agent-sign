@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "DEV-N08",
+  "family": "device-es256",
+  "legacy": "L01 L03",
+  "kind": "negative",
+  "tags": [
+    "divergence:enrolled-by-anything-but-a-passkey",
+    "divergence:first-key-wins"
+  ],
+  "about": "a key registered for the person by whoever published first, with no passkey involved: today the ring trusts it and then refuses the person's own key",
+  "input": {
+    "registrations": [
+      {
+        "party": "person:me",
+        "keyId": "x-4ba845e5cbe3cea41299a45b7aa72c97",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "wIde35Q9HYz-prwvaQF0RskDdYllUdFX9onBR4eGNl4",
+          "y": "XdaC8ua9oT5sqtp1bx5v2DZX06Pwf72RJhBNNWdAPos"
+        },
+        "device": "test-browser"
+      },
+      {
+        "party": "person:me",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "PQ6z9MZMlIf-PTIiVJfoNtS8dQGuo1UErTlG6hj9tJM",
+          "y": "lLwrTOyWftQNuzvY-9gpfhrUYfjmEdh8u1LEE4-PHjs"
+        },
+        "device": "test-browser"
+      }
+    ],
+    "enrolledBy": "unauthenticated-event",
+    "party": "person:me"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "not-enrolled-by-passkey"
+  },
+  "today": {
+    "attackerKeyTrusted": true,
+    "personsOwnKeyTrusted": false,
+    "agreesWithExpected": false
+  }
+}

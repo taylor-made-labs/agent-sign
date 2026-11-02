@@ -1,0 +1,44 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D17",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "negative",
+  "tags": [
+    "divergence:non-finite"
+  ],
+  "about": "NaN is not JSON; Python's parser accepts it",
+  "input": {
+    "json_text": "{\"n\":NaN}"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "not-json"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "error": "does-not-parse"
+      },
+      "L05": {
+        "error": "does-not-parse"
+      },
+      "L09": {
+        "error": "does-not-parse"
+      },
+      "L12": {
+        "error": "does-not-parse"
+      },
+      "L13": {
+        "error": "does-not-parse"
+      },
+      "L07": {
+        "error": "refuses"
+      }
+    },
+    "encodersDisagree": true,
+    "matchExpected": [],
+    "wronglyEncode": [],
+    "agreesWithExpected": true
+  }
+}

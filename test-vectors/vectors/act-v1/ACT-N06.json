@@ -1,0 +1,71 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ACT-N06",
+  "family": "act-v1",
+  "legacy": "L06 L09",
+  "kind": "negative",
+  "tags": [
+    "divergence:large-integer"
+  ],
+  "about": "a sequence number of 2^60: Python signs and counts it, the TypeScript port cannot encode it",
+  "input": {
+    "act": {
+      "id": "a1",
+      "kind": "assert",
+      "party": "person:me",
+      "domain": "suite:test",
+      "seq": 1152921504606847000,
+      "claims": [
+        [
+          "_:self",
+          "rdf:type",
+          "ex:Thing"
+        ]
+      ],
+      "sig": {
+        "key": "k-me#1",
+        "ed25519": "mU79aTwo8I9toeE4Yx+Zc5VFBWo/hQvQ5jARznmsSfUhZWP+knkNoSbOeHAeOMS+bey/r5dZHOUm8AcYO2huCg=="
+      }
+    },
+    "registry": {
+      "parties": {
+        "person:me": {
+          "person": true,
+          "keys": [
+            {
+              "id": "k-me#1",
+              "ed25519": "jqzHQeB0+6Wxef3qiXReaWOUqkbeSsD64FIx+3z7iAc="
+            }
+          ]
+        },
+        "agent:a1": {
+          "person": false,
+          "keys": [
+            {
+              "id": "k-a1#1",
+              "ed25519": "MmZLGOR7MLMctn3NzZYLd+rb0x4JEaauVYU0rcFxI/0="
+            }
+          ]
+        },
+        "agent:a2": {
+          "person": false,
+          "keys": [
+            {
+              "id": "k-a2#1",
+              "ed25519": "n7wjIS28znoCTlGROrnmfj8qhFXOH7wUpab/zydi+7s="
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "unsafe-integer"
+  },
+  "today": {
+    "counts": true,
+    "typescriptPort": "refuses",
+    "agreesWithExpected": false
+  }
+}

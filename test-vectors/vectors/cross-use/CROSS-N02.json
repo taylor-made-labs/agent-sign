@@ -1,0 +1,113 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "CROSS-N02",
+  "family": "cross-use",
+  "legacy": "L04 L06 L09 L10",
+  "kind": "negative",
+  "tags": [
+    "cross-use"
+  ],
+  "about": "one key, three uses: an approval answer's signature offered as the signature on an act",
+  "input": {
+    "key": {
+      "nkey": "UDT5KFATJWBKOH7SN2OK3ZZJHE7KMVPLSIFMCDGWUQZG7BKICNK3GKQP",
+      "rawB64": "59UUE02Cpx/ybpyt5yk5PqZV65IKwQzWpDJvhUgTVbM="
+    },
+    "madeFor": "approval",
+    "offeredAs": "act",
+    "signatures": {
+      "streamEventB64u": "LqOqpUL7nT3ICReZkYpGeu22TPp_QSLXnbnZsZeuShdaZ5ggHQvgeWC1YSUqJcOlZnOt1afPXgsfqDrcJogECw",
+      "actB64": "6d505+KqObOYkHPwUCg7D5UrNDOKcVWWUfqaO6AFJMAULnPiTJgO1zHGAuO+2RPv+IIdwT7esMmWQVohCvQ1BA==",
+      "approvalB64": "RaDp7SnWKg+YDPF0/H3BNwcQ3o3jfHEMPB3jw4Zdoyf1NnfnzD5Q33wbSbYjv58pl5lLOlWwlNku/PO1vZwrAQ=="
+    },
+    "stream": {
+      "subject": "ev.unharness.run-started.mac",
+      "headers": {
+        "ce-id": "ev-9",
+        "ce-type": "suite.unharness.run-started",
+        "ce-source": "unharness/mac",
+        "ce-time": "2026-10-23T12:00:00.000Z"
+      },
+      "body": "{\"run\":\"run-9\"}",
+      "registry": {
+        "unsignedThrough": 0,
+        "publishers": [
+          {
+            "publicKey": "UDT5KFATJWBKOH7SN2OK3ZZJHE7KMVPLSIFMCDGWUQZG7BKICNK3GKQP",
+            "product": "unharness"
+          }
+        ]
+      }
+    },
+    "act": {
+      "id": "a9",
+      "kind": "assert",
+      "party": "agent:svc",
+      "domain": "suite:test",
+      "seq": 9,
+      "claims": [
+        [
+          "_:self",
+          "rdf:type",
+          "ex:Thing"
+        ]
+      ]
+    },
+    "approval": {
+      "question": {
+        "id": "q-9",
+        "accessor": "acc-9",
+        "content": {
+          "accessor": "acc-9",
+          "path": "secret/data/x",
+          "operation": "read",
+          "requester": "agent:svc",
+          "requestHash": "9ff0ed956ba8a48ddecf2f7d218f773a5333253150d08b7c2fd2e1783d768389"
+        },
+        "contentHash": "45011fce84d54399fe936ad93d963da464c2f34143460462c8a3e56030570e35",
+        "choices": [
+          "approve",
+          "deny"
+        ],
+        "expiresAt": 1800000300
+      },
+      "answer": {
+        "questionId": "q-9",
+        "accessor": "acc-9",
+        "requestPath": "secret/data/x",
+        "operation": "read",
+        "requestHash": "9ff0ed956ba8a48ddecf2f7d218f773a5333253150d08b7c2fd2e1783d768389",
+        "contentHash": "45011fce84d54399fe936ad93d963da464c2f34143460462c8a3e56030570e35",
+        "choice": "approve",
+        "expiresAt": 1800000300
+      },
+      "now": 1800000000
+    },
+    "registry": {
+      "parties": {
+        "agent:svc": {
+          "person": false,
+          "keys": [
+            {
+              "id": "k-svc#1",
+              "ed25519": "59UUE02Cpx/ybpyt5yk5PqZV65IKwQzWpDJvhUgTVbM="
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "wrong-context"
+  },
+  "today": {
+    "check": "refused (bad-signature)",
+    "eachOwnCheck": {
+      "act": "accepted",
+      "stream": "accepted",
+      "approval": "outcome approved"
+    },
+    "agreesWithExpected": true
+  }
+}

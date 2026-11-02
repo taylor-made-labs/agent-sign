@@ -1,0 +1,45 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "TEAM-N03",
+  "family": "team-record",
+  "legacy": "L05",
+  "kind": "negative",
+  "tags": [
+    "cross-use"
+  ],
+  "about": "an entry signed for one id presented as another",
+  "input": {
+    "op": "commitment",
+    "trust": {
+      "taylor": {
+        "dev-taylor-1": "MCowBQYDK2VwAyEA3FVy4oO3jTXZbjdBHVRxNq1jqHOdrfbetyboX05DJv8="
+      },
+      "reviewers": {
+        "reviewer-1": "MCowBQYDK2VwAyEAirspPpsVYkoKc9LDkaXIgH9FKWPR4jRjvdwnqKU+3iM="
+      }
+    },
+    "askedId": "suite:merge-policy",
+    "entry": {
+      "id": "suite:merge-rule",
+      "version": 1,
+      "body": {
+        "rule": "merge when checks and review pass",
+        "checks": [
+          "npm test"
+        ]
+      },
+      "hash": "f1800cb04847cf58a55212f4e698fae047e07b3f2b601de00f8ce92dae0127ab",
+      "signedBy": "dev-taylor-1",
+      "signature": "a3iiPK15DpBYiBBPawkWuRcmH/9BmBHsyYqs2BMyonXvtJUadudSZvTFekPAPnfIbIu9yLbsCTDM1pFosWLCBw=="
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "wrong-id"
+  },
+  "today": {
+    "accepted": false,
+    "why": "the entry in suite:merge-policy's place is signed for \"suite:merge-rule\", not for suite:me",
+    "agreesWithExpected": true
+  }
+}

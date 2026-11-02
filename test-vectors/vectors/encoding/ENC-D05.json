@@ -1,0 +1,50 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D05",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "negative",
+  "tags": [
+    "divergence:lone-surrogate"
+  ],
+  "about": "a lone surrogate in a key",
+  "input": {
+    "json_text": "{\"\\ud800\":1}"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "lone-surrogate"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b225c7564383030223a317d"
+      },
+      "L05": {
+        "bytes": "7b225c7564383030223a317d"
+      },
+      "L09": {
+        "bytes": "7b225c7564383030223a317d"
+      },
+      "L12": {
+        "bytes": "7b225c7564383030223a317d"
+      },
+      "L13": {
+        "bytes": "7b225c7564383030223a317d"
+      },
+      "L07": {
+        "error": "does-not-parse"
+      }
+    },
+    "encodersDisagree": true,
+    "matchExpected": [],
+    "wronglyEncode": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13"
+    ],
+    "agreesWithExpected": false
+  }
+}

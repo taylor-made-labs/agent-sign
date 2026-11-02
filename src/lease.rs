@@ -151,6 +151,16 @@ pub struct Work {
     pub base: String,
 }
 
+/// One lease's work, gathered for a finished-work check made away from the
+/// engine (see [`LeaseEngine::work_to_check`]): the lease's key and id, so
+/// the answer ends only that same lease, and the work to check.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkToCheck {
+    pub key: String,
+    pub lease_id: String,
+    pub work: Work,
+}
+
 impl Lease {
     /// Whether the end recorded at approval has passed. The service uses
     /// [`LeaseEngine::is_lease_active`], which also applies the current config.
@@ -343,12 +353,88 @@ pub fn branch_matches_blocked(branch: &str, patterns: &[String]) -> bool {
     })
 }
 
+/// The most repositories one [`RateWindows`] keeps a window for at once.
+///
+/// A window is a repository path (at most a few KiB: the service refuses a
+/// longer name) and up to `max_commits_per_minute` timestamps, about 250
+/// bytes for an ordinary path, so 4,096 windows are about 1 MiB, and at the
+/// worst (every name at the 4 KiB limit) about 16 MiB. The bound matters
+/// because in system mode the service cannot see callers' repositories, so
+/// any account that may connect can name as many different paths as it
+/// likes, and a window made for each would grow without end (review finding
+/// F5). 4,096 is far above the repositories one machine's agents work in at
+/// once, so no real repository is ever evicted by this cap.
+pub const MAX_RATE_WINDOWS: usize = 4096;
+
+/// Per-repository sliding 60-second windows of commit counts. Capped at
+/// [`MAX_RATE_WINDOWS`]: a window with nothing in the last minute is dropped
+/// first, and if the map is still full the oldest-used eighth goes, so a
+/// flood of new names costs the flooder their own history, not memory.
+#[derive(Default)]
+struct RateWindows {
+    windows: HashMap<String, Vec<Instant>>,
+}
+
+impl RateWindows {
+    /// Records one commit in `repo`'s window, or refuses it when
+    /// `max_per_minute` are already in it.
+    fn count(&mut self, repo: &str, max_per_minute: u32) -> Result<(), String> {
+        const WINDOW: Duration = Duration::from_secs(60);
+        let now = Instant::now();
+        if !self.windows.contains_key(repo) && self.windows.len() >= MAX_RATE_WINDOWS {
+            self.make_room(now);
+        }
+        let timestamps = self.windows.entry(repo.to_string()).or_default();
+        timestamps.retain(|&t| now.duration_since(t) < WINDOW);
+        if timestamps.len() as u32 >= max_per_minute {
+            let empty = timestamps.is_empty();
+            if empty {
+                self.windows.remove(repo);
+            }
+            return Err(format!(
+                "Rate limit exceeded: maximum {max_per_minute} commits per minute allowed"
+            ));
+        }
+        timestamps.push(now);
+        Ok(())
+    }
+
+    /// Drops windows with nothing in the last minute; if the map is still
+    /// full, also the oldest-used eighth of it (an eighth at once, so the
+    /// work of finding them is spread over many insertions).
+    fn make_room(&mut self, now: Instant) {
+        const WINDOW: Duration = Duration::from_secs(60);
+        self.windows
+            .retain(|_, ts| ts.last().is_some_and(|&t| now.duration_since(t) < WINDOW));
+        if self.windows.len() < MAX_RATE_WINDOWS {
+            return;
+        }
+        // The newest timestamp of the (MAX / 8)th oldest window: every
+        // window not newer than it goes. Only times are gathered (no keys
+        // are copied), so making room allocates little.
+        let mut newest: Vec<Instant> = self
+            .windows
+            .values()
+            .map(|ts| ts.last().copied().unwrap_or(now))
+            .collect();
+        let (_, cutoff, _) = newest.select_nth_unstable(MAX_RATE_WINDOWS / 8);
+        let cutoff = *cutoff;
+        self.windows
+            .retain(|_, ts| ts.last().is_some_and(|&t| t > cutoff));
+    }
+}
+
 pub struct LeaseEngine {
     pub policy: LeasePolicy,
     storage_path: Option<PathBuf>,
     storage_unavailable: bool,
     leases: HashMap<String, Lease>,
-    commit_timestamps: HashMap<String, Vec<Instant>>,
+    /// The signing rate windows: a run token or single-use token issued.
+    commit_timestamps: RateWindows,
+    /// The unsigned (plain-path) rate windows, apart from signing, so a
+    /// plain caller's checks can never use up a session's window (nor the
+    /// reverse; review finding F5).
+    unsigned_timestamps: RateWindows,
 }
 
 impl LeaseEngine {
@@ -358,7 +444,8 @@ impl LeaseEngine {
             storage_path: None,
             storage_unavailable: false,
             leases: HashMap::new(),
-            commit_timestamps: HashMap::new(),
+            commit_timestamps: RateWindows::default(),
+            unsigned_timestamps: RateWindows::default(),
         }
     }
 
@@ -375,7 +462,8 @@ impl LeaseEngine {
             storage_path,
             storage_unavailable: false,
             leases: HashMap::new(),
-            commit_timestamps: HashMap::new(),
+            commit_timestamps: RateWindows::default(),
+            unsigned_timestamps: RateWindows::default(),
         };
         let Some(path) = engine.storage_path.clone() else {
             return engine;
@@ -531,22 +619,66 @@ impl LeaseEngine {
     /// Ends every lease whose work is finished, as `check` reports it (the
     /// service passes [`crate::work::work_state`]). Returns each lease ended,
     /// with why. Leases with no recorded work are left to the other rules.
+    ///
+    /// This runs `check` while the engine is borrowed. The service instead
+    /// splits it in two, [`Self::work_to_check`] and
+    /// [`Self::end_checked_work`], so that git runs outside its lock.
     pub fn end_finished_work(
         &mut self,
         check: impl Fn(&Work) -> crate::work::WorkState,
     ) -> Vec<(Lease, crate::work::WorkState)> {
-        use crate::work::WorkState;
-        let finished: Vec<(String, WorkState)> = self
-            .leases
-            .iter()
-            .filter_map(|(key, lease)| {
-                let state = check(lease.work.as_ref()?);
-                (state != WorkState::Ongoing).then(|| (key.clone(), state))
+        let checked = self
+            .work_to_check(|_| true)
+            .into_iter()
+            .map(|item| {
+                let state = check(&item.work);
+                (item, state)
             })
             .collect();
-        let ended: Vec<(Lease, WorkState)> = finished
+        self.end_checked_work(checked)
+    }
+
+    /// The recorded work of every lease `include` picks, to be checked
+    /// with [`crate::work::work_state`] away from the engine (the git runs
+    /// can take a while, and the service must not hold its lock meanwhile),
+    /// then handed back to [`Self::end_checked_work`]. Leases with no
+    /// recorded work are left out.
+    pub fn work_to_check(&self, include: impl Fn(&Lease) -> bool) -> Vec<WorkToCheck> {
+        self.leases
+            .iter()
+            .filter(|(_, lease)| include(lease))
+            .filter_map(|(key, lease)| {
+                Some(WorkToCheck {
+                    key: key.clone(),
+                    lease_id: lease.id.clone(),
+                    work: lease.work.clone()?,
+                })
+            })
+            .collect()
+    }
+
+    /// Ends the leases whose checked work is finished, but only those that
+    /// are still there unchanged: the same lease (by id) for the same work.
+    /// A lease revoked, replaced or granted again while its check ran is
+    /// left alone, so a stale answer never ends a newer approval. Returns
+    /// each lease ended, with why.
+    pub fn end_checked_work(
+        &mut self,
+        checked: Vec<(WorkToCheck, crate::work::WorkState)>,
+    ) -> Vec<(Lease, crate::work::WorkState)> {
+        use crate::work::WorkState;
+        let ended: Vec<(Lease, WorkState)> = checked
             .into_iter()
-            .filter_map(|(key, state)| self.leases.remove(&key).map(|l| (l, state)))
+            .filter(|(_, state)| *state != WorkState::Ongoing)
+            .filter_map(|(item, state)| {
+                let unchanged = self.leases.get(&item.key).is_some_and(|lease| {
+                    lease.id == item.lease_id && lease.work.as_ref() == Some(&item.work)
+                });
+                unchanged
+                    .then(|| self.leases.remove(&item.key))
+                    .flatten()
+                    .map(|lease| (lease, state))
+            })
             .collect();
         if !ended.is_empty() {
             self.save_to_disk();
@@ -769,6 +901,25 @@ impl LeaseEngine {
         Ok(removed)
     }
 
+    /// Ends the one lease with this id, wherever it is filed, and saves the
+    /// revocation. `Ok(false)` when there is none (it already ended, was
+    /// revoked, or was replaced by a newer lease with another id): only the
+    /// lease named is ever touched, so a replacement is never revoked by an
+    /// old id. The service uses this to end a launched session's leases
+    /// with the session (review finding F4).
+    pub fn revoke_lease_by_id(&mut self, id: &str) -> Result<bool, String> {
+        let key = self
+            .leases
+            .iter()
+            .find(|(_, lease)| lease.id == id)
+            .map(|(key, _)| key.clone());
+        let removed = key.is_some_and(|k| self.leases.remove(&k).is_some());
+        if removed {
+            self.persist_revocation()?;
+        }
+        Ok(removed)
+    }
+
     pub fn revoke_all(&mut self) -> usize {
         self.revoke_all_durable().unwrap_or_else(|e| {
             eprintln!("[agent-sign] {e}");
@@ -850,6 +1001,22 @@ impl LeaseEngine {
         self.token_for(repo, branch)
     }
 
+    /// The rules an UNSIGNED plain-path commit is held to (D1): the branch
+    /// rules and the rate limit, with no lease needed and no token made. The
+    /// commit counts in the repository's sliding window like a signed one,
+    /// so a loop of unsigned commits is stopped the same way; but in a window
+    /// of its own, so unsigned checks and signing never use each other up.
+    pub fn check_unsigned_commit(&mut self, repo: &str, branch: &str) -> Result<(), String> {
+        if self.is_branch_blocked(branch) {
+            return Err(format!(
+                "Branch '{}' is protected: agents can't commit there, so the commit is refused",
+                branch
+            ));
+        }
+        self.unsigned_timestamps
+            .count(repo, self.policy.max_commits_per_minute)
+    }
+
     /// Records one signature made with a run token for `repo` on `branch`
     /// in the lease's usage record, or refuses it when no lease covers it
     /// any more. It doesn't count against the rate limit: the run already
@@ -862,20 +1029,11 @@ impl LeaseEngine {
         Ok(())
     }
 
-    /// Records a commit in `repo`'s sliding 60-second window, or refuses it
+    /// Records a signing in `repo`'s sliding 60-second window, or refuses it
     /// when `max_commits_per_minute` are already in it.
     fn count_commit(&mut self, repo: &str) -> Result<(), String> {
-        let now = Instant::now();
-        let timestamps = self.commit_timestamps.entry(repo.to_string()).or_default();
-        timestamps.retain(|&t| now.duration_since(t) < Duration::from_secs(60));
-        if timestamps.len() as u32 >= self.policy.max_commits_per_minute {
-            return Err(format!(
-                "Rate limit exceeded: maximum {} commits per minute allowed",
-                self.policy.max_commits_per_minute
-            ));
-        }
-        timestamps.push(now);
-        Ok(())
+        self.commit_timestamps
+            .count(repo, self.policy.max_commits_per_minute)
     }
 
     /// Updates a lease's usage record (never its end).

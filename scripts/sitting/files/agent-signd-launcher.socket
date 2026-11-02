@@ -1,0 +1,16 @@
+# The launcher-only socket: where agent-launchd registers and closes sessions.
+# Mode 0660, group agent-launch; the service checks the caller's uid again.
+[Unit]
+Description=agent-sign service socket for the launcher only
+
+[Socket]
+ListenStream=/run/agent-sign/launcher.sock
+SocketMode=0660
+SocketUser=agent-sign
+SocketGroup=agent-launch
+DirectoryMode=0755
+FileDescriptorName=launcher
+Service=agent-signd.service
+
+[Install]
+WantedBy=sockets.target

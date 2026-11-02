@@ -4,7 +4,7 @@ set -euo pipefail
 # =============================================================================
 # agent-sign uninstaller
 # Removes agent-sign's service, programs, keys, leases and config, and undoes the
-# installer's PATH, editor and allowed_signers changes. It puts your own
+# installer's PATH, editor, launcher drop-in and allowed_signers changes. It puts your own
 # signing program back as git's gpg.ssh.program (from fallback_program in
 # config.toml), and otherwise leaves your git settings alone, including
 # gpg.ssh.allowedSignersFile if the installer set it.
@@ -30,6 +30,37 @@ echo ""
 info "Stopping the agent-sign service..."
 
 OS="$(uname -s)"
+
+# Linux: a non-interactive ssh session has no XDG_RUNTIME_DIR, so `systemctl
+# --user` can't find the user's service manager; its usual place is
+# /run/user/<uid>.
+if [ "$OS" = "Linux" ] && [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ] && [ -O "/run/user/$(id -u)" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+
+# Linux: the drop-ins install.sh --launcher-unit wrote, which put
+# ~/.agent-sign/bin first on a launcher's PATH. Only files whose first line
+# is agent-sign's mark are removed; anything else in the unit's .d folder is
+# yours and stays. The launchers themselves are never restarted here (that
+# would end the agents they run): their PATH changes at their next restart.
+LAUNCHER_DROP_IN_MARK="# agent-sign: written by agent-sign's installer; scripts/uninstall.sh removes it. Don't edit."
+LAUNCHERS_TO_RESTART=()
+if [ "$OS" = "Linux" ]; then
+    for file in "$HOME"/.config/systemd/user/*.d/agent-sign.conf; do
+        [ -f "$file" ] || continue
+        if [ "$(head -1 "$file")" != "$LAUNCHER_DROP_IN_MARK" ]; then
+            warn "Left $file: it isn't marked as agent-sign's"
+            continue
+        fi
+        dir="$(dirname "$file")"
+        unit="$(basename "$dir" .d)"
+        rm -f "$file"
+        rmdir "$dir" 2>/dev/null || true
+        ok "Removed agent-sign's drop-in for $unit"
+        LAUNCHERS_TO_RESTART+=("$unit")
+    done
+fi
+
 if [ "$OS" = "Darwin" ]; then
     for label in com.agentsign.agent-signd; do
         launchctl bootout "gui/$(id -u)/$label" 2>/dev/null && ok "Stopped LaunchAgent $label" || true
@@ -217,7 +248,16 @@ echo "  • agent-sign as your gpg.ssh.program: your own signer is back"
 echo "  • Shell PATH entries from shell profiles"
 echo "  • IDE terminal environment settings (Cursor / VS Code / Windsurf)"
 echo "  • Antigravity agent rule"
+[ ${#LAUNCHERS_TO_RESTART[@]} -eq 0 ] || echo "  • agent-sign's PATH drop-ins for your launchers: ${LAUNCHERS_TO_RESTART[*]}"
 echo ""
+if [ ${#LAUNCHERS_TO_RESTART[@]} -gt 0 ]; then
+    echo "Your launchers keep agent-sign's PATH until they restart (nothing restarted them,"
+    echo "since that ends the agents they run). When no agent is running, restart each one:"
+    for unit in "${LAUNCHERS_TO_RESTART[@]}"; do
+        echo "  systemctl --user restart $unit"
+    done
+    echo ""
+fi
 echo "What was NOT modified:"
 echo "  • The rest of your git config (your signing key, gpg.format, and gpg.ssh.allowedSignersFile,"
 echo "    which the installer sets if it wasn't set; unset it with"

@@ -1,0 +1,43 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "TEAM-N04",
+  "family": "team-record",
+  "legacy": "L05",
+  "kind": "negative",
+  "tags": [],
+  "about": "the version was raised without signing again",
+  "input": {
+    "op": "commitment",
+    "trust": {
+      "taylor": {
+        "dev-taylor-1": "MCowBQYDK2VwAyEA3FVy4oO3jTXZbjdBHVRxNq1jqHOdrfbetyboX05DJv8="
+      },
+      "reviewers": {
+        "reviewer-1": "MCowBQYDK2VwAyEAirspPpsVYkoKc9LDkaXIgH9FKWPR4jRjvdwnqKU+3iM="
+      }
+    },
+    "askedId": "suite:merge-rule",
+    "entry": {
+      "id": "suite:merge-rule",
+      "version": 2,
+      "body": {
+        "rule": "merge when checks and review pass",
+        "checks": [
+          "npm test"
+        ]
+      },
+      "hash": "f1800cb04847cf58a55212f4e698fae047e07b3f2b601de00f8ce92dae0127ab",
+      "signedBy": "dev-taylor-1",
+      "signature": "a3iiPK15DpBYiBBPawkWuRcmH/9BmBHsyYqs2BMyonXvtJUadudSZvTFekPAPnfIbIu9yLbsCTDM1pFosWLCBw=="
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "bad-signature"
+  },
+  "today": {
+    "accepted": false,
+    "why": "the signature on suite:merge-rule does not verify under Taylor's enrolled key dev-taylor-1",
+    "agreesWithExpected": true
+  }
+}

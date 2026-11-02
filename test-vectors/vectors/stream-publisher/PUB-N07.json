@@ -1,0 +1,43 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "PUB-N07",
+  "family": "stream-publisher",
+  "legacy": "L04",
+  "kind": "negative",
+  "tags": [],
+  "about": "the same signature with S raised by the group order (a second encoding of one signature)",
+  "input": {
+    "registry": {
+      "unsignedThrough": 0,
+      "publishers": [
+        {
+          "publicKey": "UD5DEFG2XRFE7CVMLLUMHPJ7YH3EVQZ47IFEI4EWXETJQUNHR6OG3DSZ",
+          "product": "unharness"
+        }
+      ]
+    },
+    "subject": "ev.unharness.run-started.mac",
+    "headers": {
+      "ce-id": "ev-0001",
+      "ce-type": "suite.unharness.run-started",
+      "ce-source": "unharness/mac",
+      "ce-time": "2026-10-23T12:00:00.000Z",
+      "ce-conversation": "c-1",
+      "suite-publisher-key": "UD5DEFG2XRFE7CVMLLUMHPJ7YH3EVQZ47IFEI4EWXETJQUNHR6OG3DSZ",
+      "suite-publisher-signature": "q8wKv7O0eEPdG_ylzaU_esZqDQqevuWUE7-KgN2vpvJfA3YzZ2N_rT_saLBimkAiicqgY-whmK90PTP-OhzLHg"
+    },
+    "body": "{\"run\":\"run-1\",\"engine\":\"x\"}",
+    "seq": 5,
+    "storedAt": "2026-10-23T12:00:01Z"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "bad-encoding"
+  },
+  "today": {
+    "accepted": false,
+    "reason": "bad encoding",
+    "signed": false,
+    "agreesWithExpected": true
+  }
+}

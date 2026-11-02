@@ -1,0 +1,5599 @@
+{
+ "about": "Index of ntaild's conformance logs (test data): per file, per act, does today's signature check count the act.",
+ "tool": "capture-ntaild.mjs",
+ "sumsFile": "conformance/logs/SHA256SUMS",
+ "files": [
+  {
+   "path": "conformance/logs/credentials/C01.json",
+   "sha256": "bda1c37757e2d8cbbb1cab697c4b4232dcc84d1bc5bbff67d69a9bd8cd309e55",
+   "matchesSha256Sums": true,
+   "name": "credentials/C01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C02.json",
+   "sha256": "2282b51137a8263249665d61b9b055df3936c5448d8db6b08ae20c96f0e41691",
+   "matchesSha256Sums": true,
+   "name": "credentials/C02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C03.json",
+   "sha256": "6ca116efdac97a1ef26edfb09794d4f0723cb2d0e546341f69439b38c782823f",
+   "matchesSha256Sums": true,
+   "name": "credentials/C03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C04.json",
+   "sha256": "9146bdbf4503c18b392c5345e35d731bc45f200dafee0e6420cb20fd088f443b",
+   "matchesSha256Sums": true,
+   "name": "credentials/C04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C05.json",
+   "sha256": "deb1b28e2c48fd8d2c5037448788d9b7071ed636979b16f60b3eef715c33eee0",
+   "matchesSha256Sums": true,
+   "name": "credentials/C05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C06.json",
+   "sha256": "bcea87042a977350d8ace93bac07859541947e0af772dff259d1678d7dceff0f",
+   "matchesSha256Sums": true,
+   "name": "credentials/C06",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C07.json",
+   "sha256": "a89f997a4cfd8842a90646789589538644d9710a1377cc35f69c326d428f8254",
+   "matchesSha256Sums": true,
+   "name": "credentials/C07",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C08.json",
+   "sha256": "8c72eadb7b8e4edcf60cf7418c3bddc2bb0b9909a2d1f4b99bc84f4d2d9ffcf4",
+   "matchesSha256Sums": true,
+   "name": "credentials/C08",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C09.json",
+   "sha256": "cab0092b6956d71b02a713fbbf8e91259a5e0e432d466d3ee1df057df773e563",
+   "matchesSha256Sums": true,
+   "name": "credentials/C09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C10.json",
+   "sha256": "0eace5759e5dccd902190dc3d355acd996f6bdf986084da8b253983644d383de",
+   "matchesSha256Sums": true,
+   "name": "credentials/C10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C11.json",
+   "sha256": "32945f8a3799a897c8fe02ec2ccfa4f3eb92344e0b85aef14a5dacc679fe6452",
+   "matchesSha256Sums": true,
+   "name": "credentials/C11",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C12.json",
+   "sha256": "43a64fc5782e0c2d0cdb1d368f44ce5b85ef7b1fb9e0db9c9088cf702ad057e8",
+   "matchesSha256Sums": true,
+   "name": "credentials/C12",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "w6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C13.json",
+   "sha256": "da56565ae0642eebd1f445de2e8d5a24594f64113e26ac8029e6da66c1210ac2",
+   "matchesSha256Sums": true,
+   "name": "credentials/C13",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w7",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C14.json",
+   "sha256": "3db1da05f125f392245e81407288160f1f5509955d896c6985d341798be76de7",
+   "matchesSha256Sums": true,
+   "name": "credentials/C14",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C15.json",
+   "sha256": "13c8b5cbbbee0ac2e2690f25b43ebc15e57bbab2e788358e3924de22798afff5",
+   "matchesSha256Sums": true,
+   "name": "credentials/C15",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w8",
+     "kind": "assert",
+     "signed": false,
+     "warrant": true,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C16.json",
+   "sha256": "44a028de54c08c6f77c3b5c5018432e72eb062db14b19cd77451c48f3f81beed",
+   "matchesSha256Sums": true,
+   "name": "credentials/C16",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C17.json",
+   "sha256": "1386e33a321345755f41d26add7a529c0c61717f9f016bb5b08dea84e955d4d6",
+   "matchesSha256Sums": true,
+   "name": "credentials/C17",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C18.json",
+   "sha256": "b5e2f005662202861a5669c2b60f21d9d924e14e5f4dd3dc42d0522cc1ef7aeb",
+   "matchesSha256Sums": true,
+   "name": "credentials/C18",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C19.json",
+   "sha256": "25f7f7edfd417cdda4f8ed50e946fc4dbb8057fae1fde36c737f92cb54d69e11",
+   "matchesSha256Sums": true,
+   "name": "credentials/C19",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a3",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C20.json",
+   "sha256": "eec25b5b29bb81d16e2450f9fd2efbc3baad11104ee7a29838f1e0dc69ac8068",
+   "matchesSha256Sums": true,
+   "name": "credentials/C20",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "w9",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C21.json",
+   "sha256": "b427ede36a5cc691db2420051e2d06f50d43eb478537a97671f96c5477c87b0a",
+   "matchesSha256Sums": true,
+   "name": "credentials/C21",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials/C22.json",
+   "sha256": "82192648ee6dc16b5a8509e2897514841b4dc37e5921f1a0cb775123ae0cafd8",
+   "matchesSha256Sums": true,
+   "name": "credentials/C22",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "a3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X01.json",
+   "sha256": "3b4378c8cf6283c8b36e9be72410a0a9d7dd5426cd49c0b1ee7717844cde4490",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a4",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a5",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X02.json",
+   "sha256": "45102a16f38610bc788607fca9ce6c55a1eeb2d626c6b352dbcb3df2cc5e94e8",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a4",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a5",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X03.json",
+   "sha256": "f2197a27f7ef898d62cd0a0e4b2c96dc51f51009ca8e63a3ce418430f829aaf8",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a4",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a5",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X04.json",
+   "sha256": "42ad5c510a58899b9be3d41226df9414903109b885614699907d1171dc72b288",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a2",
+     "kind": "assert",
+     "signed": false,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X05.json",
+   "sha256": "dd51bd2ee788d6709899eaac3ae4af7a8a6b09ad739de92d8e40b655d7b77f7f",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X06.json",
+   "sha256": "7a501844289c956f8c541cd8e91682d58722085c325f23cb3db85925847e65c5",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X06",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X07.json",
+   "sha256": "ad34dbe69738349c5d69145fa815a6c74cf386895a184c89d0ad42c98c1ba558",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X07",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X08.json",
+   "sha256": "7740a760d0b186248b07c5b6d9b405afa6d8f5231a2373392c107052352716e8",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X08",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch-w1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X09.json",
+   "sha256": "5e4cff03b60556e6b997a43bfdd5c690a705fcedeafc5048d5b76279c759f5af",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "ch-a3",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X10.json",
+   "sha256": "0d3336833e70271a862caa90feff369f6dd7bd9949ae1ca7d38e24e0a82f7246",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "x-w2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X11.json",
+   "sha256": "aa97afd2f27113a2a2d404cf5c06f4d8e01b86c2339b917dfb2a1fa8b82385cc",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X11",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "x-w1",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-extra/X12.json",
+   "sha256": "d1d87fbdf5e0710ea08f09e36c2c5ed6c668a1cb043abe1bd00ffc67b12e5b32",
+   "matchesSha256Sums": true,
+   "name": "credentials-extra/X12",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V01.json",
+   "sha256": "fb07fdbe62238c1a4f548b01f7d97d90291167a36c5e6133b354a1d977826345",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V02.json",
+   "sha256": "e6bd1986ed18ee161bd99ad9433ec052014cbdfe349dd3949bb6fa8acf60d1ef",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V03.json",
+   "sha256": "1bb093ea15710eeaf23fe6c2718b34223d9ce948814f29ffe869e39f6323ee71",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V04.json",
+   "sha256": "1a50bca406beaf9509b925d6d5f833ca8a9d1809b5f4b8a2edb89ae96c45396e",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V05.json",
+   "sha256": "df139e754b5b7a733437bbe2df59006fd688aa00da932231121b7df313a64b7d",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V06.json",
+   "sha256": "0ca94100ed9d5cd3bdd537697fc0ab9b8c644fdff4282a498ad7cb39168ca7d1",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V06",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V07.json",
+   "sha256": "ba37773958f5ca866f197922f05c387e90c01627093d19dcf9f7b8d04233ce06",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V07",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V08.json",
+   "sha256": "bce38e621944fab08b416d293208db70568e84b462e550343252a45eae202839",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V08",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V09.json",
+   "sha256": "c41752d25c3915eacd3fdc4555bb95d09e88ddd93bad10422a08663187130761",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V10.json",
+   "sha256": "fc257ef62ac90f380b70ae844162a9520a9b4ec30ba06d5bbffcb20826510cbf",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V11.json",
+   "sha256": "e3774b3a11ff3d4b5d44eafed4d6107208064cfeb21c5fe991db111430ec64f8",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V11",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V12.json",
+   "sha256": "11b5436c5f6b25bafcf33b9f30ddac4aa115510138477029fea53846c16b4a99",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V12",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V13.json",
+   "sha256": "84e132f2ca944b8906546d0bb5d42e582c5b4a9bed4c85e88d2a46ec227978cf",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V13",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V14.json",
+   "sha256": "d9dc5507bed4a2e8704e65191e174661d7a52de446894df7a1afe2308553e970",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V14",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V15.json",
+   "sha256": "3e0633efa67671c672f2cd9989ddc999878c9e9b9d68c2b51a946f7fb2272b8b",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V15",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": true,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "rev-w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "rev-w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/credentials-review/V16.json",
+   "sha256": "ad9913ecb5deeab573c6a3e9472e397cf74361bfa16dfef4fadcc20747fc9bc8",
+   "matchesSha256Sums": true,
+   "name": "credentials-review/V16",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "ch1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G01.json",
+   "sha256": "d0259cc348e21fba2f23d60bbce7dec8e90fcac54f5ca1da3399b654750e0c0c",
+   "matchesSha256Sums": true,
+   "name": "generic/G01",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G02.json",
+   "sha256": "9cd86ddfa486c0ff976a6254070fd9c89d56e5ffdb2024c5a193ee31f1ba85bf",
+   "matchesSha256Sums": true,
+   "name": "generic/G02",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G03.json",
+   "sha256": "9a485a16bcd6a71206a5052f250f40a5aea7d3ba1cafbf7204f7554b7a216b98",
+   "matchesSha256Sums": true,
+   "name": "generic/G03",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g2",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G04.json",
+   "sha256": "f511bb0fb1f7af75ca3d67e6be1999d883260763be0fc81e3e3686adef552081",
+   "matchesSha256Sums": true,
+   "name": "generic/G04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g3",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g4",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G05.json",
+   "sha256": "64026a498ce806d7ae7b1cf0eed0fecc3b3f80b065a669b5ff801d47f033978c",
+   "matchesSha256Sums": true,
+   "name": "generic/G05",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g4",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G06.json",
+   "sha256": "e5073c1d9ba5d4724d3369ea59cca5afcf6897b769a9b72e86e19a4c12f52170",
+   "matchesSha256Sums": true,
+   "name": "generic/G06",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G07.json",
+   "sha256": "3140ebef869936d039c660a2f2b716d668c31311833a03c68f0b1a4cd0fb9d71",
+   "matchesSha256Sums": true,
+   "name": "generic/G07",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g2",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g3",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G08.json",
+   "sha256": "8e8db11ea54b7f957c1aa9807ad6aee2fe2ada48e357abbb28a88a76fe93fb78",
+   "matchesSha256Sums": true,
+   "name": "generic/G08",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g2",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g4",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g5",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G09.json",
+   "sha256": "a5a1ee2cec903bf22bd19d2c19e43694817c3dbec1ea290013d51e67c8ec8890",
+   "matchesSha256Sums": true,
+   "name": "generic/G09",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G10.json",
+   "sha256": "5592c24e1bb95f021a3c3e10003fc0eba05be14bb0dd1064009fdecd57788dee",
+   "matchesSha256Sums": true,
+   "name": "generic/G10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "g1",
+     "kind": "assert",
+     "signed": false,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    },
+    {
+     "party": "person:me",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "bad-signature"
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    },
+    {
+     "party": "person:me",
+     "id": "g4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:stranger",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unknown-party"
+    },
+    {
+     "party": "agent:a1",
+     "id": "g6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g7",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g8",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G11.json",
+   "sha256": "e39eb7436706b96e208882601ae14596c82dd3b8c62a28b07518f6c6761db9e2",
+   "matchesSha256Sums": true,
+   "name": "generic/G11",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g2",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic/G12.json",
+   "sha256": "1fcf83afa600fe60e799bd4192439fc2ce3fd0a068387a9b1ed0c760c59c88dd",
+   "matchesSha256Sums": true,
+   "name": "generic/G12",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic-review/V01.json",
+   "sha256": "33b32dde4bb544180afd818a45457cfceebb8fda2e22e52c09969537eb4294d3",
+   "matchesSha256Sums": true,
+   "name": "generic-review/V01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "c1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "c2",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/generic-review/V02.json",
+   "sha256": "aac85b2ff2562675707c4aa250b79ac95b9cb4578e2ecaabdafb020f8b3ee4fb",
+   "matchesSha256Sums": true,
+   "name": "generic-review/V02",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C01.json",
+   "sha256": "f744576bedcd6eff09e4576e587db635037bdeed0a3966a430cf25412c4feb97",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C02.json",
+   "sha256": "e21bbc8834796a455c62674613d31e8b2995063b41357e334883f8727c709a36",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C03.json",
+   "sha256": "b1b249c4e26e628dc81446be02c730815c3f143b908b855e34f70045a7c11c0d",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C04.json",
+   "sha256": "cca53c2cdc92e2253e18bdb3fce746c0849fad78a5b6fe2dcef6a218a6c735c6",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C05.json",
+   "sha256": "c739ed595c37f12048fd0a246a1cc7223ec5d988269e67b7eba882baa7d8f97c",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C06.json",
+   "sha256": "d9f3f8afcf274466c4048ab0105202b43b4d4a4262259b07fe0c648ed878e220",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C06",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C07.json",
+   "sha256": "c8f3c469130ef04d1ff2c89c287cd93bde55d437aa1d0258ec2f551501e7915a",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C07",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C08.json",
+   "sha256": "0333883ce4b06eedb3d821c4c8d312ecddba8050b107759e8ab3ad89e1409dd4",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C08",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C09.json",
+   "sha256": "3dddf2bd04292810de232800f65cb22f1a79b117932b3bca042ff8a1f21ceaf6",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C10.json",
+   "sha256": "886cb93865f5c51b05171fc62b80ae8c24f97595383d3bd31836fac440deb2a0",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C11.json",
+   "sha256": "bb8506621df2bf168109ac7e4f28195b6c0cfe1e9cf3008200c26b7a881bc5c9",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C11",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C12.json",
+   "sha256": "7ffeda2cee1809b21805cac41827f4783ea7ab74dfd47fc97d15d41c8e027adb",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C12",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "w6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C13.json",
+   "sha256": "ff2830e2fd0266aa969f0a6c6586a7b6caa2cf7688b18ceb1caa375539bae0eb",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C13",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w7",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C14.json",
+   "sha256": "56af072e1d5bdda1e39c09c713e013d56d010a8af7f4b3609f7b0d4c31c7c2ca",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C14",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C15.json",
+   "sha256": "f3de224c1d9d824628d10943c88c2ecf2d070866a9b44be8ec75536695163b78",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C15",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w8",
+     "kind": "assert",
+     "signed": false,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C16.json",
+   "sha256": "6e53a2f7fbf4c0a481a9fab1664f472659b103aaf6a439d9552d61c29f5e6a37",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C16",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C17.json",
+   "sha256": "9d1f3d9be6d690df3bc832723576fa1593cf2edb41745ab590dbe200c32e0953",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C17",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C18.json",
+   "sha256": "9ed1e5366b35dbf9e83d81416daaf3bce6d610f742fbd487159f8609620c41e3",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C18",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C19.json",
+   "sha256": "007ce306d0732fa88e3295c1ea0ff9108aca138f0f1b4f6c470aff78a895703b",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C19",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a3",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C20.json",
+   "sha256": "2c94d0ff591d5930b1e58a2d63055f7d2dd3c3125e7d129c1cb11484852cd9df",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C20",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "a1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "w9",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C21.json",
+   "sha256": "08648a7996852f74f673c443f0bb5a7a5c89923f880d7cd046d786148e16971f",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C21",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-C22.json",
+   "sha256": "115ec0619a064ddc9e41eaa9d194d209a66a3c2d17e804184dd3811ff535f5a1",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-C22",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "a3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X01.json",
+   "sha256": "b28ceec4c76da396658393df2731b2202ce743110b23d54e655e07e77dba9881",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a4",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a5",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X02.json",
+   "sha256": "ca76d517c5d9da3ecefaee857453e28b643ed60d06c888a6b1f50810acf5a541",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a4",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a5",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X03.json",
+   "sha256": "a5ad935def056f7601f7d8dde10c7145a0bfdf11383471b7e57d3f7b01bdf4e7",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "w4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a4",
+     "id": "w5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a5",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X04.json",
+   "sha256": "7e983ceca99509f57b5eb7321e8478ac0e3b8514ad08a841a305430baf681c96",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a2",
+     "kind": "assert",
+     "signed": false,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X05.json",
+   "sha256": "a6baada0648da2224166318588b71c0c0b26c65907b6dbb2d0386c2e7898d056",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "a2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X06.json",
+   "sha256": "6864d03a4e2c4dc3547ced960112e2832b960afb4667d9803350d3d31d40a9e4",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X06",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X07.json",
+   "sha256": "27ab055e6e84dde627ee742e76962d11652b226825e071fea5c9aeabf4b2ac5e",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X07",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X08.json",
+   "sha256": "a5916d6e3bb484d2172ac3d13d88718b02ae6a812c02d96ac8a652fbe3bbb6fa",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X08",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch-w1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X09.json",
+   "sha256": "fbc3b1f10bd13fd74335f3c879d58f489a26b609aa06d4e720109a40277994f2",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "ch-a3",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X10.json",
+   "sha256": "390ac34f6dbe93d5982e5842c7b2bc4c021031fea6aef730d3fd9ebaa8ee073d",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "x-w2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X11.json",
+   "sha256": "d3a7369456a09c8b5bb199bc20e2f0cb18a8581357782f477e64565e90cbd53d",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X11",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "x-w1",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-extra-X12.json",
+   "sha256": "c003645507cc58f53f12c6ae19e3e3e803500b6a76bc6c49a850ca235d83a229",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-extra-X12",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V01.json",
+   "sha256": "74a9bf979dbd9744d4d253a5a7aeee7326a42bde584045c28f34b7b6f0f8f746",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V02.json",
+   "sha256": "4690a273849880cfca453223e68792622860e2c293ec847cb4b18e3a2932371d",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V03.json",
+   "sha256": "0950fef578388979bb42200e171c17df60d40177de30f1f2778ae24dd23658eb",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V04.json",
+   "sha256": "733cf5bc7bdf31965313daf766a2840ce9495aa03d287318e651c0e3af1f9cac",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V05.json",
+   "sha256": "755c2d4c1d55f7974756050424b8d74149f59fbceb5dece75472ff278e4777e4",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V06.json",
+   "sha256": "d0c13bdf3e45fac01cd577407ce75b60ca9164d430299e17c1160beafe3b5f98",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V06",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V07.json",
+   "sha256": "93e0a480d83e8093a757ecff6b0ca9f6d790d77ffc28c2a636e2ca274f879a5c",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V07",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V08.json",
+   "sha256": "ee8e73dfd0484328f59d5236803ec6ea1c59b118509a249220322ae4afc5499e",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V08",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V09.json",
+   "sha256": "714d3f92726a82a0a84511604e996664ae932a36f0fd6a2131c7c616252b5e0b",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V10.json",
+   "sha256": "7941a8e173210c4f72a09d182a5232ab6b41f8a4e3066f558875ee5247f8c652",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V11.json",
+   "sha256": "544328de224ec75bd6a4bafe4812d8ab73c36d1185e535408e7dabd779a60924",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V11",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V12.json",
+   "sha256": "761b9f802448deec48c4cdcacbf44e4a0818a59e9caca758022e5e1a1a483b59",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V12",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V13.json",
+   "sha256": "d92a4dfae0786dde55a924dc329bbbeb81b7d767e873a218beb95b8d448e19e8",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V13",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "w2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V14.json",
+   "sha256": "457a5a1e9466532a4239f32572d73cc6cf57caf10b651aa3e5ea14d0b6de4fab",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V14",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V15.json",
+   "sha256": "21c7b96459461cb21aa55bcc41d78e9e4af45d35f17dfaa79aa0dd57399887e1",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V15",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "rev-w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "rev-w1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/credentials-review-V16.json",
+   "sha256": "384f75bcd1410c710e6625fbf854e39a3cab37b1dd2fdc93e04588714cee6440",
+   "matchesSha256Sums": true,
+   "name": "renamed/credentials-review-V16",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "tp",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "req",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "ch1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "ch1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G01.json",
+   "sha256": "68d913b41bcbf39e4c06acadaea1a8df7ac0c0155da366686154e22d0e0e15f6",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G01",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G02.json",
+   "sha256": "4de50f6eeba22fe990c1e42b7322fbc01722f599936ad3ba953036ba4f2548dc",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G02",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G03.json",
+   "sha256": "50beaf445366a6e0961f0d44ed7d70dd522f5003b492a718ef61c43dbb43e239",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G03",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g2",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G04.json",
+   "sha256": "4865c928ae77b24e34e7a6402f9788898f29aafabdcdc34817246f861e49ff09",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g3",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g4",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G05.json",
+   "sha256": "ec201b54440f0d1d63ed9fb025198f05a5e5a154502ea6c7c150dfc3666e4f86",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G05",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g4",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G06.json",
+   "sha256": "16cd80b12318e63a5cabea39cb8f0a35bbdfae4b02b886db74fd7071e40536be",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G06",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G07.json",
+   "sha256": "8824d821cd9b2b86848e770d931a72697535622078a57ae4d2091bb0e06fe1a1",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G07",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g2",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g3",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G08.json",
+   "sha256": "d5eedf22d795885be898b8838889291dc9f72eab42ab9a63d669e7094c549cf0",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G08",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g2",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g4",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g5",
+     "kind": "defer",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G09.json",
+   "sha256": "7dd4add730e3a5b0d96d6c7e215250b0ce903715b35223edd9ba1517eecb59f9",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G09",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G10.json",
+   "sha256": "bb91d98cc11f6a4101d6100d6bdb0ca9b7f4017d6ebee90ba5c58a0cded02528",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "g1",
+     "kind": "assert",
+     "signed": false,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    },
+    {
+     "party": "person:me",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "bad-signature"
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    },
+    {
+     "party": "person:me",
+     "id": "g4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:stranger",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unknown-party"
+    },
+    {
+     "party": "agent:a1",
+     "id": "g6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g6",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g7",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g8",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G11.json",
+   "sha256": "02c0f8b01478ef283b1a59af25a4e541536158efba7c2490f270c97695448009",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G11",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g2",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-G12.json",
+   "sha256": "da0210ad9e7145c179d975ae946f2e0b7a473f2c054aa8c846e1e8e46f4611c1",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-G12",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-review-V01.json",
+   "sha256": "99665451485acd8e88ab973604c3f8443a6a5828d95782cf10906651d10e5e4c",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-review-V01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "c1",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "c2",
+     "kind": "challenge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/generic-review-V02.json",
+   "sha256": "356bda5f9279b7cb2166e74a05af2a8b1b0e79cfc35751fc57a0283918783fb6",
+   "matchesSha256Sums": true,
+   "name": "renamed/generic-review-V02",
+   "acts": [
+    {
+     "party": "agent:a1",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a2",
+     "id": "g1",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a3",
+     "id": "g2",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g3",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "g4",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:a1",
+     "id": "g5",
+     "kind": "assert",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/routing-R01.json",
+   "sha256": "332a4a4a7b5450634ca6f78e387f719d08066d47387f3489d94105c60c18ead7",
+   "matchesSha256Sums": true,
+   "name": "renamed/routing-R01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/routing-R05.json",
+   "sha256": "5b1d32a4fc9d006a4aad2874067f0644b7b25f5371a832465e2383585ce94747",
+   "matchesSha256Sums": true,
+   "name": "renamed/routing-R05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/routing-R09.json",
+   "sha256": "393500a8978a1d2714288cfca17b520d6e4f5aadc3889c3ff702b89c1084ab67",
+   "matchesSha256Sums": true,
+   "name": "renamed/routing-R09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/routing-R14.json",
+   "sha256": "b977afc8519631b8f00546e07a38bf6bf7792c3a4b74ad1f96c92a51d5b4415c",
+   "matchesSha256Sums": true,
+   "name": "renamed/routing-R14",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "bad-signature"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/renamed/routing-R18.json",
+   "sha256": "192a30d67b5c31e897b44d10fa858eb8a2bca908469c705adbc081e0040b86d2",
+   "matchesSha256Sums": true,
+   "name": "renamed/routing-R18",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R01.json",
+   "sha256": "712d2582b73869ca3cbff51fafa98197fc1104c5c0da0b0d25631dc74ece3d1b",
+   "matchesSha256Sums": true,
+   "name": "routing/R01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R02.json",
+   "sha256": "d2e21d9df732398298d22e020a25f26b3ea7bd3fbda04bca51febd1802281a72",
+   "matchesSha256Sums": true,
+   "name": "routing/R02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R03.json",
+   "sha256": "ecf640a32d4d661e3a051e266205f12f078304ca3f4c276e749764f2f4d794ad",
+   "matchesSha256Sums": true,
+   "name": "routing/R03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R04.json",
+   "sha256": "fc5b88d21d45a4617e7817b3bc14b205ce99555a7202c788debcc8a961620666",
+   "matchesSha256Sums": true,
+   "name": "routing/R04",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R05.json",
+   "sha256": "c77006e39186a4010009c26cf0fb25769d075a84a0fe7c9298ce8af3de76b12a",
+   "matchesSha256Sums": true,
+   "name": "routing/R05",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R06.json",
+   "sha256": "4f2add80b97ad0880f286df8e43822d51543cf4388a3503eb69eba4188179297",
+   "matchesSha256Sums": true,
+   "name": "routing/R06",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R07.json",
+   "sha256": "ceaee65cff4910cb30ac99ec1f1e83fafd43b5bc7e65d898cf72cd2f89806d07",
+   "matchesSha256Sums": true,
+   "name": "routing/R07",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R08.json",
+   "sha256": "2da40241b8a84127211346a99b2e3790b287a6e0590560e0ad1a918c7905ecbc",
+   "matchesSha256Sums": true,
+   "name": "routing/R08",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e7",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R09.json",
+   "sha256": "3a3bd1826ec0b4ef33bd14aff6172e6dcb35ec96d5df244e834ed6365ca2c616",
+   "matchesSha256Sums": true,
+   "name": "routing/R09",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R10.json",
+   "sha256": "e52455b2bf041be0fc538c4bc594ff5c95336f63e676ef54ffe8cd678f5646d1",
+   "matchesSha256Sums": true,
+   "name": "routing/R10",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R11.json",
+   "sha256": "8fd7533ab1a008ac472681944c41ab38046192480c7c2ca2ec0c6790cad133e3",
+   "matchesSha256Sums": true,
+   "name": "routing/R11",
+   "acts": []
+  },
+  {
+   "path": "conformance/logs/routing/R12.json",
+   "sha256": "bd696bc931c234b2dd1a089c6a441d9873afd6149605ab0102182d10ddf3d276",
+   "matchesSha256Sums": true,
+   "name": "routing/R12",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R13.json",
+   "sha256": "42b0be352d9e0c7cf8196023cec6b988c9d7f4d72b1e80f773c4cb8b45f00520",
+   "matchesSha256Sums": true,
+   "name": "routing/R13",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R14.json",
+   "sha256": "aaa754e2956c6c18f36c28a02715cb202eb394482892072bd42c256852de0164",
+   "matchesSha256Sums": true,
+   "name": "routing/R14",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "bad-signature"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R15.json",
+   "sha256": "300a06e86719d376c4119ac7a562850636c0a78a52a0f8f9a8b2f87300e0193b",
+   "matchesSha256Sums": true,
+   "name": "routing/R15",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": false,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R16.json",
+   "sha256": "efb17d889e4b84524cab1ef9a79b97f6fe16fedfb2f70e2234f4921f87e972b5",
+   "matchesSha256Sums": true,
+   "name": "routing/R16",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "not-the-party-signing-key"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R17.json",
+   "sha256": "a0970067cd5db394f7e2befa7b730880fd66d6b072c43415a11d44cb07c4b7b1",
+   "matchesSha256Sums": true,
+   "name": "routing/R17",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e6",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e7",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "bad-signature"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R18.json",
+   "sha256": "ba32f594b99ceb4418af902d67e7684e429262740b3fb98bd5cc91337c4ec973",
+   "matchesSha256Sums": true,
+   "name": "routing/R18",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R19.json",
+   "sha256": "0b8d89f66c7f76559359a97b8d9db51540ab905bdb66aa52b3dbcba0662a3685",
+   "matchesSha256Sums": true,
+   "name": "routing/R19",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:assistant",
+     "id": "e6",
+     "kind": "acknowledge",
+     "signed": false,
+     "warrant": false,
+     "counts": false,
+     "ignoredBecause": "unsigned"
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing/R20.json",
+   "sha256": "ed5c01019c9d86eccf5317136a598d0064416859d6e063a7db9d029183c918db",
+   "matchesSha256Sums": true,
+   "name": "routing/R20",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e3",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e4",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e5",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing-review/V01.json",
+   "sha256": "3b062876935cb7b2bbdbe0c9390bd60a4606a77c8f2303a523d5c3427eba17c2",
+   "matchesSha256Sums": true,
+   "name": "routing-review/V01",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "agent:assistant",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing-review/V02.json",
+   "sha256": "7292bf20e8b5b4ee490b9962e68fbe760f5a8448ca84450d28f22997d61f1eff",
+   "matchesSha256Sums": true,
+   "name": "routing-review/V02",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  },
+  {
+   "path": "conformance/logs/routing-review/V03.json",
+   "sha256": "47e783fc907bf83fbfd150c5d9431bb118817fef02ef2e300154dd397644a059",
+   "matchesSha256Sums": true,
+   "name": "routing-review/V03",
+   "acts": [
+    {
+     "party": "person:me",
+     "id": "e2",
+     "kind": "retract",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    },
+    {
+     "party": "person:me",
+     "id": "e1",
+     "kind": "acknowledge",
+     "signed": true,
+     "warrant": false,
+     "counts": true
+    }
+   ]
+  }
+ ],
+ "totals": {
+  "files": 156,
+  "acts": 539,
+  "counted": 515,
+  "ignored": 24,
+  "warrants": 79,
+  "warrantsCounted": 77,
+  "allMatchSha256Sums": true
+ }
+}

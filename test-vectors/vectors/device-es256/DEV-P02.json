@@ -1,0 +1,48 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "DEV-P02",
+  "family": "device-es256",
+  "legacy": "L01 L03",
+  "kind": "positive",
+  "tags": [],
+  "about": "no conversation, a boolean field: the signed bytes drop an absent conversation",
+  "input": {
+    "registrations": [
+      {
+        "party": "person:me",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "PQ6z9MZMlIf-PTIiVJfoNtS8dQGuo1UErTlG6hj9tJM",
+          "y": "lLwrTOyWftQNuzvY-9gpfhrUYfjmEdh8u1LEE4-PHjs"
+        },
+        "device": "test-browser"
+      }
+    ],
+    "party": "person:me",
+    "id": "e-2",
+    "conversation": null,
+    "data": {
+      "act": "answer",
+      "content": "yes",
+      "party": "person:me",
+      "widens": false,
+      "signature": {
+        "alg": "ES256",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "value": "oojrf6zL5Z8L9yup08bfmMie4ESYCMbDckcbbQw3Du4BYaBv21giALrH7j7JgIsStf043siumKnwHTu25OnGig"
+      }
+    }
+  },
+  "expected": {
+    "result": "accepted",
+    "signer": "device:x-f4de32da9aa20f78ecc5225df454e6c6",
+    "onBehalfOf": "person:me",
+    "strength": "device"
+  },
+  "today": {
+    "ring": "valid",
+    "agreesWithExpected": true
+  }
+}

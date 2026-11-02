@@ -1,0 +1,50 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D02",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [
+    "divergence:key-order"
+  ],
+  "about": "key order across the surrogate range",
+  "input": {
+    "json_text": "{\"\\ud7ff\":1,\"\\ue000\":2,\"\\ud800\\udc00\":3}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b22ed9fbf223a312c22f0908080223a332c22ee8080223a327d",
+    "text": "{\"퟿\":1,\"𐀀\":3,\"\":2}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b22ed9fbf223a312c22f0908080223a332c22ee8080223a327d"
+      },
+      "L05": {
+        "bytes": "7b22ed9fbf223a312c22f0908080223a332c22ee8080223a327d"
+      },
+      "L09": {
+        "bytes": "7b22ed9fbf223a312c22f0908080223a332c22ee8080223a327d"
+      },
+      "L12": {
+        "bytes": "7b22ed9fbf223a312c22f0908080223a332c22ee8080223a327d"
+      },
+      "L13": {
+        "bytes": "7b22ed9fbf223a312c22f0908080223a332c22ee8080223a327d"
+      },
+      "L07": {
+        "bytes": "7b22ed9fbf223a312c22ee8080223a322c22f0908080223a337d"
+      }
+    },
+    "encodersDisagree": true,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13"
+    ],
+    "agreesWithExpected": false
+  }
+}

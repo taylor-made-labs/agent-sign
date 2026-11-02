@@ -1,0 +1,22 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-006",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [],
+  "about": "the worker-run run-2026-10-23-0001 has this one name",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local/worker-run/run-2026-10-23-0001"
+  },
+  "expected": {
+    "result": "accepted",
+    "kind": "worker-run",
+    "id": "run-2026-10-23-0001"
+  },
+  "today": {
+    "result": "accepted",
+    "agreesWithExpected": true
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D10",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "negative",
+  "tags": [
+    "divergence:float"
+  ],
+  "about": "1.0: JavaScript turns it into 1",
+  "input": {
+    "json_text": "{\"n\":1.0}"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "non-integer-number"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b226e223a317d"
+      },
+      "L05": {
+        "bytes": "7b226e223a317d"
+      },
+      "L09": {
+        "bytes": "7b226e223a317d"
+      },
+      "L12": {
+        "bytes": "7b226e223a317d"
+      },
+      "L13": {
+        "bytes": "7b226e223a317d"
+      },
+      "L07": {
+        "error": "refuses"
+      }
+    },
+    "encodersDisagree": true,
+    "matchExpected": [],
+    "wronglyEncode": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13"
+    ],
+    "agreesWithExpected": false
+  }
+}

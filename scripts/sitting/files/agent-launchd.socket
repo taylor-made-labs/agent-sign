@@ -1,0 +1,15 @@
+# Where launch requests arrive. Mode 0666: the launcher decides by the caller's
+# uid (Taylor's account, or a signed launch request), so a group adds nothing.
+[Unit]
+Description=agent-sign launcher socket
+
+[Socket]
+ListenStream=/run/agent-launch/launch.sock
+SocketMode=0666
+SocketUser=agent-launch
+SocketGroup=agent-launch
+DirectoryMode=0755
+FileDescriptorName=launch
+
+[Install]
+WantedBy=sockets.target

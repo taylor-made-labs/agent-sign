@@ -21,8 +21,13 @@ If Cursor is installed, `./scripts/install.sh` adds agent-sign's directory to th
 Cursor doesn't mark the commands its agent runs. Add
 `"AGENT_SIGN_AGENT_NAME": "Cursor"` next to `PATH` in those two blocks, so
 agent-sign knows commits from Cursor's agent are an agent's: they're then
-signed as `Cursor <cursor.nosession@agents.local>` and authored and committed
-by it. Without it, agent-sign can't tell them from your own and leaves them to
+signed as `Cursor <cursor.nosession@agents.local>` (or
+`@<machine>.agents.local` on a [named machine](../../README.md#naming-the-machine))
+and authored and committed by it. Cursor is one of the agent names allowed by
+default, so this needs no other setting. (A name of your own choosing, such
+as "Cursor Agent", would have to be listed in `[identity] allowed_agents`
+first: see [Allowed agent names](../../README.md#allowed-agent-names).)
+Without it, agent-sign can't tell them from your own and leaves them to
 git (unsigned, under your git name, when there's no terminal).
 
 ## Who agent-sign thinks is committing

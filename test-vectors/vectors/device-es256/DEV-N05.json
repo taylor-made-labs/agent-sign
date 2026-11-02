@@ -1,0 +1,58 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "DEV-N05",
+  "family": "device-es256",
+  "legacy": "L01 L03",
+  "kind": "negative",
+  "tags": [
+    "divergence:first-key-wins"
+  ],
+  "about": "a second key for the same person: today only the first key counts, and a later one is ignored",
+  "input": {
+    "registrations": [
+      {
+        "party": "person:me",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "PQ6z9MZMlIf-PTIiVJfoNtS8dQGuo1UErTlG6hj9tJM",
+          "y": "lLwrTOyWftQNuzvY-9gpfhrUYfjmEdh8u1LEE4-PHjs"
+        },
+        "device": "test-browser"
+      },
+      {
+        "party": "person:me",
+        "keyId": "x-f76db226d4d16fe5fc01f727cdf89840",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "RcWntzstc_JoR2HL8HtnaSiZktKhHyGTMFjqiPioSPk",
+          "y": "Id98fm31Y0Mio0tNLo1gxUoX5dcOr6369TiRLuijChQ"
+        },
+        "device": "test-browser"
+      }
+    ],
+    "party": "person:me",
+    "id": "e-1",
+    "conversation": "c-1",
+    "data": {
+      "act": "message",
+      "content": "hello there",
+      "party": "person:me",
+      "signature": {
+        "alg": "ES256",
+        "keyId": "x-f76db226d4d16fe5fc01f727cdf89840",
+        "value": "5qdE_b2MPvg46ZVYXGYGtCU0y0QcAMGwYfmupdu6rcBMkZnYpzBqSMqK2g5wlVaVgFfXObqzu3n6PPMcSII5nw"
+      }
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "not-the-enrolled-key"
+  },
+  "today": {
+    "ring": "invalid",
+    "agreesWithExpected": true
+  }
+}

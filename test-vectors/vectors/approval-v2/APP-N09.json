@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "APP-N09",
+  "family": "approval-v2",
+  "legacy": "L10",
+  "kind": "negative",
+  "tags": [],
+  "about": "an answer that moved the expiry out",
+  "input": {
+    "question": {
+      "id": "q-1",
+      "accessor": "acc-1",
+      "content": {
+        "accessor": "acc-1",
+        "path": "secret/data/svc/mac/key",
+        "operation": "read",
+        "requester": "agent:a1",
+        "requestHash": "3342c78c4afeedaa7b844b9f35868c1a39e295a79ae837f2f01cadd857beab2b"
+      },
+      "contentHash": "3230928a479cafd5a3b1ba4bc0e964633d953312d972338740c5729295891d76",
+      "choices": [
+        "approve",
+        "deny"
+      ],
+      "expiresAt": 1800000300
+    },
+    "answer": {
+      "questionId": "q-1",
+      "accessor": "acc-1",
+      "requestPath": "secret/data/svc/mac/key",
+      "operation": "read",
+      "requestHash": "3342c78c4afeedaa7b844b9f35868c1a39e295a79ae837f2f01cadd857beab2b",
+      "contentHash": "3230928a479cafd5a3b1ba4bc0e964633d953312d972338740c5729295891d76",
+      "choice": "approve",
+      "expiresAt": 1800001300,
+      "signature": "eLxhvXar6vk779V6xn6IevLNgk/+EfMMFTKTnaXjDsuwf4DIk97GQpcUxxepy1inBux1zYpbxoZbMjvp0aWjDA=="
+    },
+    "deviceKeySpkiB64": "MCowBQYDK2VwAyEAPKNdSSghv4QVyNTLvry96MCaWO2Bnrfa5C4k8j/QV8o=",
+    "now": 1800000000
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "wrong-request"
+  },
+  "today": {
+    "outcome": "expired",
+    "agreesWithExpected": true
+  }
+}

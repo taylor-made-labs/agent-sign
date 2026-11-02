@@ -1,0 +1,22 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-007",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [],
+  "about": "the chat claude-code-session has this one name",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local/chat/claude-code-session"
+  },
+  "expected": {
+    "result": "accepted",
+    "kind": "chat",
+    "id": "claude-code-session"
+  },
+  "today": {
+    "result": "accepted",
+    "agreesWithExpected": true
+  }
+}

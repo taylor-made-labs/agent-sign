@@ -18,6 +18,33 @@
 //! under git's own names, with no lease and nothing asked (identity review,
 //! 28 Oct 2026). Before, it was signed as an "unidentified agent", which put
 //! an agent's name on the person's own commits.
+//!
+//! **In a launched session** (`agent-sign launch`, with a valid channel in
+//! `AGENT_SIGN_CHANNEL_FD`: see `agent_sign::session`), every command is
+//! the agent's, terminal or not, and its identity is the one the service
+//! gave the session (`SessionIdentity`), asked over the channel: agent marks
+//! and `AGENT_SIGN_AGENT_NAME` change nothing. Every request goes over the
+//! channel, and the channel's descriptor stays open into git, so the signing
+//! program git starts asks over it too.
+//!
+//! **Not in a session** (S8, P7 and decision D1, 1 Nov 2026): an agent
+//! nobody launched (a process with agent marks and no valid channel) has no
+//! identity the service can check, so it gets no token and no signature.
+//! Its commit goes through UNSIGNED, under the agent's own names, after the
+//! same refusals as before (protected branch, forbidden paths, diff limit,
+//! rate limit, allowed names, asked of the service with
+//! `Request::CheckPlainCommit`), and one line on stderr says it is unsigned
+//! because no launcher started it. Commits that merge, rebase, cherry-pick,
+//! revert, am or pull make for such an agent likewise go unsigned. Unsigned
+//! claims nothing; `agent-sign verify` says it can live on a branch but
+//! merging to main will need an attested signature (launcher or approval).
+//!
+//! An agent's principal is in this machine's agents' domain: the wrapper
+//! reads `[identity] machine` from the user's own config (only that file,
+//! and without running git: see `agent_identity_here`), and refuses an
+//! agent's commit when the setting is invalid rather than fall back to
+//! `@agents.local`. The service reads the same setting and is the authority:
+//! it refuses a token for any other domain.
 
 use std::env;
 use std::io::IsTerminal;
@@ -29,7 +56,8 @@ use agent_sign::config::Config;
 use agent_sign::interceptor::CommandInterceptor;
 use agent_sign::lease::branch_matches_blocked;
 use agent_sign::paths;
-use agent_sign::protocol::{Request, Response, client_socket_path, send_request};
+use agent_sign::protocol::{Request, Response, ask_service, service_place};
+use agent_sign::session::Channel;
 use agent_sign::ssh_sign::EVENT_TOKEN_VAR;
 
 /// How many wrappers deep a run may go before the wrapper stops. A git run
@@ -77,12 +105,14 @@ fn main() -> ExitCode {
     // wrapper's own mark (AGENT_RUN_VAR) doesn't count here: it reaches
     // whatever git starts, such as an editor, and a terminal opened from that
     // later is still the person's. Only the signing program reads it.
-    let is_interactive_human = agent_sign::attribution::is_persons_own_commit(
-        std::io::stdin().is_terminal(),
-        std::io::stdout().is_terminal(),
-        paths::env_var_os("FORCE").is_some() || paths::env_var_os("SESSION").is_some(),
-        agent_sign::attribution::agent_mark_present_with(|k| env::var(k).ok()),
-    );
+    let in_session = Channel::from_env().is_some();
+    let is_interactive_human = !in_session
+        && agent_sign::attribution::is_persons_own_commit(
+            std::io::stdin().is_terminal(),
+            std::io::stdout().is_terminal(),
+            paths::env_var_os("FORCE").is_some() || paths::env_var_os("SESSION").is_some(),
+            agent_sign::attribution::agent_mark_present_with(|k| env::var(k).ok()),
+        );
 
     if !decision.is_commit {
         if is_interactive_human {
@@ -96,7 +126,15 @@ fn main() -> ExitCode {
         );
     }
 
-    let identity = agent_sign::attribution::identify_agent();
+    let identity = match agent_identity_here() {
+        Ok(identity) => identity,
+        Err(e) if !is_interactive_human => {
+            eprintln!("[agent-git] {e}");
+            return ExitCode::from(1);
+        }
+        // The person's own commit doesn't depend on agent-sign's settings.
+        Err(_) => None,
+    };
 
     // A commit that asks not to be signed (--no-gpg-sign, or commit.gpgsign
     // set to false for this command or this repository, as test fixtures
@@ -280,6 +318,15 @@ fn alias_makes_commits(real_git: &Path, global: &[String], expansion: &str) -> b
 /// an agent setting its own signing program is going around agent-sign on
 /// purpose, which it could also do by calling git directly.)
 fn exec_unsigned(real_git: &Path, args: &[String], names: &[(String, String)]) -> ExitCode {
+    exec_unsigned_ok(real_git, args, names).0
+}
+
+/// [`exec_unsigned`], also saying whether git succeeded.
+fn exec_unsigned_ok(
+    real_git: &Path,
+    args: &[String],
+    names: &[(String, String)],
+) -> (ExitCode, bool) {
     let fails = failing_program();
     let mut unsigned: Vec<String> = vec!["-c".to_string(), "commit.gpgsign=false".to_string()];
     for key in [
@@ -296,12 +343,19 @@ fn exec_unsigned(real_git: &Path, args: &[String], names: &[(String, String)]) -
         .iter()
         .map(|(k, v)| (k.as_str(), v.as_str()))
         .collect();
-    exec_system_git(real_git, &unsigned, &names)
+    exec_system_git_ok(real_git, &unsigned, &names)
 }
 
 /// What an unmarked commit with no terminal that was going to be signed
 /// prints, once, on stderr.
 const UNMARKED_UNSIGNED_NOTE: &str = "agent-sign: no terminal and no agent mark, so this commit was made unsigned (an editor's commit button? commit in a terminal to sign it as yourself)";
+
+/// What a commit (or a git run that makes commits) by an agent nobody
+/// launched prints, once, on stderr (D1): it is unsigned, and why.
+const NO_LAUNCHER_NOTE: &str = "agent-sign: this commit is unsigned because no launcher started this agent (run it with `agent-sign launch --agent <name> -- <program>` to sign as a session)";
+
+/// The same note for a git run that may make several commits.
+const NO_LAUNCHER_RUN_NOTE: &str = "agent-sign: commits this git command makes are unsigned because no launcher started this agent (run it with `agent-sign launch --agent <name> -- <program>` to sign as a session)";
 
 /// Runs a commit with no terminal and no agent mark (the user's editor or
 /// GUI as likely as an agent that doesn't say so) as git's own, unsigned
@@ -404,23 +458,40 @@ fn exec_for_agent(
         || subcommand_index
             .and_then(|at| args.get(at))
             .is_some_and(|sub| MAKES_COMMITS.contains(&sub.as_str()));
-    let run = match agent_sign::attribution::identify_agent() {
-        Some(identity) if makes_commits => {
-            let global = &args[..subcommand_index.unwrap_or(0)];
-            Some(prepare_agent_run(real_git, global, identity))
+    let run = if makes_commits {
+        match agent_identity_here() {
+            Ok(Some(identity)) => {
+                let global = &args[..subcommand_index.unwrap_or(0)];
+                Some(prepare_agent_run(real_git, global, identity))
+            }
+            Ok(None) => None,
+            Err(e) => {
+                // Fail closed: signing on, no token, so any commit this run
+                // makes fails rather than go unsigned or reach the person's key.
+                eprintln!(
+                    "[agent-git] {e}. agent-sign won't sign commits this git command makes; any commit it needs to make will fail."
+                );
+                Some(AgentRun {
+                    token: None,
+                    names: Vec::new(),
+                    unsigned: false,
+                })
+            }
         }
-        _ => None,
+    } else {
+        None
     };
 
     let signing_key = signing_key_file(None);
     let signing_key = signing_key.display().to_string();
+    let unsigned_run = run.as_ref().is_some_and(|r| r.unsigned);
     let mut settings: Vec<(&str, &str)> = match run {
+        Some(AgentRun { unsigned: true, .. }) | None => vec![("commit.gpgsign", "false")],
         Some(_) => vec![
             ("commit.gpgsign", "true"),
             ("gpg.format", "ssh"),
             ("user.signingkey", signing_key.as_str()),
         ],
-        None => vec![("commit.gpgsign", "false")],
     };
     settings.extend([
         ("tag.gpgSign", "false"),
@@ -450,7 +521,46 @@ fn exec_for_agent(
             cmd.env(key, value);
         }
     }
-    run_git(cmd, real_git)
+    let (code, worked) = run_git_ok(cmd, real_git);
+    if unsigned_run && worked {
+        eprintln!("{NO_LAUNCHER_RUN_NOTE}");
+    }
+    code
+}
+
+/// The agent behind this process (see `agent_sign::attribution::identify_agent`),
+/// named in this machine's agents' domain: `@<machine>.agents.local` when the
+/// user's own config sets `[identity] machine`, else `@agents.local`.
+/// `Ok(None)` when no agent is behind it; then the config isn't read at all,
+/// so the person's own commands never depend on it. An error (an invalid
+/// machine name, a config that can't be read) names the setting: the
+/// caller refuses the agent's commit rather than sign it under another
+/// domain. Only the user's file is read, never a repository's, and no git
+/// runs (the hot path of every agent commit).
+fn agent_identity_here() -> Result<Option<AgentIdentity>, String> {
+    // A launched session is who the service says it is, whatever its
+    // environment claims.
+    if let Some(channel) = Channel::from_env() {
+        return match channel.ask(&Request::SessionIdentity) {
+            Ok(Response::SessionIdentity { identity }) => Ok(Some(identity)),
+            Ok(Response::Error { message }) => Err(format!(
+                "the agent-sign service didn't say who this launched session is: {message}"
+            )),
+            Ok(other) => Err(format!(
+                "unexpected answer to the session identity request: {other:?}"
+            )),
+            Err(e) => Err(format!(
+                "the agent-sign service didn't say who this launched session is ({e})"
+            )),
+        };
+    }
+    let Some(identity) = agent_sign::attribution::identify_agent() else {
+        return Ok(None);
+    };
+    let settings = agent_sign::config::IdentityConfig::load_user().map_err(|e| {
+        format!("agent-sign's [identity] settings (the machine name) can't be used: {e}")
+    })?;
+    Ok(Some(identity.in_domain(&settings.domain())))
 }
 
 /// What an identified agent's commit-making git run needs: the run token
@@ -459,6 +569,9 @@ fn exec_for_agent(
 struct AgentRun {
     token: Option<String>,
     names: Vec<(String, String)>,
+    /// True for an agent nobody launched whose run the service allowed: its
+    /// commits go through unsigned (D1), under `names`, with no token.
+    unsigned: bool,
 }
 
 /// Asks the service for a run token for `identity` in the repository the
@@ -474,15 +587,24 @@ fn prepare_agent_run(real_git: &Path, global: &[String], identity: AgentIdentity
             return AgentRun {
                 token: None,
                 names: Vec::new(),
+                unsigned: false,
             };
         }
     };
+    // Nobody launched this agent (no valid channel): no token, ever (D1).
+    // The service is only asked whether the run may go ahead unsigned.
+    let plain = Channel::from_env().is_none();
     let token = match &place {
         None => Err("agent-sign couldn't identify the repository".to_string()),
         Some((_, branch)) if wrapper_protects(&config, branch) => Err(protected(branch)),
+        Some((repo, branch)) if plain => {
+            check_plain(repo, branch, &identity).map(|()| String::new())
+        }
         Some((repo, branch)) => run_token(repo, branch, &identity),
     };
+    let allowed_unsigned = plain && token.is_ok();
     let token = match token {
+        Ok(_) if plain => None,
         Ok(token) => Some(token),
         Err(why) => {
             eprintln!(
@@ -496,7 +618,33 @@ fn prepare_agent_run(real_git: &Path, global: &[String], identity: AgentIdentity
     let engine = AttributionEngine::new(config.attribution, config.agent, config.human)
         .with_identity(identity);
     let names = engine.compute_env_vars("").into_iter().collect();
-    AgentRun { token, names }
+    AgentRun {
+        token,
+        names,
+        unsigned: allowed_unsigned,
+    }
+}
+
+/// Asks the service whether an agent nobody launched may make an unsigned
+/// commit in `repo` on `branch` (`Request::CheckPlainCommit`): the name
+/// rules, the protected branches and the rate limit. `Err` is the reason,
+/// in the service's words, or that it couldn't be reached (the plain path
+/// fails closed, as it always did: the rules couldn't be checked).
+fn check_plain(repo: &str, branch: &str, identity: &AgentIdentity) -> Result<(), String> {
+    let ask = Request::CheckPlainCommit {
+        repo: repo.to_string(),
+        branch: branch.to_string(),
+        identity: identity.clone(),
+    };
+    match ask_service(&ask) {
+        Ok(Response::Success) => Ok(()),
+        Ok(Response::Error { message }) => Err(message),
+        Ok(other) => Err(format!("unexpected answer to the policy check: {other:?}")),
+        Err(e) => Err(format!(
+            "the agent-sign service at {} didn't answer ({e})",
+            service_place()
+        )),
+    }
 }
 
 /// Whether the wrapper refuses an agent's commits on `branch`: one of the
@@ -516,11 +664,10 @@ fn protected(branch: &str) -> String {
 /// A lease (granted without asking unless `approval = "device-owner"`) and
 /// then a run token for `identity` in `repo` on `branch`.
 fn run_token(repo: &str, branch: &str, identity: &AgentIdentity) -> Result<String, String> {
-    let socket_path = client_socket_path();
     let unreachable = |e: Box<dyn std::error::Error>| {
         format!(
             "the agent-sign service at {} didn't answer ({e})",
-            socket_path.display()
+            service_place()
         )
     };
     let lease = Request::RequestLease {
@@ -529,7 +676,7 @@ fn run_token(repo: &str, branch: &str, identity: &AgentIdentity) -> Result<Strin
         intent: format!("git run by {}", identity.principal),
         duration_secs: Some(7200),
     };
-    match send_request(&socket_path, &lease).map_err(unreachable)? {
+    match ask_service(&lease).map_err(unreachable)? {
         Response::LeaseGranted { .. } => {}
         Response::Error { message } => return Err(message),
         other => return Err(format!("unexpected answer to the lease request: {other:?}")),
@@ -539,7 +686,7 @@ fn run_token(repo: &str, branch: &str, identity: &AgentIdentity) -> Result<Strin
         branch: branch.to_string(),
         identity: identity.clone(),
     };
-    match send_request(&socket_path, &run).map_err(unreachable)? {
+    match ask_service(&run).map_err(unreachable)? {
         Response::TokenIssued { token } => Ok(token),
         Response::Error { message } => Err(message),
         other => Err(format!("unexpected answer to the token request: {other:?}")),
@@ -589,27 +736,44 @@ fn git_command(real_git: &Path) -> Command {
     cmd
 }
 
-fn run_git(mut cmd: Command, real_git: &Path) -> ExitCode {
+fn run_git(cmd: Command, real_git: &Path) -> ExitCode {
+    run_git_ok(cmd, real_git).0
+}
+
+/// [`run_git`], also saying whether git succeeded (`ExitCode` can't be
+/// compared), for the runs that print a note only when they worked.
+fn run_git_ok(mut cmd: Command, real_git: &Path) -> (ExitCode, bool) {
     match cmd.status() {
-        Ok(status) => ExitCode::from(status.code().unwrap_or(1) as u8),
+        Ok(status) => (
+            ExitCode::from(status.code().unwrap_or(1) as u8),
+            status.success(),
+        ),
         Err(e) => {
             eprintln!(
                 "[agent-git] Failed to execute git at {}: {}",
                 real_git.display(),
                 e
             );
-            ExitCode::from(1)
+            (ExitCode::from(1), false)
         }
     }
 }
 
 fn exec_system_git(real_git: &Path, args: &[String], extra_envs: &[(&str, &str)]) -> ExitCode {
+    exec_system_git_ok(real_git, args, extra_envs).0
+}
+
+fn exec_system_git_ok(
+    real_git: &Path,
+    args: &[String],
+    extra_envs: &[(&str, &str)],
+) -> (ExitCode, bool) {
     let mut cmd = git_command(real_git);
     cmd.args(args);
     for (k, v) in extra_envs {
         cmd.env(k, v);
     }
-    run_git(cmd, real_git)
+    run_git_ok(cmd, real_git)
 }
 
 /// Runs the person's own command on the real git. The wrapper's agent mark
@@ -723,8 +887,6 @@ fn handle_agent_commit(
         );
         return ExitCode::from(1);
     };
-    let socket_path = client_socket_path();
-
     let repo_path = Path::new(&repo);
     let config = match Config::try_load(Some(repo_path)) {
         Ok(config) => config,
@@ -748,6 +910,21 @@ fn handle_agent_commit(
         return ExitCode::from(1);
     }
 
+    // S8 (P7, D1): an agent nobody launched has no identity the service can
+    // check, so its commit is made unsigned, after the refusals above and
+    // the service's policy answer. Only a launched session signs.
+    if Channel::from_env().is_none() {
+        return unsigned_agent_commit(
+            real_git,
+            original_args,
+            commit_index,
+            identity,
+            config,
+            &repo,
+            &branch,
+        );
+    }
+
     // 1. Ensure lease is active (request lease if needed)
     let lease_req = Request::RequestLease {
         repo: repo.clone(),
@@ -756,7 +933,7 @@ fn handle_agent_commit(
         duration_secs: Some(7200),
     };
 
-    let lease_id = match send_request(&socket_path, &lease_req) {
+    let lease_id = match ask_service(&lease_req) {
         Ok(Response::LeaseGranted { lease_id, .. }) => lease_id,
         Ok(Response::Error { message }) => {
             eprintln!("[agent-git] No signing lease: {}", message);
@@ -765,7 +942,7 @@ fn handle_agent_commit(
         Err(e) => {
             eprintln!(
                 "[agent-git] Unable to connect to the agent-sign service at {}: {}",
-                socket_path.display(),
+                service_place(),
                 e
             );
             eprintln!("[agent-git] Hint: Start the service with `agent-signd`");
@@ -788,7 +965,7 @@ fn handle_agent_commit(
         identity: identity.clone(),
     };
 
-    let token = match send_request(&socket_path, &token_req) {
+    let token = match ask_service(&token_req) {
         Ok(Response::TokenIssued { token }) => token,
         Ok(Response::Error { message }) => {
             eprintln!("[agent-git] Token issuance failed: {}", message);
@@ -808,12 +985,17 @@ fn handle_agent_commit(
     let ssh_sign_bin = find_ssh_sign_bin();
     // Name the agent in its commits when it can be told (see KNOWN_AGENTS).
     let mut agent = config.agent;
-    let explicit = agent_sign::paths::env_var("AGENT_NAME").is_some();
-    agent.name = agent_sign::attribution::effective_agent_name(
-        &agent.name,
-        explicit,
-        agent_sign::attribution::detect_agent(),
-    );
+    if Channel::from_env().is_some() {
+        // A launched session's name is the service's, not its environment's.
+        agent.name = identity.name.clone();
+    } else {
+        let explicit = agent_sign::paths::env_var("AGENT_NAME").is_some();
+        agent.name = agent_sign::attribution::effective_agent_name(
+            &agent.name,
+            explicit,
+            agent_sign::attribution::detect_agent(),
+        );
+    }
     let attr_engine =
         AttributionEngine::new(config.attribution, agent, config.human).with_identity(identity);
     let attr_envs = attr_engine.compute_env_vars("commit");
@@ -874,6 +1056,65 @@ fn handle_agent_commit(
     }
 
     exec_system_git(real_git, &git_args, &env_pairs)
+}
+
+/// Makes the commit of an agent nobody launched, UNSIGNED (D1). The service
+/// has the last word on the name rules, the protected branches and the rate
+/// limit (`Request::CheckPlainCommit`); on any refusal, or when it can't be
+/// reached, nothing is committed. The commit carries the agent's own names
+/// (the attribution mode's author and committer), no `gpgsig`, and signing
+/// can't happen by accident: the commit's own signing requests are taken out
+/// and every signing program is one that fails (`exec_unsigned`). One line
+/// on stderr, after the commit is made, says it is unsigned because no
+/// launcher started it.
+fn unsigned_agent_commit(
+    real_git: &Path,
+    original_args: &[String],
+    commit_index: Option<usize>,
+    identity: AgentIdentity,
+    config: Config,
+    repo: &str,
+    branch: &str,
+) -> ExitCode {
+    if let Err(message) = check_plain(repo, branch, &identity) {
+        eprintln!("[agent-git] {message}");
+        return ExitCode::from(1);
+    }
+    let mut agent = config.agent;
+    let explicit = agent_sign::paths::env_var("AGENT_NAME").is_some();
+    agent.name = agent_sign::attribution::effective_agent_name(
+        &agent.name,
+        explicit,
+        agent_sign::attribution::detect_agent(),
+    );
+    let attr_engine =
+        AttributionEngine::new(config.attribution, agent, config.human).with_identity(identity);
+    let attr_envs = attr_engine.compute_env_vars("commit");
+    let names: Vec<(String, String)> = attr_envs
+        .iter()
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
+    let Some(at) = commit_index else {
+        return exec_unsigned_ok(real_git, original_args, &names).0;
+    };
+    let message_changed = if attr_engine.mode == AttributionMode::Trailers {
+        apply_trailers_to_args(original_args, &attr_engine, "none (unsigned)")
+    } else {
+        original_args.to_vec()
+    };
+    let mut args = agent_sign::interceptor::without_gpgsign_settings(&message_changed[..at]);
+    args.push(message_changed[at].clone());
+    args.push("--no-gpg-sign".to_string());
+    args.extend(agent_sign::interceptor::without_signing_requests(
+        &message_changed[at + 1..],
+    ));
+    let (code, made) = exec_unsigned_ok(real_git, &args, &names);
+    if made {
+        eprintln!("{NO_LAUNCHER_NOTE}");
+    }
+    code
 }
 
 /// Runs git with the commit's own global options, from the same folder, so

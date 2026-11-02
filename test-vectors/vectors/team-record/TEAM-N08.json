@@ -1,0 +1,41 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "TEAM-N08",
+  "family": "team-record",
+  "legacy": "L05",
+  "kind": "negative",
+  "tags": [],
+  "about": "a pass signed by a key that is not the named reviewer's",
+  "input": {
+    "op": "review",
+    "trust": {
+      "taylor": {
+        "dev-taylor-1": "MCowBQYDK2VwAyEA3FVy4oO3jTXZbjdBHVRxNq1jqHOdrfbetyboX05DJv8="
+      },
+      "reviewers": {
+        "reviewer-1": "MCowBQYDK2VwAyEAirspPpsVYkoKc9LDkaXIgH9FKWPR4jRjvdwnqKU+3iM="
+      }
+    },
+    "change": "chg-1",
+    "commit": "abc123",
+    "records": [
+      {
+        "change": "chg-1",
+        "commit": "abc123",
+        "verdict": "pass",
+        "reviewer": "reviewer-1",
+        "signature": "Hmn2uzvgnWusSnuoqW1Fn9yBLjz9AVv4CXkPNgNDYQjaAox6/CqqOJzULvTTJplgY58aXVJWVxL7VO+n/Mz9DQ=="
+      }
+    ]
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "bad-signature"
+  },
+  "today": {
+    "passed": false,
+    "failed": false,
+    "by": [],
+    "agreesWithExpected": true
+  }
+}

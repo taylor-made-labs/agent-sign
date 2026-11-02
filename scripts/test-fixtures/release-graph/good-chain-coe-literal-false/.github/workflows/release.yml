@@ -1,0 +1,162 @@
+name: Release
+
+# Publishing is a workflow_dispatch workflow meant to run on main, taking the
+# tag as an input. No tag push starts it, so nobody can publish by tagging a
+# commit whose workflow files were weakened.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release, for example v1.2.3'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  TAG: ${{ inputs.tag }}
+
+jobs:
+  on-main:
+    name: Dispatched from main, tag is on main
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the whole history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+      - name: Fail unless this run is on main
+        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Fail unless the tag name has the release form
+        run: '[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]'
+      - name: Fetch main and the tags
+        run: git fetch origin main --tags
+      - name: Fail unless the tagged commit is an ancestor of origin/main
+        run: git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main
+      - name: Resolve the tag to a commit, once
+        id: resolve
+        run: echo "sha=$(git rev-parse "refs/tags/$TAG^{commit}")" >> "$GITHUB_OUTPUT"
+      - name: Fail unless the resolved commit is a full commit hash
+        run: '[[ "${{ steps.resolve.outputs.sha }}" =~ ^[0-9a-f]{40}$ ]]'
+
+  quality:
+    name: Quality gate (main's ci.yml on the tagged commit)
+    needs: on-main
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.on-main.outputs.sha }}
+
+  build-release:
+    name: Build (${{ matrix.target }})
+    needs: [on-main, quality]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: false
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_name: agent-sign-x86_64-unknown-linux-gnu
+    steps:
+      - name: Checkout the tag
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ needs.on-main.outputs.sha }}
+      - name: Fail unless the checkout is the commit that was checked
+        run: test "$(git rev-parse HEAD)" = "${{ needs.on-main.outputs.sha }}"
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@a54c7afa936fefeb4456b2dd8068152669aa8203 # stable
+        with:
+          toolchain: 1.98.1
+          targets: ${{ matrix.target }}
+      - name: Build release binaries
+        run: cargo build --release --locked --target ${{ matrix.target }}
+      - name: Package release archive
+        shell: bash
+        run: |
+          mkdir -p pkg/${{ matrix.archive_name }}/bin
+          tar -czf pkg/${{ matrix.archive_name }}.tar.gz -C pkg ${{ matrix.archive_name }}
+          sha256sum pkg/${{ matrix.archive_name }}.tar.gz > pkg/${{ matrix.archive_name }}.sha256
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@5a1b2c3d4e5f60718293a4b5c6d7e8f901234567 # v2
+        with:
+          subject-path: pkg/${{ matrix.archive_name }}.tar.gz
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.archive_name }}
+          path: |
+            pkg/*.tar.gz
+            pkg/*.sha256
+
+  verify-artifacts:
+    name: Verify packaged artifacts
+    needs: build-release
+    runs-on: ubuntu-latest
+    continue-on-error: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Download built artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: release-artifacts
+      - name: Re-check sha256 recorded at build
+        run: |
+          for d in release-artifacts/*; do (cd "$d" && sha256sum -c ./*.sha256); done
+      - name: Unpack, run --version, check binaries are clean
+        run: |
+          for t in release-artifacts/*/*.tar.gz; do
+            mkdir -p unpacked && tar -xzf "$t" -C unpacked
+          done
+          for b in unpacked/*/bin/agent-sign unpacked/*/bin/agent-signd; do "$b" --version; done
+          for d in unpacked/*/bin; do scripts/check-binary-clean.sh "$d"; done
+      - name: Verify build provenance of every archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for t in release-artifacts/*/*.tar.gz; do
+            gh attestation verify "$t" --repo ${{ github.repository }} --signer-workflow ${{ github.repository }}/.github/workflows/release.yml --source-ref refs/heads/main
+          done
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [on-main, quality, build-release, verify-artifacts]
+    environment: release
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Download built artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: release-artifacts
+      - name: Verify build provenance of every archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for t in release-artifacts/*/*.tar.gz; do
+            gh attestation verify "$t" --repo ${{ github.repository }} --signer-workflow ${{ github.repository }}/.github/workflows/release.yml --source-ref refs/heads/main
+          done
+      - name: Fetch the tags again
+        run: git fetch --force --tags origin
+      - name: Fail unless the tag still names the commit that was checked
+        run: test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "${{ needs.on-main.outputs.sha }}"
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a4d3a4e7b3c # v2
+        with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ needs.on-main.outputs.sha }}
+          files: release-artifacts/*/*.tar.gz
+          prerelease: ${{ contains(inputs.tag, '-') }}

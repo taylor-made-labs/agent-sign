@@ -25,6 +25,12 @@ path = "src/bin/agent_signd.rs"
 name = "agent-ssh-sign"
 path = "src/bin/agent_ssh_sign.rs"
 
+# The launcher, in system mode: starts each session in a slot account of its
+# own (docs/system-mode.md, build step 3).
+[[bin]]
+name = "agent-launchd"
+path = "src/bin/agent_launchd.rs"
+
 # The git wrapper, installed as `git` (formerly agent-git).
 [[bin]]
 name = "agent-git"
@@ -52,6 +58,29 @@ libc = "=0.2.189"
 # here. The exact version is pinned here as well as in Cargo.lock, so an
 # upgrade is its own change; only the features the service calls are on.
 ssh-key = { version = "=0.6.7", default-features = false, features = ["alloc", "ed25519"] }
+# Unicode NFKC normalisation for people's names (31 Oct 2026): a person's
+# name is compared with agents' names after NFKC and case folding, so a
+# `[identity] people` entry, a `[human]` name or an account's full name
+# written in fullwidth letters ("Ｔａｙｌｏｒ") still protects "taylor".
+# unicode-normalization is the unicode-rs project's widely used
+# implementation (MIT OR Apache-2.0, with tinyvec, Zlib OR Apache-2.0 OR
+# MIT); writing the Unicode tables by hand would be more code of our own to
+# audit. The exact version is pinned here as well as in Cargo.lock, so an
+# upgrade is its own change.
+unicode-normalization = "=0.1.24"
+# OpenBao client (system mode, 1 Nov 2026): the issuer in
+# src/issuer_openbao.rs talks HTTPS to OpenBao. ureq is a small, maintained
+# HTTP client (MIT OR Apache-2.0) and rustls its TLS stack; the service
+# runs no other program, so some HTTP client is needed, and writing HTTP
+# and TLS by hand would be more security-critical code of our own to audit.
+# Only what the issuer calls is on: no compression, no cookies, no JSON
+# layer, and none of the bundled web root certificates (the issuer trusts
+# only the one CA file named in the settings). The crypto provider is
+# rustls's ring (Apache-2.0 AND ISC; rustls-webpki and untrusted are ISC,
+# which deny.toml now allows). Exact versions are pinned here as well as in
+# Cargo.lock, so an upgrade is its own change.
+ureq = { version = "=3.5.0", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "=0.23.46", default-features = false, features = ["ring", "std"] }
 
 # macOS only: the bridge to the system's LocalAuthentication framework
 # (Touch ID, Apple Watch, or the login password), which the service uses to

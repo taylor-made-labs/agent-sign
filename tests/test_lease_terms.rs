@@ -4,6 +4,10 @@
 //! Each test names the property it holds: a lease survives a restart without
 //! asking again, and nothing lets its terms grow without a new approval.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+
 use agent_sign::config::{LeaseMode, LeaseScope};
 use agent_sign::lease::{LeaseEngine, LeasePolicy};
 
@@ -382,6 +386,7 @@ fn service_refuses_to_start_with_an_unreadable_ceiling() {
     std::fs::write(&socket, b"").unwrap(); // stands in for a running service's socket
 
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_agent-signd"))
+        .die_with_parent()
         .arg("--socket")
         .arg(&socket)
         .arg("--config")

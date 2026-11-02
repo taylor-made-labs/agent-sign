@@ -1,0 +1,24 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-010",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [
+    "party-mapping"
+  ],
+  "about": "today's party person:you maps to one name",
+  "input": {
+    "op": "party-to-name",
+    "party": "person:you"
+  },
+  "expected": {
+    "result": "accepted",
+    "name": "spiffe://suite.local/person/you"
+  },
+  "today": {
+    "result": "accepted",
+    "name": "spiffe://suite.local/person/you",
+    "agreesWithExpected": true
+  }
+}

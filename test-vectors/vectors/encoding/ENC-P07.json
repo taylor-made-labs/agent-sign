@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-P07",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [],
+  "about": "deep nesting",
+  "input": {
+    "json_text": "{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":[1,[2,[3,[4]]]]}}}}}}}}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a5b312c5b322c5b332c5b345d5d5d5d7d7d7d7d7d7d7d7d",
+    "text": "{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":{\"k\":[1,[2,[3,[4]]]]}}}}}}}}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a5b312c5b322c5b332c5b345d5d5d5d7d7d7d7d7d7d7d7d"
+      },
+      "L05": {
+        "bytes": "7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a5b312c5b322c5b332c5b345d5d5d5d7d7d7d7d7d7d7d7d"
+      },
+      "L09": {
+        "bytes": "7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a5b312c5b322c5b332c5b345d5d5d5d7d7d7d7d7d7d7d7d"
+      },
+      "L12": {
+        "bytes": "7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a5b312c5b322c5b332c5b345d5d5d5d7d7d7d7d7d7d7d7d"
+      },
+      "L13": {
+        "bytes": "7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a5b312c5b322c5b332c5b345d5d5d5d7d7d7d7d7d7d7d7d"
+      },
+      "L07": {
+        "bytes": "7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a7b226b223a5b312c5b322c5b332c5b345d5d5d5d7d7d7d7d7d7d7d7d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": true
+  }
+}

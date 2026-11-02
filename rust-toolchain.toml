@@ -1,0 +1,9 @@
+# The Rust toolchain every build uses, pinned to an exact version so a new
+# stable release can never change what a release is built with. 1.98.1 is what
+# the Hetzner server and the Raspberry Pi both run. To move it, change this
+# file and the toolchain: lines in .github/workflows (scripts/check-release-graph.py
+# fails when they disagree), and say so in the commit.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

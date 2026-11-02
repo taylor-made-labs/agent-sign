@@ -42,6 +42,19 @@
 //! whose prompts are logged, so "no approval was asked" is "the log is
 //! empty".
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+
+#[path = "support/key_agent.rs"]
+mod key_agent;
+
+#[path = "support/memory_keys.rs"]
+mod memory_keys;
+
+#[path = "support/no_plain_keys.rs"]
+mod no_plain_keys;
+use die_with_parent::DieWithParent;
+
 use std::ffi::OsString;
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -160,6 +173,11 @@ impl Drop for World {
             let _ = child.kill();
             let _ = child.wait();
         }
+        // The runtime half of the no-unprotected-test-keys guard: nothing a
+        // test did may leave an unencrypted private key under its home.
+        if !std::thread::panicking() {
+            no_plain_keys::assert_no_plain_private_keys(&self.home);
+        }
     }
 }
 
@@ -261,14 +279,11 @@ impl World {
     /// The throwaway person key, the fake signer, the person's global git
     /// config, and agent-sign's config.toml.
     fn write_person_setup(&self, signer: PersonSigner, approval: Option<&str>) {
+        // Only the public half is ever needed (git's `user.signingkey` names the
+        // `.pub` file; the signer is the fake below). The key is made in memory and
+        // never written, so no private key exists on disk.
         let key = self.home.join("person_key");
-        let out = self
-            .cmd(&self.ssh_keygen)
-            .args(["-q", "-t", "ed25519", "-N", "", "-C", "person", "-f"])
-            .arg(&key)
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "ssh-keygen: {}", text(&out));
+        memory_keys::write_public_only(&key, "person");
 
         let fake = self.home.join("person-signer.sh");
         fs::write(
@@ -295,6 +310,12 @@ impl World {
                 PathBuf::from(env!("CARGO_BIN_EXE_agent-ssh-sign"))
             }
         };
+        // Requirement change (plan "next: real use on servers", check 6a,
+        // 30 Oct 2026): the service certifies only built-in agent names and
+        // those in `[identity] allowed_agents`, so the config lists "My Bot
+        // 2", the name `explicit_name_and_session_override_the_agents_own_mark`
+        // gives its agent, as a user would.
+        agent_sign_config.push_str("[identity]\nallowed_agents = [\"my-bot-2\"]\n");
         let state = self.home.join(".agent-sign");
         fs::create_dir_all(&state).unwrap();
         fs::write(state.join("config.toml"), agent_sign_config).unwrap();
@@ -314,6 +335,7 @@ impl World {
     fn start_service(&mut self, setup: ServiceSetup) {
         let log = fs::File::create(self.home.join("service.log")).unwrap();
         let mut cmd = self.cmd(Path::new(env!("CARGO_BIN_EXE_agent-signd")));
+        cmd.die_with_parent();
         cmd.arg("--socket")
             .arg(&self.socket)
             .env("AGENT_SIGN_TEST_AUTH", setup.auth)
@@ -430,6 +452,41 @@ impl World {
 
     fn rev(&self, repo: &Path, rev: &str) -> String {
         self.git_ok(repo, &["rev-parse", rev])
+    }
+
+    /// The wrapper run as a launched session of `slug` (`agent-sign launch
+    /// --agent <slug> -- agent-git ...`), in `repo`.
+    ///
+    /// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    /// launched. A plain process with an agent's marks now gets an unsigned
+    /// commit (see `test_launcher_policy.rs`, the `d1_*` tests); the tests
+    /// below that expect a Good signature as the agent start the agent this
+    /// way. The launcher scrubs the marks and the service makes the session
+    /// (and so the principal): `<slug>.<8 hex>@agents.local`, not the
+    /// marks' session hash, so those tests read the principal back from the
+    /// commit ([`launched_identity`]).
+    fn launched(&self, repo: &Path, slug: &str, program: &Path, args: &[&str]) -> Output {
+        let mut cmd = self.cmd(Path::new(env!("CARGO_BIN_EXE_agent-sign")));
+        cmd.args(["launch", "--agent", slug, "--"])
+            .arg(program)
+            .args(args)
+            .current_dir(repo);
+        run_within(
+            cmd,
+            &format!("launched {slug} running {program:?} {args:?}"),
+        )
+    }
+
+    /// [`World::agent`], launched as `slug`.
+    fn agent_launched(&self, repo: &Path, slug: &str, args: &[&str]) -> Output {
+        self.launched(repo, slug, Path::new(env!("CARGO_BIN_EXE_agent-git")), args)
+    }
+
+    /// [`World::agent_commit`], launched as `slug`.
+    fn agent_commit_launched(&self, repo: &Path, slug: &str, file: &str) -> Output {
+        fs::write(repo.join(file), format!("{file}\n")).unwrap();
+        self.git_ok(repo, &["add", file]);
+        self.agent_launched(repo, slug, &["commit", "-m", &format!("feat: {file}")])
     }
 
     /// `%an <%ae>` and `%cn <%ce>` of `rev`.
@@ -561,6 +618,31 @@ fn assert_signed_as(w: &World, repo: &Path, rev: &str, id: &Identity, what: &str
         g == "G" && signer == id.principal && shown.contains(&good),
         "{what}: {rev} should have a {good} (got %G?={g:?}, %GS={signer:?}{ca_note}):\n{shown}"
     );
+}
+
+/// The identity of the launched session that made `rev`: its display name
+/// and the principal in its committer line, which must be the service's
+/// shape for a session of `slug`, `<slug>.<8 hex>@agents.local`. Read back
+/// from the commit because the service, not the test, makes a session's id.
+fn launched_identity(w: &World, repo: &Path, rev: &str, name: &str, slug: &str) -> Identity {
+    let (_, committer) = w.author_and_committer(repo, rev);
+    let email = committer
+        .rsplit_once('<')
+        .and_then(|(_, rest)| rest.strip_suffix('>'))
+        .unwrap_or("")
+        .to_string();
+    let session = email
+        .strip_prefix(&format!("{slug}."))
+        .and_then(|rest| rest.strip_suffix("@agents.local"))
+        .unwrap_or("");
+    assert!(
+        session.len() == 8 && session.bytes().all(|b| b.is_ascii_hexdigit()),
+        "{rev}'s committer {committer:?} isn't a launched {slug} session's principal"
+    );
+    Identity {
+        name: name.to_string(),
+        principal: email,
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -767,14 +849,9 @@ fn approval_device_owner_restores_asking_and_a_refusal_stops_the_commit() {
     );
     let repo = w.repo();
     let before = w.rev(&repo, "HEAD");
-    let out = w.agent_commit(
-        &repo,
-        &[
-            ("CLAUDECODE", "1"),
-            ("CLAUDE_CODE_SESSION_ID", "cc-session-0003"),
-        ],
-        "agent.txt",
-    );
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched (the lease and its approval are the launched session's).
+    let out = w.agent_commit_launched(&repo, "claude-code", "agent.txt");
     assert!(
         !out.status.success(),
         "with approval = \"device-owner\" and the owner refusing, the commit must fail:\n{}",
@@ -800,15 +877,12 @@ fn approval_device_owner_when_allowed_still_signs_as_the_agent() {
         }),
     );
     let repo = w.repo();
-    let session = "cc-session-0004";
-    let out = w.agent_commit(
-        &repo,
-        &[("CLAUDECODE", "1"), ("CLAUDE_CODE_SESSION_ID", session)],
-        "agent.txt",
-    );
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched; the principal is read back from the commit.
+    let out = w.agent_commit_launched(&repo, "claude-code", "agent.txt");
     assert_ok(&w, &out, "approved opt-in commit");
     assert_ne!(w.approvals_asked(), "", "the owner should have been asked");
-    let id = identity("Claude Code", "claude-code", Some(session));
+    let id = launched_identity(&w, &repo, "HEAD", "Claude Code", "claude-code");
     assert_signed_as(&w, &repo, "HEAD", &id, "approved opt-in commit");
 }
 
@@ -860,14 +934,11 @@ fn trust_line_prints_the_agents_allowed_signers_line() {
 fn an_agent_commit_is_good_for_its_principal_under_the_trust_line() {
     let w = World::new(PersonSigner::Fake, Some(AUTO));
     let repo = w.repo();
-    let session = "cc-session-0005";
-    let out = w.agent_commit(
-        &repo,
-        &[("CLAUDECODE", "1"), ("CLAUDE_CODE_SESSION_ID", session)],
-        "agent.txt",
-    );
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched; the principal is read back from the commit.
+    let out = w.agent_commit_launched(&repo, "claude-code", "agent.txt");
     assert_ok(&w, &out, "Claude Code commit");
-    let id = identity("Claude Code", "claude-code", Some(session));
+    let id = launched_identity(&w, &repo, "HEAD", "Claude Code", "claude-code");
     assert_signed_as(&w, &repo, "HEAD", &id, "Claude Code commit");
 }
 
@@ -912,39 +983,33 @@ fn the_legacy_shared_agent_key_is_not_used_for_new_signatures() {
 #[test]
 fn the_signature_check_accepts_a_hand_made_agent_certificate() {
     let w = World::new(PersonSigner::Fake, None);
-    let keys = w.home.join("handmade");
-    fs::create_dir_all(&keys).unwrap();
     let principal = identity("Claude Code", "claude-code", Some("hand-made")).principal;
-    for (name, comment) in [("ca", "ca"), ("user", "user")] {
-        let out = w
-            .cmd(&w.ssh_keygen)
-            .args(["-q", "-t", "ed25519", "-N", "", "-C", comment, "-f"])
-            .arg(keys.join(name))
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "ssh-keygen: {}", text(&out));
-    }
-    let out = w
-        .cmd(&w.ssh_keygen)
-        .args(["-q", "-s"])
-        .arg(keys.join("ca"))
-        .args(["-I", "hand-made", "-n", &principal])
-        .arg(keys.join("user.pub"))
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "ssh-keygen -s: {}", text(&out));
+    // Both keys live only in memory: the authority signs the certificate
+    // here, and the user's key signs the commit through a per-test ssh agent
+    // (killed when the test ends) that holds it with the certificate. git
+    // names the certificate (`key::<certificate>`) and ssh-keygen asks the
+    // agent through SSH_AUTH_SOCK; no private key is ever a file.
+    let ca_key = memory_keys::new_ed25519("ca");
+    let user_key = memory_keys::new_ed25519("user");
+    let certificate = key_agent::user_certificate(&ca_key, &user_key, "hand-made", &principal);
+    let agent = key_agent::TestAgent::start();
+    agent.add_ed25519_with_certificate(&user_key, &certificate);
 
     let repo = w.repo();
     fs::write(repo.join("x.txt"), "x\n").unwrap();
     w.git_ok(&repo, &["add", "x.txt"]);
     let program = format!("gpg.ssh.program={}", w.ssh_keygen.display());
-    let key = format!("user.signingkey={}", keys.join("user-cert.pub").display());
-    w.git_ok(
-        &repo,
-        &["-c", &program, "-c", &key, "commit", "-q", "-m", "x"],
-    );
+    let key = format!("user.signingkey=key::{}", certificate.to_openssh().unwrap());
+    let out = w
+        .cmd(&w.real_git)
+        .env("SSH_AUTH_SOCK", agent.socket())
+        .args(["-c", &program, "-c", &key, "commit", "-q", "-m", "x"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    assert!(out.status.success(), "setup git commit: {}", text(&out));
 
-    let ca = fs::read_to_string(keys.join("ca.pub")).unwrap();
+    let ca = memory_keys::public_line(&ca_key);
     let allowed = w.allowed_signers(
         "handmade_allowed_signers",
         &[format!(
@@ -995,17 +1060,31 @@ fn an_identified_agent_commit_is_authored_and_committed_as_the_agent() {
 // 5. Sessions are distinct; agents never share a principal.
 // ---------------------------------------------------------------------------
 
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. One launched session (one `agent-sign launch`) makes two
+/// commits, and both carry the one principal the service gave it, signed as
+/// it. (It was two wrapper runs naming one session through the agent's
+/// marks.)
 #[test]
 fn the_same_session_keeps_one_principal() {
     let w = World::new(PersonSigner::Fake, Some(AUTO));
     let repo = w.repo();
-    let session = "cc-session-0008";
-    let marks: Marks = &[("CLAUDECODE", "1"), ("CLAUDE_CODE_SESSION_ID", session)];
-    let id = identity("Claude Code", "claude-code", Some(session));
     for file in ["one.txt", "two.txt"] {
-        let out = w.agent_commit(&repo, marks, file);
-        assert_ok(&w, &out, file);
+        fs::write(repo.join(file), format!("{file}\n")).unwrap();
     }
+    let out = w.launched(
+        &repo,
+        "claude-code",
+        Path::new("/bin/sh"),
+        &[
+            "-c",
+            r#"git=$1; "$git" add one.txt && "$git" commit -q -m one && "$git" add two.txt && "$git" commit -q -m two"#,
+            "session",
+            env!("CARGO_BIN_EXE_agent-git"),
+        ],
+    );
+    assert_ok(&w, &out, "two commits in one session");
+    let id = launched_identity(&w, &repo, "HEAD", "Claude Code", "claude-code");
     for rev in ["HEAD", "HEAD~1"] {
         assert_attributed_to(&w, &repo, rev, &id, "same session");
         assert_signed_as(&w, &repo, rev, &id, "same session");
@@ -1086,38 +1165,46 @@ fn codex_and_claude_code_never_share_a_principal() {
 const SIX_SESSION: &str = "cc-session-0006-ops";
 const SIX: Marks = &[("CLAUDECODE", "1"), ("CLAUDE_CODE_SESSION_ID", SIX_SESSION)];
 
-fn six() -> Identity {
-    identity("Claude Code", "claude-code", Some(SIX_SESSION))
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. The git commands of group 6 that expect commits signed as the
+/// agent run in a launched `claude-code` session ([`World::agent_launched`]),
+/// and the agent is the principal of the commit they made, read back from
+/// `HEAD` ([`launched_identity`]). The refusal tests of group 8 keep `SIX`,
+/// the plain path (their refusals are the same on both paths).
+fn six(w: &World, repo: &Path) -> Identity {
+    launched_identity(w, repo, "HEAD", "Claude Code", "claude-code")
 }
 
 /// A new commit (merge, revert): signed, authored and committed as the agent.
 fn assert_new_commit_by_agent(w: &World, repo: &Path, out: &Output, what: &str) {
     assert_no_person_signer(w, what);
     assert_ok(w, out, what);
-    assert_signed_as(w, repo, "HEAD", &six(), what);
-    assert_attributed_to(w, repo, "HEAD", &six(), what);
+    let id = six(w, repo);
+    assert_signed_as(w, repo, "HEAD", &id, what);
+    assert_attributed_to(w, repo, "HEAD", &id, what);
 }
 
 /// A replayed commit (rebase, cherry-pick, am): signed as the agent, the
-/// original author kept, the agent as committer.
-fn assert_replayed_by_agent(w: &World, repo: &Path, rev: &str, what: &str) {
-    assert_signed_as(w, repo, rev, &six(), what);
+/// original author kept, the agent as committer. `six_id` is the one session
+/// that replayed it.
+fn assert_replayed_by_agent(w: &World, repo: &Path, rev: &str, six_id: &Identity, what: &str) {
+    assert_signed_as(w, repo, rev, six_id, what);
     let (author, _) = w.author_and_committer(repo, rev);
     assert_eq!(
         author,
         format!("{ORIGINAL_AUTHOR} <{ORIGINAL_AUTHOR_EMAIL}>"),
         "{what}: {rev} should keep its original author"
     );
-    assert_committed_as(w, repo, rev, &six(), what);
+    assert_committed_as(w, repo, rev, six_id, what);
 }
 
 #[test]
 fn an_agents_merge_is_signed_and_made_by_the_agent() {
     let w = World::new(PersonSigner::Fake, Some(AUTO));
     let repo = w.repo();
-    let out = w.agent(
+    let out = w.agent_launched(
         &repo,
-        SIX,
+        "claude-code",
         &["merge", "--no-ff", "-m", "merge feature", "feature"],
     );
     assert_new_commit_by_agent(&w, &repo, &out, "merge --no-ff");
@@ -1127,7 +1214,7 @@ fn an_agents_merge_is_signed_and_made_by_the_agent() {
 fn an_agents_revert_is_signed_and_made_by_the_agent() {
     let w = World::new(PersonSigner::Fake, Some(AUTO));
     let repo = w.repo();
-    let out = w.agent(&repo, SIX, &["revert", "--no-edit", "HEAD"]);
+    let out = w.agent_launched(&repo, "claude-code", &["revert", "--no-edit", "HEAD"]);
     assert_new_commit_by_agent(&w, &repo, &out, "revert");
 }
 
@@ -1148,9 +1235,9 @@ fn an_agents_pull_merge_is_signed_and_made_by_the_agent() {
         ],
     );
     w.commit(&down, "d1.txt", None);
-    let out = w.agent(
+    let out = w.agent_launched(
         &down,
-        SIX,
+        "claude-code",
         &[
             "pull",
             "--no-rebase",
@@ -1170,7 +1257,7 @@ fn an_agents_shell_alias_merge_is_signed_and_made_by_the_agent() {
         &repo,
         &["config", "alias.mm", "!git merge --no-ff -m msg feature"],
     );
-    let out = w.agent(&repo, SIX, &["mm"]);
+    let out = w.agent_launched(&repo, "claude-code", &["mm"]);
     assert_new_commit_by_agent(&w, &repo, &out, "shell alias merge");
 }
 
@@ -1179,7 +1266,7 @@ fn an_agents_rebase_signs_replayed_commits_as_the_agent() {
     let w = World::new(PersonSigner::Fake, Some(AUTO));
     let repo = w.repo();
     w.git_ok(&repo, &["checkout", "-q", "feature"]);
-    let out = w.agent(&repo, SIX, &["rebase", "work"]);
+    let out = w.agent_launched(&repo, "claude-code", &["rebase", "work"]);
     assert_no_person_signer(&w, "rebase");
     assert_ok(&w, &out, "rebase");
     assert_eq!(
@@ -1187,18 +1274,20 @@ fn an_agents_rebase_signs_replayed_commits_as_the_agent() {
         w.rev(&repo, "work"),
         "rebase didn't replay both"
     );
-    assert_replayed_by_agent(&w, &repo, "HEAD", "rebase");
-    assert_replayed_by_agent(&w, &repo, "HEAD~1", "rebase");
+    let id = six(&w, &repo);
+    assert_replayed_by_agent(&w, &repo, "HEAD", &id, "rebase");
+    assert_replayed_by_agent(&w, &repo, "HEAD~1", &id, "rebase");
 }
 
 #[test]
 fn an_agents_cherry_pick_is_signed_as_the_agent() {
     let w = World::new(PersonSigner::Fake, Some(AUTO));
     let repo = w.repo();
-    let out = w.agent(&repo, SIX, &["cherry-pick", "feature~1"]);
+    let out = w.agent_launched(&repo, "claude-code", &["cherry-pick", "feature~1"]);
     assert_no_person_signer(&w, "cherry-pick");
     assert_ok(&w, &out, "cherry-pick");
-    assert_replayed_by_agent(&w, &repo, "HEAD", "cherry-pick");
+    let id = six(&w, &repo);
+    assert_replayed_by_agent(&w, &repo, "HEAD", &id, "cherry-pick");
 }
 
 #[test]
@@ -1221,10 +1310,11 @@ fn an_agents_am_is_signed_as_the_agent() {
         .next()
         .expect("format-patch wrote a patch")
         .to_string();
-    let out = w.agent(&repo, SIX, &["am", &patch]);
+    let out = w.agent_launched(&repo, "claude-code", &["am", &patch]);
     assert_no_person_signer(&w, "am");
     assert_ok(&w, &out, "am");
-    assert_replayed_by_agent(&w, &repo, "HEAD", "am");
+    let id = six(&w, &repo);
+    assert_replayed_by_agent(&w, &repo, "HEAD", &id, "am");
 }
 
 // ---------------------------------------------------------------------------

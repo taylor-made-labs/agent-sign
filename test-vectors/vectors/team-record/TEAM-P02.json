@@ -1,0 +1,45 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "TEAM-P02",
+  "family": "team-record",
+  "legacy": "L05",
+  "kind": "positive",
+  "tags": [],
+  "about": "a pass by an enrolled reviewer for this change and commit",
+  "input": {
+    "op": "review",
+    "trust": {
+      "taylor": {
+        "dev-taylor-1": "MCowBQYDK2VwAyEA3FVy4oO3jTXZbjdBHVRxNq1jqHOdrfbetyboX05DJv8="
+      },
+      "reviewers": {
+        "reviewer-1": "MCowBQYDK2VwAyEAirspPpsVYkoKc9LDkaXIgH9FKWPR4jRjvdwnqKU+3iM="
+      }
+    },
+    "change": "chg-1",
+    "commit": "abc123",
+    "records": [
+      {
+        "change": "chg-1",
+        "commit": "abc123",
+        "verdict": "pass",
+        "reviewer": "reviewer-1",
+        "signature": "iJbTpDpAgDqn5QeIJyfk2Rivcwgv20oNCvyxwsrW4LLKLsKGcROsjr/gC+DA7RMDW94K5E8LxzIIZFTcHImRCQ=="
+      }
+    ]
+  },
+  "expected": {
+    "result": "accepted",
+    "signer": "agent:reviewer-1",
+    "onBehalfOf": "agent:reviewer-1",
+    "strength": "agent"
+  },
+  "today": {
+    "passed": true,
+    "failed": false,
+    "by": [
+      "reviewer-1"
+    ],
+    "agreesWithExpected": true
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-P05",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [],
+  "about": "empty objects and arrays",
+  "input": {
+    "json_text": "{\"a\":{},\"b\":[],\"c\":[{},[],{\"d\":[]}]}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b2261223a7b7d2c2262223a5b5d2c2263223a5b7b7d2c5b5d2c7b2264223a5b5d7d5d7d",
+    "text": "{\"a\":{},\"b\":[],\"c\":[{},[],{\"d\":[]}]}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b2261223a7b7d2c2262223a5b5d2c2263223a5b7b7d2c5b5d2c7b2264223a5b5d7d5d7d"
+      },
+      "L05": {
+        "bytes": "7b2261223a7b7d2c2262223a5b5d2c2263223a5b7b7d2c5b5d2c7b2264223a5b5d7d5d7d"
+      },
+      "L09": {
+        "bytes": "7b2261223a7b7d2c2262223a5b5d2c2263223a5b7b7d2c5b5d2c7b2264223a5b5d7d5d7d"
+      },
+      "L12": {
+        "bytes": "7b2261223a7b7d2c2262223a5b5d2c2263223a5b7b7d2c5b5d2c7b2264223a5b5d7d5d7d"
+      },
+      "L13": {
+        "bytes": "7b2261223a7b7d2c2262223a5b5d2c2263223a5b7b7d2c5b5d2c7b2264223a5b5d7d5d7d"
+      },
+      "L07": {
+        "bytes": "7b2261223a7b7d2c2262223a5b5d2c2263223a5b7b7d2c5b5d2c7b2264223a5b5d7d5d7d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": true
+  }
+}

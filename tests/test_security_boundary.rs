@@ -1,13 +1,18 @@
 //! Implementation-owner real-object regressions for the 29 October security review.
 //! Every process uses a temporary home, empty inherited environment and test
 //! identities; no installed signer, real key or user service is contacted.
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+#[path = "support/launch.rs"]
+mod launch;
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use agent_sign::attribution::AgentIdentity;
 use agent_sign::config::Config;
 use agent_sign::guardrails::validate_candidate;
 use agent_sign::lease::{LeaseEngine, LeasePolicy};
@@ -56,6 +61,11 @@ struct World {
     repo: PathBuf,
     socket: PathBuf,
     service: Child,
+    /// The launched session the raw-protocol checks play: tokens and
+    /// signatures are asked on its channel.
+    /// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    /// launched.
+    session: launch::Session,
 }
 impl Drop for World {
     fn drop(&mut self) {
@@ -84,9 +94,16 @@ impl World {
             ],
         );
         fs::create_dir(home.join(".agent-sign")).unwrap();
+        // Requirement change (plan "next: real use on servers", check 6a,
+        // 30 Oct 2026): the service certifies only built-in agent names and
+        // those in `[identity] allowed_agents`, so the agent these tests name
+        // ("Fixture Agent", both through the wrapper and in direct token
+        // requests) is listed, as a user would list it.
+        let settings = format!("{settings}\n[identity]\nallowed_agents = [\"fixture-agent\"]\n");
         fs::write(home.join(".agent-sign/config.toml"), settings).unwrap();
         let socket = home.join("service.sock");
         let service = isolated(Path::new(env!("CARGO_BIN_EXE_agent-signd")), &home)
+            .die_with_parent()
             .arg("--socket")
             .arg(&socket)
             .stdout(Stdio::null())
@@ -98,16 +115,23 @@ impl World {
             assert!(start.elapsed() < Duration::from_secs(10));
             std::thread::sleep(Duration::from_millis(10));
         }
+        let session = launch::start_session(&socket, "fixture-agent");
         Self {
             _dir: dir,
             home,
             repo,
             socket,
             service,
+            session,
         }
     }
+    /// A request on the service's own socket (leases and revocations).
     fn ask(&self, request: Request) -> Response {
         send_request(&self.socket, &request).unwrap()
+    }
+    /// A request on the launched session's channel (tokens, signatures).
+    fn ask_session(&self, request: Request) -> Response {
+        self.session.ask(&request)
     }
     fn lease(&self) {
         assert!(matches!(
@@ -122,7 +146,12 @@ impl World {
     }
     fn token(&self, run: bool) -> String {
         let repo = self.repo.display().to_string();
-        let identity = AgentIdentity::new("fixture", "Fixture Agent", Some("security-boundary"));
+        // The wrapper's slug for "Fixture Agent" (it was "fixture", which is
+        // also this repository's user name: a person's name is never an
+        // allowed agent, see `IdentityConfig::check_against`).
+        // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+        // launched: the identity is the launched session's own.
+        let identity = self.session.identity.clone();
         let request = if run {
             Request::IssueRunToken {
                 repo,
@@ -136,7 +165,7 @@ impl World {
                 identity,
             }
         };
-        match self.ask(request) {
+        match self.ask_session(request) {
             Response::TokenIssued { token } => token,
             answer => panic!("{answer:?}"),
         }
@@ -144,22 +173,43 @@ impl World {
     fn candidate(&self, message: &str) -> Vec<u8> {
         let tree = git(&self.repo, &["write-tree"]);
         let parent = git(&self.repo, &["rev-parse", "HEAD"]);
-        format!("tree {tree}\nparent {parent}\nauthor Original Author <original@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\n{message}\n").into_bytes()
+        // Requirement change (plan "next: real use on servers", check 6c, 30
+        // Oct 2026): the service signs only a committer date inside the
+        // signing certificate's window, so the committer date is now (it was
+        // the fixed 1700000000); the author date stays old, as a replayed
+        // commit's would.
+        //
+        // DELIBERATE EVAL CHANGE (caller identity, P2, 31 Oct 2026): the service signs
+        // only a commit whose one committer is the token's principal, so the
+        // committer is the agent `token` issues for (it was "Fixture
+        // <fixture@example.invalid>").
+        let now = agent_sign::agents_ca::now_secs();
+        let agent = &self.session.identity;
+        let committer = format!("{} <{}>", agent.name, agent.principal);
+        format!("tree {tree}\nparent {parent}\nauthor Original Author <original@example.invalid> 1700000000 +0000\ncommitter {committer} {now} +0000\n\n{message}\n").into_bytes()
     }
     fn sign(&self, token: &str, candidate: &[u8]) -> Response {
-        self.ask(Request::SignCommit {
+        self.ask_session(Request::SignCommit {
             token: token.into(),
             buffer_b64: base64::engine::general_purpose::STANDARD.encode(candidate),
             repo: Some(self.repo.display().to_string()),
             branch: Some("work".into()),
         })
     }
+    /// The wrapper run as a launched session of "Fixture Agent".
+    ///
+    /// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    /// launched. It was a plain process named by `AGENT_SIGN_AGENT_NAME` and
+    /// `AGENT_SIGN_SESSION_ID`, whose commits are now unsigned and so are not
+    /// checked again at signature time (the checks this file holds the
+    /// signing path to: a hook that stages a forbidden file after the
+    /// wrapper's own check, a cherry-pick of one).
     fn wrapper(&self, args: &[&str]) -> Output {
-        isolated(Path::new(env!("CARGO_BIN_EXE_agent-git")), &self.home)
+        isolated(Path::new(env!("CARGO_BIN_EXE_agent-sign")), &self.home)
             .current_dir(&self.repo)
             .env("AGENT_SIGN_SOCKET", &self.socket)
-            .env("AGENT_SIGN_AGENT_NAME", "Fixture Agent")
-            .env("AGENT_SIGN_SESSION_ID", "security-boundary")
+            .args(["launch", "--agent", "Fixture Agent", "--"])
+            .arg(env!("CARGO_BIN_EXE_agent-git"))
             .args(args)
             .output()
             .unwrap()

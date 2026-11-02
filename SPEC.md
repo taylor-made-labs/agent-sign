@@ -323,20 +323,31 @@ the signature it gets back to `<file>.sig`. It never reads a key.
   port (`src/agents_ca.rs`); the in-memory authority is its one adapter, and
   OpenBao's SSH secrets engine is the intended second, which would keep one
   authority across restarts.
-- At each start it appends the new authority's public key, with the time,
-  to `keys/agents_cas.pub` (append-only, oldest first), and writes it to
-  `keys/agents_ca_ed25519.pub` as the current one. An authority an earlier
-  development build left in `agents_ca_ed25519.pub` is never carried into
-  the trust: its private key sat in a plain file, so it counts as exposed.
-  `agent-sign trust-line` prints one allowed-signers line
-  `*@agents.local cert-authority,namespaces="git" <key>` per authority in
-  that history, so a commit certified before a restart still verifies.
+- One service per state folder: before writing anything there, it takes
+  an exclusive `flock` on `~/.agent-sign/agent-signd.lock`, held for its
+  lifetime; a second service for the same state stops with a message
+  (`src/state_lock.rs`).
+- At each start it writes only the new authority's public key: to
+  `keys/agents_ca_ed25519.pub` as the current one, and into the lock file.
+  **A start never writes trust** (decision D2, 31 Oct 2026; P3 in
+  docs/caller-identity.md). `agent-sign trust install` does: it appends the
+  running service's authority, with the time, to `keys/agents_cas.pub`
+  (append-only, oldest first, once per key), and rewrites the managed block
+  below; the installer runs it once the service is up. An authority an
+  earlier development build left in `agents_ca_ed25519.pub` is never
+  carried into the trust: its private key sat in a plain file, so it
+  counts as exposed. `agent-sign trust-line` prints one allowed-signers
+  line `*@agents.local cert-authority,namespaces="git" <key>` per
+  authority in that history, so a commit certified before a restart still
+  verifies, plus the live authority while a service holds the lock and
+  wrote it this run. `agent-sign doctor` says when the live authority
+  isn't trusted yet.
 - The user's allowed-signers file (git's global
   `gpg.ssh.allowedSignersFile`) can hold a managed block between the lines
   `# agent-sign: agents' certificate authorities, managed; do not edit` and
   `# agent-sign: end of agents' certificate authorities`; the installer
-  writes it. At each start the service rewrites the lines between the
-  markers with `trust-line`'s lines, and nothing else: every byte outside
+  writes it. `agent-sign trust install` rewrites the lines between the
+  markers with the recorded authorities' lines, and nothing else: every byte outside
   them is kept, a link is followed, and the file keeps its permissions. A
   file without the markers is left alone.
 - A private key file `keys/agents_ca_ed25519` left by an earlier
@@ -346,7 +357,8 @@ the signature it gets back to `<file>.sig`. It never reads a key.
 - Holds each agent session's signing key in memory only, never on disk,
   one per principal, each with an OpenSSH user certificate from the
   authority: principal the agent's principal, key id "<principal> on
-  <hostname>", valid from 5 minutes ago to 12 hours ahead, no critical
+  <hostname>, claimed by a process in a shared account" (the name is
+  claimed, not proven, while agents and agent-sign share one account), valid from 5 minutes ago to 12 hours ahead, no critical
   options or extensions, random serial and nonce; replaced shortly before
   it ends. A restart gives each session a new key and certificate, which
   verify the same way. A session key unused for 12 hours is dropped, and at
@@ -630,7 +642,7 @@ the person's own user account, and agent-sign doesn't change that.
 | A cloned repository changes the rules | Its `.agent-sign.toml` can only add forbidden paths and protected branches, or lower `max_diff_lines`; everything else in it, `max_commits_per_minute` included (the service counts the rate and reads only your config), is ignored, with a warning. | |
 | An agent signs somewhere other than it was allowed | Every signature names the repository and branch git is writing; the service refuses one that isn't the token's, or is on a protected branch. | An agent that calls the real git directly, or clears the environment, isn't seen at all. |
 | One agent passes as another | Each session gets its own principal and key. | Identities are claims by processes running as the person's user: any of them can set another agent's marks. Attribution, not a security boundary, until agents run under their own OS accounts. |
-| The agents' certificate authority key is copied | It's never stored: made in the service's memory at each start, so there's no file to copy, and it can only vouch for `@agents.local` principals under the trust lines, never your email. A private key file an earlier build left stops the service. | A process running as the same user can still read the service's memory (a debugger) or ask the service for a certificate for any well-formed agent principal over its socket. Each restart adds an authority to the trusted list, which only grows. |
+| The agents' certificate authority key is copied | It's never stored: made in the service's memory at each start, so there's no file to copy, and it can only vouch for `@agents.local` principals under the trust lines, never your email. A private key file an earlier build left stops the service. | A process running as the same user can still read the service's memory (a debugger) or ask the service for a certificate for any well-formed agent principal over its socket. Each `trust install` after a restart adds an authority to the trusted list, which only grows; a start alone adds none. |
 | An agent approves its own lease (`approval = "device-owner"`) | The only approval is the system's own Touch ID or login-password prompt, which a program that controls the screen can't answer; agent-sign shows no dialog of its own to click. | An agent running as the person can still edit the config (`auto_approve`), start its own service, or, if it knows the login password, type it into the system's prompt. On Linux nothing can be approved interactively: every request is refused unless `auto_approve` is on. A prompt can still be repeated by an agent with a screen: the service shows one at a time and holds requests back after a refusal, but one reflexive touch for the wrong request is still a grant, and the prompt's text says the branch and repository so it can be read. |
 | Runaway commit loops | `max_commits_per_minute` per repository, counting every signature, run tokens' included; a bounded set of session keys. | No total cap per lease. |
 | Commits on protected branches | Refused on every token and signature, compared without case. | Detached HEAD isn't protected; `allow_main_branch` turns protection off; a commit that declines signing isn't an agent signature and can land there. |

@@ -1,0 +1,43 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "TEAM-N06",
+  "family": "team-record",
+  "legacy": "L05",
+  "kind": "negative",
+  "tags": [
+    "cross-use"
+  ],
+  "about": "a pass for another commit, offered for this one",
+  "input": {
+    "op": "review",
+    "trust": {
+      "taylor": {
+        "dev-taylor-1": "MCowBQYDK2VwAyEA3FVy4oO3jTXZbjdBHVRxNq1jqHOdrfbetyboX05DJv8="
+      },
+      "reviewers": {
+        "reviewer-1": "MCowBQYDK2VwAyEAirspPpsVYkoKc9LDkaXIgH9FKWPR4jRjvdwnqKU+3iM="
+      }
+    },
+    "change": "chg-1",
+    "commit": "abc123",
+    "records": [
+      {
+        "change": "chg-1",
+        "commit": "zzz999",
+        "verdict": "pass",
+        "reviewer": "reviewer-1",
+        "signature": "wlllv0S00F+/L418024CeqJQX7cLt0M4ZtnBC4jX4JMKLV9+NPoliT8RxfneAen85V94fUQGleOg4321JKVUBA=="
+      }
+    ]
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "wrong-commit"
+  },
+  "today": {
+    "passed": false,
+    "failed": false,
+    "by": [],
+    "agreesWithExpected": true
+  }
+}

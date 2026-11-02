@@ -1,0 +1,53 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ACT-N09",
+  "family": "act-v1",
+  "legacy": "L06",
+  "kind": "negative",
+  "tags": [
+    "divergence:enrolled-by-anything-but-a-passkey"
+  ],
+  "about": "a registry that lists the attacker's key as the person's first key: the check counts what that key signs as the person's",
+  "input": {
+    "act": {
+      "id": "a1",
+      "kind": "assert",
+      "party": "person:me",
+      "domain": "suite:test",
+      "seq": 1,
+      "claims": [
+        [
+          "_:self",
+          "rdf:type",
+          "ex:Thing"
+        ]
+      ],
+      "sig": {
+        "key": "k-me#1",
+        "ed25519": "7uW5DpvSWVzkUdpibVWXOTqnzSmy4GRMQv2Qo1f0ke8Q+/VUY3oaIvZh5mKgcaTp+es7WnWNPFjJhICXCSZFDA=="
+      }
+    },
+    "registry": {
+      "parties": {
+        "person:me": {
+          "person": true,
+          "keys": [
+            {
+              "id": "k-me#1",
+              "ed25519": "ch7iQxl5cgC1lOwf4OnvZoDWJNAfMdOedFlRm77x34Y="
+            }
+          ]
+        }
+      }
+    },
+    "enrolledBy": "caller-supplied registry"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "not-enrolled-by-passkey"
+  },
+  "today": {
+    "counts": true,
+    "agreesWithExpected": false
+  }
+}

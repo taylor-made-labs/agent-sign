@@ -1,16 +1,38 @@
 name: CI
 
-# Every push and pull request, on the three platforms agent-sign ships for:
-# macOS (arm64), Linux x86_64, and Linux ARM64 (the Raspberry Pi's
-# architecture). Plus a scan of the whole history for secrets, since the
-# history becomes public at release.
+# Every push to a branch and every pull request, on the three platforms
+# agent-sign ships for: macOS (arm64), Linux x86_64, and Linux ARM64 (the
+# Raspberry Pi's architecture). Plus a scan of the whole history for secrets,
+# since the history becomes public at release.
+#
+# This file is also the release's quality gate: release.yml (dispatched on
+# main) calls it (workflow_call) with the tagged commit as `ref`, so main's own copy of
+# this file tests the tagged commit, and the tag is built and published only
+# after every job here has passed in that same run. Every checkout below takes
+# `ref: ${{ inputs.ref }}` (empty on a push or pull request, which checks out
+# what it was started on), and the step after each checkout fails unless HEAD is that
+# commit, so a checkout that quietly fell back to another commit stops the gate. scripts/check-release-graph.py (the release-graph
+# job below) fails when that stops being true. Tag pushes do not trigger this
+# file, and nothing a push starts can publish.
 
 on:
   push:
+    branches: ["**"]
   pull_request:
+  workflow_call:
+    inputs:
+      ref:
+        description: 'Commit to check out and test (release.yml passes the full sha of the tagged commit, never a bare tag name)'
+        required: false
+        type: string
+        default: ''
+    # Optional: only an organization's gitleaks needs a licence key.
+    secrets:
+      GITLEAKS_LICENSE:
+        required: false
 
-env:
-  CARGO_TERM_COLOR: always
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -25,15 +47,22 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: ${{ inputs.ref }}
+      - name: Fail unless the checkout is the requested commit
+        if: inputs.ref != ''
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.ref }}"
+
+      # The version is pinned exactly, and must equal rust-toolchain.toml.
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch; the toolchain: input below picks the version
+        with:
+          toolchain: 1.98.1
           components: rustfmt, clippy
 
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Check formatting
         run: cargo fmt --check
@@ -49,14 +78,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the whole history
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: ${{ inputs.ref }}
           fetch-depth: 0
+      - name: Fail unless the checkout is the requested commit
+        if: inputs.ref != ''
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.ref }}"
 
       - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Empty on a push or a user's repository; an organization sets it.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
 
       - name: agent-sign's own scan (every blob on every ref; prints no values)
         run: python3 scripts/release/scan-history-secrets.py . --all
@@ -66,10 +101,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Fail unless the checkout is the requested commit
+        if: inputs.ref != ''
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.ref }}"
 
       - name: cargo deny (see deny.toml)
-        uses: EmbarkStudios/cargo-deny-action@v2
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+
+  release-graph:
+    name: Release workflow graph (structural check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Fail unless the checkout is the requested commit
+        if: inputs.ref != ''
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.ref }}"
+
+      # A local, structural check of the workflow files; it runs no workflow.
+      - name: Check the release graph of these workflows
+        run: python3 scripts/check-release-graph.py .
+
+      - name: The checker's own tests
+        run: python3 -m unittest scripts/test_check_release_graph.py
 
   install:
     name: Install test (Linux)
@@ -80,13 +139,20 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Fail unless the checkout is the requested commit
+        if: inputs.ref != ''
+        run: test "$(git rev-parse HEAD)" = "${{ inputs.ref }}"
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch; the toolchain: input below picks the version
+        with:
+          toolchain: 1.98.1
 
       - name: Rust Cache
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
 
       - name: Build
         run: cargo build --release --locked

@@ -1,0 +1,2115 @@
+{
+  "schema": "agent-sign-test-vectors/1",
+  "total": 201,
+  "todayDisagrees": 24,
+  "positive": 46,
+  "negative": 155,
+  "byFamily": {
+    "encoding": {
+      "positive": 11,
+      "negative": 16
+    },
+    "names": {
+      "positive": 11,
+      "negative": 44
+    },
+    "device-es256": {
+      "positive": 3,
+      "negative": 11
+    },
+    "stream-publisher": {
+      "positive": 4,
+      "negative": 10
+    },
+    "team-record": {
+      "positive": 2,
+      "negative": 9
+    },
+    "act-v1": {
+      "positive": 5,
+      "negative": 10
+    },
+    "approval-v2": {
+      "positive": 1,
+      "negative": 9
+    },
+    "log-chain": {
+      "positive": 1,
+      "negative": 4
+    },
+    "record-ns": {
+      "positive": 1,
+      "negative": 9
+    },
+    "cross-use": {
+      "positive": 0,
+      "negative": 6
+    },
+    "passkey-act": {
+      "positive": 7,
+      "negative": 27
+    }
+  },
+  "vectors": [
+    {
+      "id": "ENC-P01",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/encoding/ENC-P01.json",
+      "sha256": "b3dbe737fc3600a3a30dd95e35b25ab10fc86233156ce0d35663108e072597c2"
+    },
+    {
+      "id": "ENC-P02",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/encoding/ENC-P02.json",
+      "sha256": "1d50d2bd0b83097072767826f5ba7e8fe8fdc99105d5243b75582dadf5a24f95"
+    },
+    {
+      "id": "ENC-P03",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/encoding/ENC-P03.json",
+      "sha256": "b973492810f7ffc4ecdbf709ac6a291828aea4abc821280590e9cc8020467012"
+    },
+    {
+      "id": "ENC-P04",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/encoding/ENC-P04.json",
+      "sha256": "2eeaaa0314f6a66d543c4e8c1c793751be9a2508ee3e837df4418369140ded94"
+    },
+    {
+      "id": "ENC-P05",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/encoding/ENC-P05.json",
+      "sha256": "3abb096fbe295cb6201d10d95ef0a109d6ed09da6d417092ad2eae8a8fb2cc3c"
+    },
+    {
+      "id": "ENC-P06",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [
+        "divergence:negative-zero"
+      ],
+      "file": "vectors/encoding/ENC-P06.json",
+      "sha256": "76ad9c0f511ccc12f42b6f0dd41f6e1664bb884507438a0f1eb0b592a98929e4"
+    },
+    {
+      "id": "ENC-P07",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/encoding/ENC-P07.json",
+      "sha256": "6e6971a9dcf7d5818b35576c923d9efc1f4d49218f1a228f46def6c286bd943e"
+    },
+    {
+      "id": "ENC-P08",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/encoding/ENC-P08.json",
+      "sha256": "dfd35ab24ef28db1d48228c7d6387f96a14d5d72bda7b2eab608ced95f998783"
+    },
+    {
+      "id": "ENC-P09",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [
+        "divergence:key-order"
+      ],
+      "file": "vectors/encoding/ENC-P09.json",
+      "sha256": "fbea43de4d696a943b5ebc5c1f630be20cbff914c44b4f67aa8abeeecf6d5cb2"
+    },
+    {
+      "id": "ENC-D01",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [
+        "divergence:key-order"
+      ],
+      "file": "vectors/encoding/ENC-D01.json",
+      "sha256": "fbd6a489fe093e1b573617be0e6353f421eb07be27694b78e559355476355ce0"
+    },
+    {
+      "id": "ENC-D02",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "positive",
+      "tags": [
+        "divergence:key-order"
+      ],
+      "file": "vectors/encoding/ENC-D02.json",
+      "sha256": "7e1f737e0092c039200302a4882daca8983c53727fa4fd69fe5e30db5e029579"
+    },
+    {
+      "id": "ENC-D03",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:lone-surrogate"
+      ],
+      "file": "vectors/encoding/ENC-D03.json",
+      "sha256": "40b6c6569c5d46e00a30f0f544369b99f6d3d71c973954002229a0b50818f773"
+    },
+    {
+      "id": "ENC-D04",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:lone-surrogate"
+      ],
+      "file": "vectors/encoding/ENC-D04.json",
+      "sha256": "d17651670ad86d80226069247b06b07fc190c9c3f9898443cb1329210f96fa35"
+    },
+    {
+      "id": "ENC-D05",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:lone-surrogate"
+      ],
+      "file": "vectors/encoding/ENC-D05.json",
+      "sha256": "a65ee88f6315a1f03e71ce9f4feff4bd3a8c6a29461c75fcd3703e636e583fca"
+    },
+    {
+      "id": "ENC-D06",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:large-integer"
+      ],
+      "file": "vectors/encoding/ENC-D06.json",
+      "sha256": "abf7f4ac19b8af732648cbbfabee06b195b259777ccb04437e98534de49ac928"
+    },
+    {
+      "id": "ENC-D07",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:large-integer"
+      ],
+      "file": "vectors/encoding/ENC-D07.json",
+      "sha256": "575ab43295ad642547dd5f32012606f3f2467bfe78fdfe50c33567c868056513"
+    },
+    {
+      "id": "ENC-D08",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:large-integer"
+      ],
+      "file": "vectors/encoding/ENC-D08.json",
+      "sha256": "51b0a10da0ef3ed949239b2f3270a3483c5417e99b178f244724d2b13b8236fc"
+    },
+    {
+      "id": "ENC-D09",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:large-integer"
+      ],
+      "file": "vectors/encoding/ENC-D09.json",
+      "sha256": "9351b18884df64c39c6bce2540a8bbe34b76f36825e549db1dadc9c54eec8779"
+    },
+    {
+      "id": "ENC-D10",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:float"
+      ],
+      "file": "vectors/encoding/ENC-D10.json",
+      "sha256": "78facabbdeae0ff1e91225467a4e09966c0089d5c1dd2c8f7859ffc293dfebb6"
+    },
+    {
+      "id": "ENC-D11",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:float"
+      ],
+      "file": "vectors/encoding/ENC-D11.json",
+      "sha256": "cf0a5c25bc2978a2c7c84376d13b0eb3268671ec309233471d721ec340476483"
+    },
+    {
+      "id": "ENC-D12",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:float"
+      ],
+      "file": "vectors/encoding/ENC-D12.json",
+      "sha256": "2472a84680ba8fd984362b954682a083453936eaa0272b1ca9c5371a06d25511"
+    },
+    {
+      "id": "ENC-D13",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:float"
+      ],
+      "file": "vectors/encoding/ENC-D13.json",
+      "sha256": "e147840d7490247bfe34cd76106ee001f0244e7da90727721899b4ca95f2c898"
+    },
+    {
+      "id": "ENC-D14",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:float"
+      ],
+      "file": "vectors/encoding/ENC-D14.json",
+      "sha256": "afb18da125eb138de1376fe2eba844250a6efbb505da0b2ac0d3ba40b5310da0"
+    },
+    {
+      "id": "ENC-D15",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:float",
+        "divergence:negative-zero"
+      ],
+      "file": "vectors/encoding/ENC-D15.json",
+      "sha256": "73243b15ee9b70e99fe8947e0066d1c65d095a1274541f891cc49267728a0cd5"
+    },
+    {
+      "id": "ENC-D16",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:duplicate-key"
+      ],
+      "file": "vectors/encoding/ENC-D16.json",
+      "sha256": "b5e99696c9f55b01aaa1f1f9d32d2b2306a505be404bd6e96d852b35cc5e62ab"
+    },
+    {
+      "id": "ENC-D17",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:non-finite"
+      ],
+      "file": "vectors/encoding/ENC-D17.json",
+      "sha256": "37a0e679e87f6ee1e662670c4daefe9cd3be61b47574b0668af75b838a2a7f94"
+    },
+    {
+      "id": "ENC-D18",
+      "family": "encoding",
+      "legacy": "L01 L05 L07 L09 L12 L13",
+      "kind": "negative",
+      "tags": [
+        "divergence:non-finite"
+      ],
+      "file": "vectors/encoding/ENC-D18.json",
+      "sha256": "390cf96bc74b2c10a2e2c67b028981fb7215fa3d33e39bddbf35579f3cec75d7"
+    },
+    {
+      "id": "NAME-P-001",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/names/NAME-P-001.json",
+      "sha256": "a8c1df638453ed33cae3ee585eb69c5210f5b40b38ad542f98b0141fd4b9afb1"
+    },
+    {
+      "id": "NAME-P-002",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/names/NAME-P-002.json",
+      "sha256": "48789f257e982f4f9b5a8b4e0f9a4cf8ad86ab4165e09017be6d11dab1e77a8f"
+    },
+    {
+      "id": "NAME-P-003",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/names/NAME-P-003.json",
+      "sha256": "4ffc116afcfa14c1e7fb2fb56d2c69777ce45e02927771fe075035a50c6944dd"
+    },
+    {
+      "id": "NAME-P-004",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/names/NAME-P-004.json",
+      "sha256": "65176433e8c08133d069027dc745044954c06b57b9c1c1719b399e4b32936271"
+    },
+    {
+      "id": "NAME-P-005",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/names/NAME-P-005.json",
+      "sha256": "b4bc919917fe08d4bd2ba2a3a41ceaecc39da0b6f42a1ae4b8423c26dabf83a4"
+    },
+    {
+      "id": "NAME-P-006",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/names/NAME-P-006.json",
+      "sha256": "7a59b24ae931cc8efd758857d5d80f29185b45abc729b6218c47acf8c93ac4f6"
+    },
+    {
+      "id": "NAME-P-007",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/names/NAME-P-007.json",
+      "sha256": "24c36ba305eaf767899bcc96a453fef36589ddc1deeebd65d3e1bbed5732d49c"
+    },
+    {
+      "id": "NAME-P-008",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [
+        "party-mapping"
+      ],
+      "file": "vectors/names/NAME-P-008.json",
+      "sha256": "cbcade02b98379355d5ce109d000026aad336ce47b8998c2bbbdec5e50b2a7ce"
+    },
+    {
+      "id": "NAME-P-009",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [
+        "party-mapping"
+      ],
+      "file": "vectors/names/NAME-P-009.json",
+      "sha256": "953374d8bf68a1a13e4d53f370e8746d561fb898428ad478eddb8d48f520b133"
+    },
+    {
+      "id": "NAME-P-010",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [
+        "party-mapping"
+      ],
+      "file": "vectors/names/NAME-P-010.json",
+      "sha256": "d08ddd9a7cb56695e183e6e377ae562da47211753cec881e40904baa9d899659"
+    },
+    {
+      "id": "NAME-P-011",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [
+        "party-mapping"
+      ],
+      "file": "vectors/names/NAME-P-011.json",
+      "sha256": "3e19cf7769237b0aa705753053f757b309b84a4b80288e55b44536a00a95c425"
+    },
+    {
+      "id": "NAME-N-012",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-012.json",
+      "sha256": "49c053ecedc1fd0d3b15597ef9a6da5aa6c3cee8351651b8e11a5839427a19b6"
+    },
+    {
+      "id": "NAME-N-013",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-013.json",
+      "sha256": "582a4a2971c85ef835ab4c311619ac527d88b00313be629875e3e516e4a5382b"
+    },
+    {
+      "id": "NAME-N-014",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-014.json",
+      "sha256": "4d8ba171d7a0628276867f0330ba0238f0dd896dc448b933e7757ac73ec1cda5"
+    },
+    {
+      "id": "NAME-N-015",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-015.json",
+      "sha256": "75dec16f7aa91d78ac1471b0aa938075c60b3b8bf524e1e4acaaa0aebabe7b9f"
+    },
+    {
+      "id": "NAME-N-016",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-016.json",
+      "sha256": "c91d123cb30dda6f38a0e328e0724e982d05673b91fb33aedee9992bbcdbc919"
+    },
+    {
+      "id": "NAME-N-017",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-017.json",
+      "sha256": "c6f76d1c6aa012d59d6cdf370cb37e57fdc5d31ec1a7002ea291565e39f3c5f2"
+    },
+    {
+      "id": "NAME-N-018",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-018.json",
+      "sha256": "df31a8ef44874bb85a395ee4f98f320024b30eaa53093e5c892e0ecc9c43bc26"
+    },
+    {
+      "id": "NAME-N-019",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-019.json",
+      "sha256": "67df6882d902d481a8178cf62c25b0251dddf40f7351984dfe393b0fce97f26c"
+    },
+    {
+      "id": "NAME-N-020",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-020.json",
+      "sha256": "4806c6466c3e7651344f73028c381137db6cfd46a9ec06c30a8dbeb0fbdc8d62"
+    },
+    {
+      "id": "NAME-N-021",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-021.json",
+      "sha256": "bbac8e3cd0dfd04435e6de2a73c6ba523ba58c950eeb60a2413d6fcbeb15a3f8"
+    },
+    {
+      "id": "NAME-N-022",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-022.json",
+      "sha256": "0fe58ae7a33eb4fe90f3ad3a7350cdd67dd0793e5a77dc35f2d01acec20d5684"
+    },
+    {
+      "id": "NAME-N-023",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-023.json",
+      "sha256": "3dd19d650e48831ab6b139cc359347ded4ea2c0659f880e9093781d1dae46a51"
+    },
+    {
+      "id": "NAME-N-024",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-024.json",
+      "sha256": "099867c351f63f2f65fb372f233e9638d14fcac729a9072a0c1bee1b11ac3118"
+    },
+    {
+      "id": "NAME-N-025",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-025.json",
+      "sha256": "67c08a5ccd8f4c42b8484aa1d6593eee36d9e7de80b1b25a14ad3353ab6d2b31"
+    },
+    {
+      "id": "NAME-N-026",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-026.json",
+      "sha256": "04378fb9cc43f4fd7303220de1f13882c90231e18f0be55a6bbc18a732971824"
+    },
+    {
+      "id": "NAME-N-027",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-027.json",
+      "sha256": "d84d72dac5e7ab27b2c2c8f10dff30815d30c6c95e0703c569e3b5c69d815abb"
+    },
+    {
+      "id": "NAME-N-028",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-028.json",
+      "sha256": "26398e90d76ad46e1f3f03dbe5c1796ba1c55653ac2950e9244cbcc52f6149f6"
+    },
+    {
+      "id": "NAME-N-029",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-029.json",
+      "sha256": "9ac88ad0e0979fbd3152c0fb744867fbe2b9c2c243c8c402ef316d161a8c136a"
+    },
+    {
+      "id": "NAME-N-030",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-030.json",
+      "sha256": "7cf2af3ce2c6131d4daf55c46c5542f736bad876f19e8b50df46043d88b7d174"
+    },
+    {
+      "id": "NAME-N-031",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-031.json",
+      "sha256": "56781de49b6e48744105aa587e561923211e3653a64144b884fbbf47f0eee2ea"
+    },
+    {
+      "id": "NAME-N-032",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-032.json",
+      "sha256": "19ae8f8e53bfab3a5f8ec33c55d2d8eef158ee23737a9ca510bedd8f43d3bdc0"
+    },
+    {
+      "id": "NAME-N-033",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-033.json",
+      "sha256": "7d6809ced0e5394e525e39ad873030ec7606c3f8cf5ccfee478fb29c83610264"
+    },
+    {
+      "id": "NAME-N-034",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-034.json",
+      "sha256": "e56847ecfc540079e42ac8bf1e150d4c14cc7ae86778eba5282b82df2acd7ff4"
+    },
+    {
+      "id": "NAME-N-035",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-035.json",
+      "sha256": "5536b0a9bb6c50cefdb62d542ebfc731552ca807772b4e0a60b73d58f2958721"
+    },
+    {
+      "id": "NAME-N-036",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-036.json",
+      "sha256": "a45b456c32f0624c172649ed5c95b8acda0f0ca332155f6983f05b340a63d7c5"
+    },
+    {
+      "id": "NAME-N-037",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-037.json",
+      "sha256": "1ef589b34d4998df0fcf70d6925dd7eed5234fbbb28498e9e0e8cee0108b02b2"
+    },
+    {
+      "id": "NAME-N-038",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-038.json",
+      "sha256": "1c6a19551547720c2bee39dcbbc238642ca819f5a4ee935d7ea7ce5a2ef858ad"
+    },
+    {
+      "id": "NAME-N-039",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-039.json",
+      "sha256": "c614cfb138f4a089ad2bac9d9078b79f97930a963beaff00436b2b0e6543eb0d"
+    },
+    {
+      "id": "NAME-N-040",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-040.json",
+      "sha256": "3b0f968e7685f92c30d1b7ae08a55774a697ddc0a0e699b30306eb898c75227b"
+    },
+    {
+      "id": "NAME-N-041",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-041.json",
+      "sha256": "8ec7bcc0949fd6f5a75d238b2d6fb77e75d67d410e29169985781a4189f0b4c5"
+    },
+    {
+      "id": "NAME-N-042",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-042.json",
+      "sha256": "e6625366c39a9f86f58a386117b78ec2f3f8883827abaf25c89e1e06fcdce400"
+    },
+    {
+      "id": "NAME-N-043",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-043.json",
+      "sha256": "086a3874fee3c58f691e01368094860dd8ba40bf78ff14a5ea4c566d40c627e5"
+    },
+    {
+      "id": "NAME-N-044",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-044.json",
+      "sha256": "91e7c4d034209898d6709b5742ccb1edfd3108a59734ecdb458fd24aeffc1752"
+    },
+    {
+      "id": "NAME-N-045",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-045.json",
+      "sha256": "437e7a924853f7604857f6ead50240b345bc1d8c5051754f285bb2cf58e40bb3"
+    },
+    {
+      "id": "NAME-N-046",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-046.json",
+      "sha256": "943269d1e3b3eea240f1b6f1df3388f7e993f9027f99399718513d4ded7b8f23"
+    },
+    {
+      "id": "NAME-N-047",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-047.json",
+      "sha256": "577eba6426002d59c6436e078bf0716aca8c3391071eb195d8b452af5c1bf372"
+    },
+    {
+      "id": "NAME-N-048",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-048.json",
+      "sha256": "17494490801a9b0469e6f88bf873c9b6fe45b8f5dc9edacdbdfc6fe9c9d9d22b"
+    },
+    {
+      "id": "NAME-N-049",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-049.json",
+      "sha256": "9bb1f907e54dd7cf8258a742662baac640ea115c2e676696568524666de09d7a"
+    },
+    {
+      "id": "NAME-N-050",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-050.json",
+      "sha256": "a922e62afa22e609cf2761c5f209ce98f7ed2ef0ea80a8d09bcc1af037aab119"
+    },
+    {
+      "id": "NAME-N-051",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-051.json",
+      "sha256": "4b37a4c10d57751551e90989150c886d988b14e56028d6b5f598f87f93624b00"
+    },
+    {
+      "id": "NAME-N-052",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-052.json",
+      "sha256": "a42be657365466cf1755d1555d449e4c29e80a907289c94ade84a2724ebfd9a3"
+    },
+    {
+      "id": "NAME-N-053",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-053.json",
+      "sha256": "a4acc789920f81ef86c406cf71100a8580323198e3736e38362a1e977b2c6fdd"
+    },
+    {
+      "id": "NAME-N-054",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-054.json",
+      "sha256": "a26a89b82ab5a4e04d0bbf135fe263267ac72fc3312499a6081b2123c464e810"
+    },
+    {
+      "id": "NAME-N-055",
+      "family": "names",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/names/NAME-N-055.json",
+      "sha256": "8c486e5c814335e15a9a4773a5ea8c2d52a1fa9d8406a6e10981b284b4f4e55b"
+    },
+    {
+      "id": "DEV-P01",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-P01.json",
+      "sha256": "597f4127ff0db97c072b55f69d152142a68cac52834edd23b706d3f2eca2fefe"
+    },
+    {
+      "id": "DEV-P02",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-P02.json",
+      "sha256": "9c0b73d8accaffe33bdb210c37948f251effb2da675bfdedc773bd1bf3ee4562"
+    },
+    {
+      "id": "DEV-P03",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-P03.json",
+      "sha256": "8f7665b41be76cda658a11fc6bb9d7b60173052852197bf420800a902507a0c6"
+    },
+    {
+      "id": "DEV-N01",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-N01.json",
+      "sha256": "0c8e6018e0f5f500c578b759fb12853e65c065d2e02778417a2657c9533c75be"
+    },
+    {
+      "id": "DEV-N02",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/device-es256/DEV-N02.json",
+      "sha256": "a9b65e68be406042658fd60737fbadfdab9df85b2365aad459835e5d089c3e02"
+    },
+    {
+      "id": "DEV-N03",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/device-es256/DEV-N03.json",
+      "sha256": "cfaae9b63120e9ba959ffca7ab14cd715e47bd92252cd3f13858d3e4aff3fd8a"
+    },
+    {
+      "id": "DEV-N04",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-N04.json",
+      "sha256": "b9835dfd40d4879605030e771fca466df33c8c1068aaad61ee228ace5db40f30"
+    },
+    {
+      "id": "DEV-N05",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [
+        "divergence:first-key-wins"
+      ],
+      "file": "vectors/device-es256/DEV-N05.json",
+      "sha256": "16f422ac520ce2932d695e9fa3e7721a1a9f6eab1b29990145defacc321703c7"
+    },
+    {
+      "id": "DEV-N06",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-N06.json",
+      "sha256": "fddac34a3558581e4f98ceb26675b45bda1a0e2795bffaf69455fc711e124cd1"
+    },
+    {
+      "id": "DEV-N07",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [
+        "cross-use",
+        "divergence:no-context"
+      ],
+      "file": "vectors/device-es256/DEV-N07.json",
+      "sha256": "a5f07a165bc9702b1201ff362f3406b16ce7f9b53a6957fb67d5de6b7747ab6b"
+    },
+    {
+      "id": "DEV-N08",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [
+        "divergence:enrolled-by-anything-but-a-passkey",
+        "divergence:first-key-wins"
+      ],
+      "file": "vectors/device-es256/DEV-N08.json",
+      "sha256": "76d381089691b178e03ecfbdfa20bd3c7a816600f943ba57d19372e2d0804feb"
+    },
+    {
+      "id": "DEV-N09",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-N09.json",
+      "sha256": "eb4b86e4d05de729c476db06dcc2690c8d41e3ec920f8d972391bea593b3ada9"
+    },
+    {
+      "id": "DEV-N10",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-N10.json",
+      "sha256": "108650ca530658b7e8c495e84a18dc8c326003990ee18adfd9909a3150c6dbae"
+    },
+    {
+      "id": "DEV-N11",
+      "family": "device-es256",
+      "legacy": "L01 L03",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/device-es256/DEV-N11.json",
+      "sha256": "54009f2d814c3866003c536b7c1d2523979fcd214019bfdd2b0943ba1a6abb8c"
+    },
+    {
+      "id": "PUB-P01",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-P01.json",
+      "sha256": "f05607b87b7b52208163e8f8c0d47464de5564090fd55dcd0b6fecf021e94854"
+    },
+    {
+      "id": "PUB-P02",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "positive",
+      "tags": [
+        "legacy"
+      ],
+      "file": "vectors/stream-publisher/PUB-P02.json",
+      "sha256": "c74625309497878eae95884387bae37f50adb72affba49ee6b489eb0c775b332"
+    },
+    {
+      "id": "PUB-P03",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-P03.json",
+      "sha256": "b731ad6a24d7ac12ba5bd57ae981f7e78c1ffdfdb3c215ae2f95bb325b1c818b"
+    },
+    {
+      "id": "PUB-P04",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "positive",
+      "tags": [
+        "legacy"
+      ],
+      "file": "vectors/stream-publisher/PUB-P04.json",
+      "sha256": "268d15ec114df2614fe6b3e42c13c7c904ef42b00fe4f2c1c2434d4b32156ad0"
+    },
+    {
+      "id": "PUB-N01",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N01.json",
+      "sha256": "268d57f79a7c39220cf33284d6a4bb2801ce1b679c01c001c07a1765fd430df8"
+    },
+    {
+      "id": "PUB-N02",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/stream-publisher/PUB-N02.json",
+      "sha256": "8d25a63d27c1d366d650c2660fe2e77d7632b0ea76b8295a57fe956bd82a8a34"
+    },
+    {
+      "id": "PUB-N03",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N03.json",
+      "sha256": "205e694fb557fdec90b7caa8eaec05385e1d9b671624f2b4f6b34aeebc5b9061"
+    },
+    {
+      "id": "PUB-N04",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N04.json",
+      "sha256": "a39ca1aed47cf5c5f2529fe8a3c714dc36903601af714720c2670f3b26f1b743"
+    },
+    {
+      "id": "PUB-N05",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N05.json",
+      "sha256": "3032fc268ee0f91f961269812f430aae785b6ccb59586de7299ea0524a3c682c"
+    },
+    {
+      "id": "PUB-N06",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N06.json",
+      "sha256": "3e17077fa7e34a63b71d9627c1aca3aa66fc7bd734611fff54b93e2ac39ed260"
+    },
+    {
+      "id": "PUB-N07",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N07.json",
+      "sha256": "0c0f5534497f56538fa975e0fec983586884a7bfd1b8a7b8ffd165c99f45a6e2"
+    },
+    {
+      "id": "PUB-N08",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [
+        "legacy"
+      ],
+      "file": "vectors/stream-publisher/PUB-N08.json",
+      "sha256": "4109dd170b734ed90f09c2531083ba5ba42650260fce5424009c520654f8969b"
+    },
+    {
+      "id": "PUB-N09",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N09.json",
+      "sha256": "acd8a2e0c1a402e3d42f01da0d413f7dbff6d8c49e06ba13e0a15c7319f20821"
+    },
+    {
+      "id": "PUB-N10",
+      "family": "stream-publisher",
+      "legacy": "L04",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/stream-publisher/PUB-N10.json",
+      "sha256": "1d9999f6f69533368e99c9770249311f6bfb8885d03f21f07099c6c5ff47bfaf"
+    },
+    {
+      "id": "TEAM-P01",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-P01.json",
+      "sha256": "86aa9cab3bda2a838735c28d81f5527676ec874f559f57ac3221b9a7cf5bee96"
+    },
+    {
+      "id": "TEAM-P02",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-P02.json",
+      "sha256": "52c13b41962ebb80c88aed30f02ed718b1150bde20732869c21d3e42a6e4c48d"
+    },
+    {
+      "id": "TEAM-N01",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-N01.json",
+      "sha256": "35e98a0f8ff195ae9d85dbc4010f80b58ab74bcaf2ab18d20c1fe50fb5093f12"
+    },
+    {
+      "id": "TEAM-N02",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-N02.json",
+      "sha256": "754d25cea730e837b28f79707bb4fb3af0487a4b4bac04dd34348a55d2f6b7c9"
+    },
+    {
+      "id": "TEAM-N03",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/team-record/TEAM-N03.json",
+      "sha256": "1b379f7881f32013baa9ddb5745e80934736487542fd9a83ff5d2112d367b41b"
+    },
+    {
+      "id": "TEAM-N04",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-N04.json",
+      "sha256": "aa2b1ace4edf64cacf16d67ba34d6288f398fc07358a639373ee6c17a97f95e9"
+    },
+    {
+      "id": "TEAM-N05",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/team-record/TEAM-N05.json",
+      "sha256": "fa883e435e2355646cb5c83b6cdadebf4ad64fe291d4002af4088af8c5a59043"
+    },
+    {
+      "id": "TEAM-N06",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/team-record/TEAM-N06.json",
+      "sha256": "03fd30ccadc1dfcc3c5fb87e4bf376abfa02e093eae670a614e53eb08a5d831a"
+    },
+    {
+      "id": "TEAM-N07",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-N07.json",
+      "sha256": "45bcccb903bf548329b7433510e46c710d8827c34bdc4ffa9c10c0da7fea2330"
+    },
+    {
+      "id": "TEAM-N08",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-N08.json",
+      "sha256": "1df20a78489017fb29ffe87028fceb3aaf74b8a96c7fe77b9310911f4da4c0e2"
+    },
+    {
+      "id": "TEAM-N09",
+      "family": "team-record",
+      "legacy": "L05",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/team-record/TEAM-N09.json",
+      "sha256": "46c7a443e10887d099a26a089050292c46a2a621b03be42b81a59d777139cb99"
+    },
+    {
+      "id": "ACT-P01",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-P01.json",
+      "sha256": "c697730d53128ed3060a87883988e826dce640fb933420f3d11f60e28a0d6fbf"
+    },
+    {
+      "id": "ACT-P02",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-P02.json",
+      "sha256": "4ed02e2588adb95789317ed5057135bb03ad1ca9c86b321a7d565fd3bf3e3ceb"
+    },
+    {
+      "id": "ACT-P03",
+      "family": "act-v1",
+      "legacy": "L09",
+      "kind": "positive",
+      "tags": [
+        "cross-implementation"
+      ],
+      "file": "vectors/act-v1/ACT-P03.json",
+      "sha256": "74622ef3cd33b4d84dd93b6c7d4c299ea39c28c5dd0788bc01914446fe8431ee"
+    },
+    {
+      "id": "ACT-P04",
+      "family": "act-v1",
+      "legacy": "L11",
+      "kind": "positive",
+      "tags": [
+        "cross-implementation"
+      ],
+      "file": "vectors/act-v1/ACT-P04.json",
+      "sha256": "190730db1cd200154640ec3c2e55ca956bb9c8535db9585de8dcc62464b5236b"
+    },
+    {
+      "id": "ACT-P05",
+      "family": "act-v1",
+      "legacy": "L08",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-P05.json",
+      "sha256": "d7702f3d921f6303d292fbd415f2a1dcafab4a4a845e07ded168b06a7bb50ac2"
+    },
+    {
+      "id": "ACT-N01",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-N01.json",
+      "sha256": "cb9678e5c4927585befb0d4666f4b2e9a8a34d48aafc8ad80eda07af6e66b4f4"
+    },
+    {
+      "id": "ACT-N02",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "negative",
+      "tags": [
+        "divergence:first-key-wins"
+      ],
+      "file": "vectors/act-v1/ACT-N02.json",
+      "sha256": "c9474f5bb7de30f49e95fc2f694c8f60c4d7eaab31ec4a0d8bc071a0fb46ca01"
+    },
+    {
+      "id": "ACT-N03",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-N03.json",
+      "sha256": "de7c4a2b1c9e7c30b3e8ebccf3570f2f36b5a6b47f24edd0344b6ec00ef08fe4"
+    },
+    {
+      "id": "ACT-N04",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-N04.json",
+      "sha256": "668ea90752da0d4fe96129af6e93aa1cf1d35cc0cdfcb8cfd85bb90e88e52749"
+    },
+    {
+      "id": "ACT-N05",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-N05.json",
+      "sha256": "b2f63afa27eaf716508626b8b9076f16652ff7685968515a12db48b06de0864f"
+    },
+    {
+      "id": "ACT-N06",
+      "family": "act-v1",
+      "legacy": "L06 L09",
+      "kind": "negative",
+      "tags": [
+        "divergence:large-integer"
+      ],
+      "file": "vectors/act-v1/ACT-N06.json",
+      "sha256": "2b95d6b6869be968411df552b66bd357716ecbf702fe0fa29a1bb48ab12cf265"
+    },
+    {
+      "id": "ACT-N07",
+      "family": "act-v1",
+      "legacy": "L06 L09",
+      "kind": "negative",
+      "tags": [
+        "divergence:float"
+      ],
+      "file": "vectors/act-v1/ACT-N07.json",
+      "sha256": "4eac48b4bae4ae00f94ac0d85f49b44bd241ea972d829dcfa9339f786788bb13"
+    },
+    {
+      "id": "ACT-N08",
+      "family": "act-v1",
+      "legacy": "L06 L09",
+      "kind": "negative",
+      "tags": [
+        "divergence:lone-surrogate"
+      ],
+      "file": "vectors/act-v1/ACT-N08.json",
+      "sha256": "483b1de1295e70191b16880f2d48e77d62d08b0845709eecb68a97edd14a1395"
+    },
+    {
+      "id": "ACT-N09",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "negative",
+      "tags": [
+        "divergence:enrolled-by-anything-but-a-passkey"
+      ],
+      "file": "vectors/act-v1/ACT-N09.json",
+      "sha256": "0abe16e9ca966d656641556fe60d79c4f00d0c0bf1cad9efad722d8e0afe853b"
+    },
+    {
+      "id": "ACT-N10",
+      "family": "act-v1",
+      "legacy": "L06",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/act-v1/ACT-N10.json",
+      "sha256": "0e6cb8fa15224ac0c1f0e61065ad98e12787bc8d93ad6468b6429003d3a8ca8d"
+    },
+    {
+      "id": "APP-P01",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-P01.json",
+      "sha256": "943cc70ef0d87c13de913705cc9d8c6791c10fae060ad9b64cd5ce259c6483ca"
+    },
+    {
+      "id": "APP-N01",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-N01.json",
+      "sha256": "1fa863fe591b498573ff26c597548a33db8f7bdc0c5dd567f00bfb8703192cb4"
+    },
+    {
+      "id": "APP-N02",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-N02.json",
+      "sha256": "6b56262a4f4cc55762d024c8ae58acb144c2107a9de9ff87df45a1e8b7fad727"
+    },
+    {
+      "id": "APP-N03",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/approval-v2/APP-N03.json",
+      "sha256": "9a97cf97a57ca398e6ea7729186e8ec484e0bc54221248f518b40cb348e0f56f"
+    },
+    {
+      "id": "APP-N04",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/approval-v2/APP-N04.json",
+      "sha256": "fe0a220d7a2dd43a377b6db8929f2bf2b8881dbb4df256fc765e77f9d1064eda"
+    },
+    {
+      "id": "APP-N05",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-N05.json",
+      "sha256": "bfa220c94ee3f1da75d6dc1726df7401aca32ba125d9a015cb9fb50870b198b0"
+    },
+    {
+      "id": "APP-N06",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-N06.json",
+      "sha256": "e7fd8cb77c447837cfd07813f06c91af8826da6b270febbdc702de49942ed0b0"
+    },
+    {
+      "id": "APP-N07",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-N07.json",
+      "sha256": "a02903074f056ebc2eff16ab38f0786d6b584e9babfb2c8b8083f85d824fbed9"
+    },
+    {
+      "id": "APP-N08",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-N08.json",
+      "sha256": "d93281b791edd6f3253ec9550a3ef40e23c9f64409c3c8dd0b2785c7c5b5f626"
+    },
+    {
+      "id": "APP-N09",
+      "family": "approval-v2",
+      "legacy": "L10",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/approval-v2/APP-N09.json",
+      "sha256": "05b0fc5241d63c59f655e10a7eba34f204686cc08493926e6ec69f29e8e3aae1"
+    },
+    {
+      "id": "LOG-P01",
+      "family": "log-chain",
+      "legacy": "L12",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/log-chain/LOG-P01.json",
+      "sha256": "9e6427b2b7524d003bac5e0947a6dafe636fb4ca545503e00adabd8a0531b2bc"
+    },
+    {
+      "id": "LOG-N01",
+      "family": "log-chain",
+      "legacy": "L12",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/log-chain/LOG-N01.json",
+      "sha256": "bc813bd4e47ca7d514a082280ac3449be74f865bd712c15d862683c7bbbc7388"
+    },
+    {
+      "id": "LOG-N02",
+      "family": "log-chain",
+      "legacy": "L12",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/log-chain/LOG-N02.json",
+      "sha256": "41cb08e18d35d58084898f91ab2bdaf6227cec734df0166f59cef34d9af846ca"
+    },
+    {
+      "id": "LOG-N03",
+      "family": "log-chain",
+      "legacy": "L12",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/log-chain/LOG-N03.json",
+      "sha256": "22a0406ce8a2d050b6ad1d265e6a65878d084afe9f32bd5a5a90f6da69a1b8a4"
+    },
+    {
+      "id": "LOG-N04",
+      "family": "log-chain",
+      "legacy": "L12",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/log-chain/LOG-N04.json",
+      "sha256": "c9471dd66a4107154d4acbdeed4b0540ac4a772e5bf295ed27c78b32e53beac6"
+    },
+    {
+      "id": "REC-P01",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/record-ns/REC-P01.json",
+      "sha256": "9e92e71ecfc26a3ffe38553853e22565a29ac3f607f76b74ea24c1299bbee147"
+    },
+    {
+      "id": "REC-N01",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/record-ns/REC-N01.json",
+      "sha256": "a85f7179b2fb07c6606efbb08691cad0e266a6d489766e7a2f365ab0540414f8"
+    },
+    {
+      "id": "REC-N02",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/record-ns/REC-N02.json",
+      "sha256": "157e4a534ad4304c7037f08440a22066395464645734698455fafae8cc8fb364"
+    },
+    {
+      "id": "REC-N03",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/record-ns/REC-N03.json",
+      "sha256": "6a9b88f3397511f8b50cd286fb2532cce065931f889bed946c026af9e8d8b99a"
+    },
+    {
+      "id": "REC-N04",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/record-ns/REC-N04.json",
+      "sha256": "41e64a11c3264e97e94a14b1ac51f11e3d9b31c7e284b56fae985c9836f7bfbe"
+    },
+    {
+      "id": "REC-N05",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/record-ns/REC-N05.json",
+      "sha256": "ec49d94ec0c9454341987c4f8bdb1c1f0eedfc2e61178fe69cd6f186a183378a"
+    },
+    {
+      "id": "REC-N06",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/record-ns/REC-N06.json",
+      "sha256": "a6419695e612dfa9fbc8fd951e12d5549f3a93d71cde88280dd8d584f2f087a0"
+    },
+    {
+      "id": "REC-N07",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/record-ns/REC-N07.json",
+      "sha256": "fe5d92b74ae1b842fa873bde550cd193238c6add3997177a8f494494dd813964"
+    },
+    {
+      "id": "REC-N08",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/record-ns/REC-N08.json",
+      "sha256": "b8ad182fd1654d4c2990890f260b58482a646f5daa31f40d7b2982da89fbc45f"
+    },
+    {
+      "id": "REC-N09",
+      "family": "record-ns",
+      "legacy": "L13",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/record-ns/REC-N09.json",
+      "sha256": "00d8760551ad67dd0b216cc199b2a88544fdda3e91845518d2d9c1bd105dd20e"
+    },
+    {
+      "id": "CROSS-N01",
+      "family": "cross-use",
+      "legacy": "L04 L06 L09 L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/cross-use/CROSS-N01.json",
+      "sha256": "fab42129f398deb8e5e69e9ac0c65efd23df16a00c66b47fa1e1029835647b7d"
+    },
+    {
+      "id": "CROSS-N02",
+      "family": "cross-use",
+      "legacy": "L04 L06 L09 L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/cross-use/CROSS-N02.json",
+      "sha256": "d47bd21a41a7b57d9b3e171f487f38e60de1d1e80473b6da1aed18aea694c437"
+    },
+    {
+      "id": "CROSS-N03",
+      "family": "cross-use",
+      "legacy": "L04 L06 L09 L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/cross-use/CROSS-N03.json",
+      "sha256": "bfb8c8399a393807d3d095195e95ddf88522115e2acca662e223a47d8a058907"
+    },
+    {
+      "id": "CROSS-N04",
+      "family": "cross-use",
+      "legacy": "L04 L06 L09 L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/cross-use/CROSS-N04.json",
+      "sha256": "c7b61487ac681cf92b8d240eba6c590e3aa26422cb7a1853e5f5c3986f9587d5"
+    },
+    {
+      "id": "CROSS-N05",
+      "family": "cross-use",
+      "legacy": "L04 L06 L09 L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/cross-use/CROSS-N05.json",
+      "sha256": "f118e74a431a4f18756a2c43c6505dc43adf353ebb74b3c5b3c43067e6dadb59"
+    },
+    {
+      "id": "CROSS-N06",
+      "family": "cross-use",
+      "legacy": "L04 L06 L09 L10",
+      "kind": "negative",
+      "tags": [
+        "cross-use"
+      ],
+      "file": "vectors/cross-use/CROSS-N06.json",
+      "sha256": "70d0167f3c4bb292e3d9168bdc83ef14bdadf54e09850acdfae7a32aa9752d64"
+    },
+    {
+      "id": "PASS-P01",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-P01.json",
+      "sha256": "450dafdf5fa674bc7b550a087e306a6d7d74e48784f4f670dc54149f9df5fd5a"
+    },
+    {
+      "id": "PASS-P02",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-P02.json",
+      "sha256": "bf431a00d5abcb61129317f1009800a8277f3b63c3bce1caaf308409af54e449"
+    },
+    {
+      "id": "PASS-P03",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-P03.json",
+      "sha256": "39b0acbd4e02a3e79268b27950321cf8a6133ca5fc10ad6896f8566ba707ba2e"
+    },
+    {
+      "id": "PASS-P04",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [
+        "legacy"
+      ],
+      "file": "vectors/passkey-act/PASS-P04.json",
+      "sha256": "7d36fbd9180c05b520dcb05210403403f561b838937fa8a40f68417977b97792"
+    },
+    {
+      "id": "PASS-P05",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [
+        "legacy"
+      ],
+      "file": "vectors/passkey-act/PASS-P05.json",
+      "sha256": "3dc1eaeb62317681ba3eb392ccfafe72328a00f1b8322eccf3b1a664f06cb06a"
+    },
+    {
+      "id": "PASS-P06",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-P06.json",
+      "sha256": "7641c42990236106b649f9a11f29f152986c3d70e5b029e96f637cdc2d0e3ded"
+    },
+    {
+      "id": "PASS-P07",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "positive",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-P07.json",
+      "sha256": "77823006484de2e5e3bcad5cfd22deff51e217a2e29ac2dc6ea9f7568b3ea92f"
+    },
+    {
+      "id": "PASS-N-P1",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P1"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P1.json",
+      "sha256": "0820e7b2dedfb7fc24357355ccd723d02caa6c90651d79ff6a49589d01f861bf"
+    },
+    {
+      "id": "PASS-N-P2a",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P2"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P2a.json",
+      "sha256": "b6903cb33b3aabaf30b900cf27b4c59c154cce883ccaabf57d07c65f6358a96a"
+    },
+    {
+      "id": "PASS-N-P2b",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P2"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P2b.json",
+      "sha256": "16dbc62827fed7cf1c0ffb480a1d3c4bb2a271c40dbf71df78ae844d52e6d8aa"
+    },
+    {
+      "id": "PASS-N-P3",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P3"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P3.json",
+      "sha256": "2af9ea582d9b3bc943ed7fd8bb22e8e29e314e9558c517103aa891269aaad711"
+    },
+    {
+      "id": "PASS-N-P4",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P4",
+        "cross-use"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P4.json",
+      "sha256": "c1138f066c2716e099ab24f5756e01dec20ee5e26798e88ad322f17b3d014f51"
+    },
+    {
+      "id": "PASS-N-P5",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P5",
+        "cross-use"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P5.json",
+      "sha256": "274701722ccc8fa92783aec148ea0a958eaa6a5b6fc8705baac64fefbe5828f9"
+    },
+    {
+      "id": "PASS-N-P8a",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8a.json",
+      "sha256": "55228d227a8f8e5e7288ebc485e38df392a205b6b6d2e9b5230483b2b094970c"
+    },
+    {
+      "id": "PASS-N-P8b",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8b.json",
+      "sha256": "4b18b7402f8e6cfbf23450a35508f5568196e87036ff8a7249c1472a05e8283d"
+    },
+    {
+      "id": "PASS-N-P8c",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8c.json",
+      "sha256": "24891f0ab47d3179d16c383e45680ad4b29c7fec57c33dbb032bfde9c592365c"
+    },
+    {
+      "id": "PASS-N-P8d",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8d.json",
+      "sha256": "02c58883c30f48b1cedb5581656d7ec631e8e64359944ca19571b7f003a2c115"
+    },
+    {
+      "id": "PASS-N-P8e",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8e.json",
+      "sha256": "5bd8a39ec77bcdcacfc8a7a03d8882c93f75694ff2b14a629d51842836799d3e"
+    },
+    {
+      "id": "PASS-N-P8f",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8f.json",
+      "sha256": "e72179a9833a25dc76c2e4e93d6212e70f4a87445531c196057cfff0f715add1"
+    },
+    {
+      "id": "PASS-N-P8g",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8g.json",
+      "sha256": "5a5e2ed1d7ff671fb25b632c868ce70646ce4300e766c5bbc8978445e556ad75"
+    },
+    {
+      "id": "PASS-N-P8h",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P8"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P8h.json",
+      "sha256": "4d7db4a0a9771379795b48a5a2e61fa3f1b656ed13d166d4cd0ba7adc0210318"
+    },
+    {
+      "id": "PASS-N-P12a",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P12"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P12a.json",
+      "sha256": "dc3fe261abf153d993de2bb32f44e99a77171934799743d90987cf4bde0aedcc"
+    },
+    {
+      "id": "PASS-N-P12b",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P12"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P12b.json",
+      "sha256": "3f5af93fb409f8e784d23c8d30eb53011ee35318d4987d030212364709fd4bc0"
+    },
+    {
+      "id": "PASS-N-P6",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P6"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P6.json",
+      "sha256": "399a1cb7a61ac1bc52dfdbf482d83834a2488c4159d6d504c7f99b27ca934131"
+    },
+    {
+      "id": "PASS-N-P7",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "P7",
+        "enrolled-by-anything-but-a-passkey"
+      ],
+      "file": "vectors/passkey-act/PASS-N-P7.json",
+      "sha256": "d2b3ddec5bccbb8b5bd974f29b0fe99f2ac06ae4552a9c578fa0b9a9a087cf3b"
+    },
+    {
+      "id": "PASS-N-K1",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "enrolled-by-anything-but-a-passkey"
+      ],
+      "file": "vectors/passkey-act/PASS-N-K1.json",
+      "sha256": "586b1b5f8ba4e672e6440bacb69607bf176f8da50523d90c31ef81c1aab988f6"
+    },
+    {
+      "id": "PASS-N-K2",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "enrolled-by-anything-but-a-passkey"
+      ],
+      "file": "vectors/passkey-act/PASS-N-K2.json",
+      "sha256": "3cf65a28acce789f8a6375afe1288d674e28cddb273c4aece88372c727fa7ea9"
+    },
+    {
+      "id": "PASS-N-K3",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "enrolled-by-anything-but-a-passkey",
+        "divergence:enrolled-by-anything-but-a-passkey"
+      ],
+      "file": "vectors/passkey-act/PASS-N-K3.json",
+      "sha256": "ebf0359aef1e7146c5a58a9ec87d4656b719e1bb6564e441b9d8e751b0855793"
+    },
+    {
+      "id": "PASS-N-K4",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [
+        "enrolled-by-anything-but-a-passkey"
+      ],
+      "file": "vectors/passkey-act/PASS-N-K4.json",
+      "sha256": "ce472fa4fed618a0f40e4877c80c1021b21a3b61464e72cb14544ecb0860b42b"
+    },
+    {
+      "id": "PASS-N-W1",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-N-W1.json",
+      "sha256": "39583a058c1e254d3202c248800415d4bd089d0615f2131ea90bbe9dca2a9c0b"
+    },
+    {
+      "id": "PASS-N-W2",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-N-W2.json",
+      "sha256": "09e821bd588471729c8125fb974db9154ee7a2ead2e6cccb256744f67706d402"
+    },
+    {
+      "id": "PASS-N-W3",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-N-W3.json",
+      "sha256": "3bce219e9dda752d3995d0ca68200efd74327be092d97f014eea90532beda745"
+    },
+    {
+      "id": "PASS-N-W4",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-N-W4.json",
+      "sha256": "0d90077def735e13d382eb2ecffb7fe1c82d7eeb10191e694d77e601ea665d8b"
+    },
+    {
+      "id": "PASS-N-W5",
+      "family": "passkey-act",
+      "legacy": "L02",
+      "kind": "negative",
+      "tags": [],
+      "file": "vectors/passkey-act/PASS-N-W5.json",
+      "sha256": "718ba3ddff0af9a8ca008e9598725286500bf32020f9c6b87799555a0f63a1f7"
+    }
+  ]
+}

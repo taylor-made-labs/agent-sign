@@ -1,1 +1,5 @@
 /target
+
+# Real per-machine settings (copies of scripts/sitting/files/machine-example.env); never committed.
+/scripts/sitting/files/machine-*.env
+!/scripts/sitting/files/machine-example.env

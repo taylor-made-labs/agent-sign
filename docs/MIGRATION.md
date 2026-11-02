@@ -17,7 +17,8 @@ Open a new terminal afterwards, and run `agent-sign doctor`.
   are never stored unprotected; they live in OpenBao, a hardware or OS
   keystore, or only in a running program's memory. So:
   - The agents' certificate authority is made in the service's memory each
-    time it starts and never written anywhere. Each start adds its public
+    time it starts and never written anywhere. `agent-sign trust install`
+    (since 31 Oct 2026; before then, each start) adds its public
     key, with the date, to `~/.agent-sign/keys/agents_cas.pub`, and
     `agent-sign trust-line` prints one line per authority there, so commits
     certified before a restart still verify.

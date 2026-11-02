@@ -1,0 +1,46 @@
+# /etc/agent-sign/system.toml: this machine's agent-sign settings, written by
+# agent-sign's sitting and owned by root. Its existence means system mode:
+# one-account launch is refused, and clients use the sockets named here.
+# Change it by running the sitting again, not by hand.
+machine = "@MACHINE@"
+
+[service]
+account = "agent-sign"
+socket = "/run/agent-sign/daemon.sock"
+launcher_socket = "/run/agent-sign/launcher.sock"
+trust_file = "/etc/agent-sign/allowed_signers"
+# Accounts whose plain-path questions the service answers (they never get a
+# signature). The slot accounts and the launcher are added from the tables below.
+client_accounts = [@CLIENT_ACCOUNTS@]
+
+[launcher]
+account = "agent-launch"
+socket = "/run/agent-launch/launch.sock"
+# Accounts that may launch a session by asking, with no signed request: the
+# administrator's own, reached over SSH with their device key.
+people_accounts = [@PEOPLE_ACCOUNTS@]
+# Public keys that may sign a launch request. Empty until the commitments
+# approval key exists, so only the account above can launch.
+approvers = []
+
+[slots]
+count = @SLOTS@
+account_prefix = "agent-slot-"
+root = "/var/lib/agent-slots"
+# The longest a session may run before the launcher stops it. Matches the
+# certificate lifetime, so a session never outlives its certificate.
+max_duration = "12h"
+
+[identity]
+people = ["@IDENTITY_PEOPLE@"]
+
+[authority]
+issuer = "openbao"
+address = "@AUTH_ADDRESS@"
+ca_cert = "@AUTH_CA_CERT@"
+resolve = "@AUTH_RESOLVE@"
+mount = "@AUTH_MOUNT@"
+role = "@AUTH_ROLE@"
+
+# [approvals]
+# commitments_key = "ssh-ed25519 ..."   # unset until the commitments key exists

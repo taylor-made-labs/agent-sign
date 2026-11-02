@@ -1,0 +1,11 @@
+# Who must approve a change to the files that decide what gets released.
+# Branch protection on main requires review from code owners (see
+# docs/RELEASE_CHECKLIST.md, "Repository settings"): without this file the
+# required approval could come from anyone with write access.
+#
+# PLACEHOLDER, to be confirmed by Taylor: the GitHub account named below is
+# assumed from the repository's address. A code owner must be a user or team
+# with write access, and not the account that opens the pull request (GitHub
+# does not let an author approve their own pull request).
+/.github/ @taylor-made-labs
+/scripts/ @taylor-made-labs

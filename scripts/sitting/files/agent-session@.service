@@ -1,0 +1,72 @@
+# One launched agent session, in slot %i's account. Installed by agent-sign's
+# sitting. Never enabled and never started by anyone but agent-launchd: polkit
+# rule 50-agent-launch lets only that account start or stop agent-session@1 to
+# agent-session@N, and only those names.
+[Unit]
+Description=agent-sign launched session in slot %i
+
+[Service]
+Type=exec
+User=agent-slot-%i
+Group=agent-slot-%i
+# systemd (root) reads the spec and opens the output file before dropping to
+# the slot account, so neither folder needs to be open to the slot. Both live in
+# /var/lib/agent-launch-io, whose every folder is root's (the sitting makes one
+# plain file per slot there, owned by agent-launch): root follows links when it
+# opens these paths, so they must never be in a folder the launcher or a slot
+# could put an entry in (review finding A-2). Nothing under /var/lib/agent-launch
+# is ever opened by systemd.
+LoadCredential=spec:/var/lib/agent-launch-io/specs/%i.json
+Environment=HOME=/var/lib/agent-slots/%i/current/home
+WorkingDirectory=/var/lib/agent-slots/%i/current
+ExecStart=/opt/agent-sign/current/bin/agent-sign session-exec
+StandardInput=null
+StandardOutput=append:/var/lib/agent-launch-io/logs/%i.out
+StandardError=append:/var/lib/agent-launch-io/logs/%i.out
+KillMode=control-group
+RuntimeMaxSec=12h
+UMask=0077
+# What the session can see and change: its own folder, and nothing else that lasts.
+ProtectSystem=strict
+TemporaryFileSystem=/var/lib/agent-slots:ro
+BindPaths=/var/lib/agent-slots/%i/current
+ProtectHome=yes
+InaccessiblePaths=-/var/lib/agent-sign -/var/lib/agent-launch -/var/lib/agent-launch-io
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+RestrictRealtime=yes
+LimitCORE=0
+# What the session may ask the kernel for (review round 2, M2 and L5). A
+# deny-list, so ordinary programs keep working: no clock changes, CPU emulation,
+# kernel modules, raw I/O, reboot, swap or obsolete calls, and no keyring calls
+# (add_key, keyctl, request_key): the per-uid user keyring (@u) lasts from one
+# session to the next in the same slot, and nothing may be put in it. A denied
+# call fails with EPERM (the program carries on) instead of killing the session.
+# RestrictNamespaces is left out on purpose: agents' own sandboxes need user
+# namespaces (Claude Code's sandbox on Linux uses bubblewrap), and unshare,
+# clone, mount and setns stay allowed.
+SystemCallArchitectures=native
+SystemCallFilter=~@clock @cpu-emulation @module @raw-io @reboot @swap @obsolete add_key keyctl request_key
+SystemCallErrorNumber=EPERM
+# PrivateDevices bind-mounts the HOST's /dev/shm, and PrivateTmp and PrivateIPC
+# don't cover it, so files left there would reach the next session in this slot
+# (D6, review round 2, M2). A fresh tmpfs per session, still writable and usable
+# by programs.
+TemporaryFileSystem=/dev/shm:mode=1777
+# Limits for everything in the slot. Defaults: half the machine's memory and
+# systemd's own default share of the kernel's task limit, made explicit. The
+# sitting's --slot-memory-max and --slot-tasks-max rewrite these two lines.
+MemoryMax=50%
+TasksMax=15%

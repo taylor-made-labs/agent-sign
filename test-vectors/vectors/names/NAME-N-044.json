@@ -1,0 +1,24 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-N-044",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "negative",
+  "tags": [
+    "P8"
+  ],
+  "about": "a kind that is not one of the seven: not a kind",
+  "input": {
+    "op": "make",
+    "kind": "robot",
+    "id": "me"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "bad-kind"
+  },
+  "today": {
+    "result": "refused",
+    "agreesWithExpected": true
+  }
+}

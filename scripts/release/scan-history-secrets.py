@@ -33,8 +33,12 @@ import re
 import subprocess
 import sys
 
+# The key words are held apart so this source never holds a private-key frame
+# (the source guard tests/test_no_unprotected_test_keys.rs reads this folder).
+PRIVATE_KEY = "PRIVATE" + " KEY"
+
 RULES = {
-    "private-key-block": re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY( BLOCK)?-----"),
+    "private-key-block": re.compile(r"-----BEGIN [A-Z ]*" + PRIVATE_KEY + r"( BLOCK)?-----"),
     "github-token": re.compile(r"\b(gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{60,})\b"),
     "aws-access-key": re.compile(r"\b(AKIA|ASIA)[0-9A-Z]{16}\b"),
     "anthropic-key": re.compile(r"\bsk-ant-[A-Za-z0-9_\-]{20,}"),

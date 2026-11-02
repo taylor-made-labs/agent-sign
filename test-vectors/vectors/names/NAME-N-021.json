@@ -1,0 +1,23 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-N-021",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "negative",
+  "tags": [
+    "P8"
+  ],
+  "about": "look-alike name for Taylor: trust domain with a suffix",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local.evil.example/person/me"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "look-alike-name"
+  },
+  "today": {
+    "result": "refused",
+    "agreesWithExpected": true
+  }
+}

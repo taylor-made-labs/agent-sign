@@ -1,0 +1,51 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-P06",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [
+    "divergence:negative-zero"
+  ],
+  "about": "an integer written -0 comes out 0",
+  "input": {
+    "json_text": "{\"a\":-0}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b2261223a307d",
+    "text": "{\"a\":0}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b2261223a307d"
+      },
+      "L05": {
+        "bytes": "7b2261223a307d"
+      },
+      "L09": {
+        "bytes": "7b2261223a307d"
+      },
+      "L12": {
+        "bytes": "7b2261223a307d"
+      },
+      "L13": {
+        "bytes": "7b2261223a307d"
+      },
+      "L07": {
+        "bytes": "7b2261223a307d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": true
+  }
+}

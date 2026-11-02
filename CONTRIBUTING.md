@@ -22,7 +22,16 @@ Thank you for your interest in agent-sign.
 cargo fmt --check
 cargo clippy --all-targets --locked -- -D warnings
 cargo test --locked
+python3 scripts/check-release-graph.py .
+python3 -m unittest scripts/test_check_release_graph.py
 ```
+
+The last two check the release workflows' structure (a release can only
+publish after CI passed on the tagged commit and the packaged archives were
+verified; every action is pinned to a full commit; the Rust toolchain is an
+exact version). They are local and structural: they run no workflow. How a
+release is gated, and how to move a pin or the toolchain, is in
+[docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md#how-a-release-is-gated-r8).
 
 The end-to-end tests start their own service in a temporary home with its
 own socket and a stand-in for the owner's Touch ID (`AGENT_SIGN_TEST_AUTH` and

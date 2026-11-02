@@ -1,0 +1,41 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "TEAM-N09",
+  "family": "team-record",
+  "legacy": "L05",
+  "kind": "negative",
+  "tags": [],
+  "about": "Taylor's device key signing a review: only enrolled reviewers count",
+  "input": {
+    "op": "review",
+    "trust": {
+      "taylor": {
+        "dev-taylor-1": "MCowBQYDK2VwAyEA3FVy4oO3jTXZbjdBHVRxNq1jqHOdrfbetyboX05DJv8="
+      },
+      "reviewers": {
+        "reviewer-1": "MCowBQYDK2VwAyEAirspPpsVYkoKc9LDkaXIgH9FKWPR4jRjvdwnqKU+3iM="
+      }
+    },
+    "change": "chg-1",
+    "commit": "abc123",
+    "records": [
+      {
+        "change": "chg-1",
+        "commit": "abc123",
+        "verdict": "pass",
+        "reviewer": "dev-taylor-1",
+        "signature": "lR19xs7AgBl6lfWgi8BVwh1RXFC9bGORg3l7KAEwSrAPlMtu2YoIPfLN2USuNnYhKH7DGObTTQrCmxh1y0D5Ag=="
+      }
+    ]
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "not-a-reviewer"
+  },
+  "today": {
+    "passed": false,
+    "failed": false,
+    "by": [],
+    "agreesWithExpected": true
+  }
+}

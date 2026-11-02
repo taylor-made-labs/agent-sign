@@ -7,6 +7,22 @@
 //! shown each time. "Never signed some other way" is checked by the commit not
 //! existing at all after a refusal: the wrapper never falls through to the
 //! person's own git and signing.
+//!
+//! DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+//! launched. `Setup::agent_git` and `agent_commit_from` now run the wrapper
+//! as a session (`agent-sign launch --agent test-agent -- agent-git ...`),
+//! so every test that expects an agent's commit to be signed, asked about,
+//! leased or refused by the rules runs through the launched path. The plain
+//! path (an agent with marks and no launcher) commits unsigned; its one copy
+//! of each refusal is in `test_launcher_policy.rs` (the `d1_*` tests), and
+//! `Setup::plain_agent_git` here keeps the tests that are about the plain
+//! path itself.
+
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+#[path = "support/launch.rs"]
+mod launch;
 
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
@@ -86,6 +102,11 @@ impl Setup {
             Some(rest) => format!("{opt_in}{rest}"),
             None => format!("{opt_in}{config}"),
         };
+        // Requirement change (plan "next: real use on servers", check 6a,
+        // 30 Oct 2026): the service certifies only built-in agent names and
+        // those in `[identity] allowed_agents`, so these tests list the
+        // agent they name, "Test Agent", as a user would.
+        let config = format!("{config}\n[identity]\nallowed_agents = [\"test-agent\"]\n");
         fs::write(state.join("config.toml"), config).unwrap();
 
         let fakebin = home.join("fakebin");
@@ -106,6 +127,7 @@ impl Setup {
 
     fn start_service(&mut self, auto_approve: bool) {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
+        cmd.die_with_parent();
         cmd.arg("--socket")
             .arg(&self.socket)
             .env("HOME", &self.home)
@@ -147,7 +169,14 @@ impl Setup {
     }
 
     fn answer(&self, answer: &str) {
-        fs::write(self.home.join("answer"), answer).unwrap();
+        // DELIBERATE EVAL CHANGE (deflake, same property, 1 Nov 2026): the answer
+        // goes in under a temporary name and is renamed into place, so the
+        // stand-in prompt, which waits for the file to exist and then reads it,
+        // can never read it between its creation and its contents (it read ""
+        // and denied: once in a full run on a loaded Pi, and 1 of 40 reruns).
+        let part = self.home.join("answer.part");
+        fs::write(&part, answer).unwrap();
+        fs::rename(&part, self.home.join("answer")).unwrap();
     }
 
     fn times_asked(&self) -> usize {
@@ -171,9 +200,36 @@ impl Setup {
         repo
     }
 
-    /// Runs the wrapper as an agent would: no terminal, and named only by
-    /// `AGENT_SIGN_AGENT_NAME` (none of the known agents' marks).
+    /// Runs the wrapper as a launched session of "Test Agent" would: no
+    /// terminal, started by `agent-sign launch --agent test-agent`, which
+    /// strips every identity claim and gives it its channel to the service.
+    ///
+    /// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    /// launched. It was a plain process named by `AGENT_SIGN_AGENT_NAME`
+    /// ([`Setup::plain_agent_git`]).
     fn agent_git(&self, repo: &Path, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
+        let mut cmd = launch::launch_command("test-agent", env!("CARGO_BIN_EXE_agent-git"));
+        cmd.args(args)
+            .current_dir(repo)
+            .env("HOME", &self.home)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("AGENT_SIGN_SOCKET", &self.socket)
+            .env("AGENT_SIGN_BIN", env!("CARGO_BIN_EXE_agent-ssh-sign"))
+            .stdin(Stdio::null());
+        for (var, _) in KNOWN_AGENTS {
+            cmd.env_remove(var);
+        }
+        for (k, v) in extra_env {
+            cmd.env(k, v);
+        }
+        cmd.output().unwrap()
+    }
+
+    /// Runs the wrapper as an agent nobody launched: no terminal, named only
+    /// by `AGENT_SIGN_AGENT_NAME` (none of the known agents' marks). Its
+    /// commits are unsigned (D1).
+    fn plain_agent_git(&self, repo: &Path, args: &[&str], extra_env: &[(&str, &str)]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-git"));
         cmd.args(args)
             .current_dir(repo)
@@ -186,9 +242,6 @@ impl Setup {
         for (var, _) in KNOWN_AGENTS {
             cmd.env_remove(var);
         }
-        // The agent says who it is: since the identity review (28 Oct 2026)
-        // an unmarked commit with no terminal is left to git, unsigned, and
-        // these tests are about the agent's rules, leases and signatures.
         cmd.env("AGENT_SIGN_AGENT_NAME", "Test Agent");
         for (k, v) in extra_env {
             cmd.env(k, v);
@@ -296,18 +349,24 @@ fn a_revoked_lease_asks_again_and_a_denial_then_refuses() {
 
 #[test]
 fn an_ended_lease_asks_again() {
+    // DELIBERATE EVAL CHANGE (deflake, same property, 1 Nov 2026): the lease
+    // was 2 s, and on a loaded Pi the first commit could take longer than
+    // that between the lease and its token, so the commit that must succeed
+    // failed (once, in a full run where this file took 163 s). The lease is
+    // 10 s and the wait just past it; the test still shows that an ended
+    // lease asks again.
     let s = Setup::new(
-        "[security]\nlease_mode = \"timed\"\ndefault_lease_duration = \"2s\"\n",
+        "[security]\nlease_mode = \"timed\"\ndefault_lease_duration = \"10s\"\n",
         false,
     );
     let repo = s.repo("r", "feat/a");
-    // (A second commit inside the 2 seconds isn't checked here: on a busy
+    // (A second commit inside the 10 seconds isn't checked here: on a busy
     // machine it can land after them. Commits inside a lease asking nothing
     // is covered by the approval-scope tests.)
     assert!(s.agent_commit(&repo, "a.txt").status.success());
     assert_eq!(s.times_asked(), 1);
 
-    std::thread::sleep(Duration::from_millis(3100));
+    std::thread::sleep(Duration::from_millis(11_000));
     s.answer(DENY);
     let out = s.agent_commit(&repo, "c.txt");
     assert_refused(&out, &repo, 2, "denied");
@@ -333,10 +392,25 @@ fn a_forged_or_reused_token_signs_nothing() {
     let real_repo = s.repo("token-fixture", "feat/a");
     let tree = git(&real_repo, &["rev-parse", "HEAD^{tree}"]);
     let parent = git(&real_repo, &["rev-parse", "HEAD"]);
+    // Requirement change (plan "next: real use on servers", check 6c, 30 Oct
+    // 2026): the service signs only a committer date inside the signing
+    // certificate's window, so the fixture is dated now (it was the fixed
+    // 1700000000, Nov 2023).
+    // DELIBERATE EVAL CHANGE (caller identity, P2, 31 Oct 2026): the service signs only a
+    // commit whose one committer is the token's principal, so the committer
+    // is the token's agent (it was "Fixture <fixture@example.invalid>").
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched. The token is the one a launched session gets on its own
+    // channel (a session the test starts itself, playing the launcher), and
+    // the committer is that session's principal. A single-use token is still
+    // used once: the same token again is refused.
+    let session = launch::start_session(&s.socket, "codex");
+    let now = agent_sign::agents_ca::now_secs();
     let candidate = format!(
-        "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\ntest: one-use fixture\n",
+        "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> {now} +0000\ncommitter Codex <{}> {now} +0000\n\ntest: one-use fixture\n",
         String::from_utf8_lossy(&tree.stdout).trim(),
-        String::from_utf8_lossy(&parent.stdout).trim()
+        String::from_utf8_lossy(&parent.stdout).trim(),
+        session.principal
     );
     let buffer = base64::Engine::encode(
         &base64::engine::general_purpose::STANDARD,
@@ -346,49 +420,33 @@ fn a_forged_or_reused_token_signs_nothing() {
     // The service names repositories by their canonical path (identity
     // review, 28 Oct 2026), and the signature must name the token's.
     let w_r = fs::canonicalize(&w_r).unwrap().display().to_string();
-    let granted = send_request(
-        &s.socket,
-        &Request::RequestLease {
-            repo: w_r.clone(),
-            branch: "feat/a".into(),
-            intent: "t".into(),
-            duration_secs: None,
-        },
-    )
-    .unwrap();
+    let granted = session.ask(&Request::RequestLease {
+        repo: w_r.clone(),
+        branch: "feat/a".into(),
+        intent: "t".into(),
+        duration_secs: None,
+    });
     assert!(matches!(granted, Response::LeaseGranted { .. }));
-    let Response::TokenIssued { token } = send_request(
-        &s.socket,
-        &Request::IssueIdentifiedToken {
-            repo: w_r.clone(),
-            branch: "feat/a".into(),
-            identity: agent_sign::attribution::AgentIdentity::new("codex", "Codex", Some("t")),
-        },
-    )
-    .unwrap() else {
+    let Response::TokenIssued { token } = session.ask(&Request::IssueIdentifiedToken {
+        repo: w_r.clone(),
+        branch: "feat/a".into(),
+        identity: session.identity.clone(),
+    }) else {
         panic!("no token");
     };
-    let first = send_request(
-        &s.socket,
-        &Request::SignCommit {
-            token: token.clone(),
-            buffer_b64: buffer.clone(),
-            repo: Some(w_r.clone()),
-            branch: Some("feat/a".into()),
-        },
-    )
-    .unwrap();
+    let first = session.ask(&Request::SignCommit {
+        token: token.clone(),
+        buffer_b64: buffer.clone(),
+        repo: Some(w_r.clone()),
+        branch: Some("feat/a".into()),
+    });
     assert!(matches!(first, Response::Signed { .. }), "{first:?}");
-    let again = send_request(
-        &s.socket,
-        &Request::SignCommit {
-            token,
-            buffer_b64: buffer,
-            repo: Some(w_r.clone()),
-            branch: Some("feat/a".into()),
-        },
-    )
-    .unwrap();
+    let again = session.ask(&Request::SignCommit {
+        token,
+        buffer_b64: buffer,
+        repo: Some(w_r.clone()),
+        branch: Some("feat/a".into()),
+    });
     assert!(matches!(again, Response::Error { .. }), "{again:?}");
 }
 
@@ -402,7 +460,11 @@ fn a_stopped_service_refuses_after_a_short_wait_and_makes_no_commit() {
     fs::write(repo.join("b.txt"), "b\n").unwrap();
     git_ok(&repo, &["add", "b.txt"]);
     let start = Instant::now();
-    let out = s.agent_git(
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched. With the service stopped no session can start at all, so the
+    // wrapper's own failing closed is checked on the plain path, which asks
+    // the service for its policy answer and refuses when it can't be reached.
+    let out = s.plain_agent_git(
         &repo,
         &["commit", "-q", "-m", "b"],
         &[("AGENT_SIGN_CONNECT_WAIT_MS", "300")],
@@ -568,12 +630,34 @@ impl Setup {
     /// Runs the wrapper's `commit` inside a real terminal (via `script`), as
     /// a person typing it, or an agent running in a terminal pane, would.
     fn commit_in_a_terminal(&self, repo: &Path, file: &str, marks: &[(&str, &str)]) -> Output {
+        self.commit_in_a_terminal_as(repo, file, marks, None)
+    }
+
+    /// [`Setup::commit_in_a_terminal`], started by the launcher as a session
+    /// of `slug` when one is given.
+    fn commit_in_a_terminal_as(
+        &self,
+        repo: &Path,
+        file: &str,
+        marks: &[(&str, &str)],
+        launched_as: Option<&str>,
+    ) -> Output {
         fs::write(repo.join(file), format!("{file}\n")).unwrap();
         git_ok(repo, &["add", file]);
         let wrapper = env!("CARGO_BIN_EXE_agent-git");
+        let wrapper = match launched_as {
+            Some(slug) => format!(
+                "{} launch --agent {slug} -- {wrapper}",
+                env!("CARGO_BIN_EXE_agent-sign")
+            ),
+            None => wrapper.to_string(),
+        };
         let mut cmd = Command::new("script");
         if cfg!(target_os = "macos") {
-            cmd.args(["-q", "/dev/null", wrapper, "commit", "-q", "-m", file]);
+            let words: Vec<String> = wrapper.split(' ').map(str::to_string).collect();
+            cmd.args(["-q", "/dev/null"])
+                .args(&words)
+                .args(["commit", "-q", "-m", file]);
         } else {
             cmd.args([
                 "-qec",
@@ -620,8 +704,31 @@ fn a_terminal_commit_with_no_agent_mark_is_left_to_the_person() {
     assert_eq!(head_signature_status(&repo), "N");
 }
 
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. A launched session in a terminal is the agent whatever its
+/// terminal says (the launcher scrubs every mark and the session is known
+/// from its channel), and its commit is signed with the agent key. This is
+/// the signature half of the old test, through the launcher.
 #[test]
 fn an_agent_in_a_terminal_pane_is_still_treated_as_an_agent() {
+    let s = Setup::new("", true);
+    let repo = s.repo("r", "feat/a");
+    let out = s.commit_in_a_terminal_as(&repo, "agents.txt", &[], Some("test-agent"));
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stdout)
+    );
+    assert_eq!(commits(&repo), 2);
+    assert!(s.head_verifies(&repo), "signed with the agent key");
+}
+
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): the mark half of the old
+/// test. A plain process in a terminal that carries an agent's mark is still
+/// the agent's, not the person's: its commit is made under the agent's own
+/// names, with no signature (D1), and the person's key is not asked.
+#[test]
+fn a_marked_agent_in_a_terminal_pane_is_still_treated_as_an_agent_not_the_person() {
     let s = Setup::new("", true);
     let repo = s.repo("r", "feat/a");
     let out = s.commit_in_a_terminal(&repo, "agents.txt", &[("CLAUDECODE", "1")]);
@@ -631,7 +738,11 @@ fn an_agent_in_a_terminal_pane_is_still_treated_as_an_agent() {
         String::from_utf8_lossy(&out.stdout)
     );
     assert_eq!(commits(&repo), 2);
-    assert!(s.head_verifies(&repo), "signed with the agent key");
+    assert_eq!(head_signature_status(&repo), "N", "unsigned (D1)");
+    let author = String::from_utf8_lossy(&git(&repo, &["log", "-1", "--format=%an"]).stdout)
+        .trim()
+        .to_string();
+    assert_ne!(author, "Person", "the agent's names, not the person's");
 }
 
 // --- Every lease ends --------------------------------------------------------
@@ -695,6 +806,7 @@ fn an_unreadable_backstop_stops_the_service_instead_of_dropping_it() {
     )
     .unwrap();
     let out = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
+        .die_with_parent()
         .arg("--socket")
         .arg(dir.path().join("s.sock"))
         .env("HOME", dir.path())
@@ -821,7 +933,10 @@ impl Setup {
     fn agent_commit_from(&self, cwd: &Path, global: &[&str], extra_env: &[(&str, &str)]) -> Output {
         let mut args: Vec<&str> = global.to_vec();
         args.extend(["commit", "-q", "-m", "from elsewhere"]);
-        let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-git"));
+        // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+        // launched. The session starts in `cwd`, and only its own working
+        // copy is writable.
+        let mut cmd = launch::launch_command("test-agent", env!("CARGO_BIN_EXE_agent-git"));
         cmd.args(&args)
             .current_dir(cwd)
             .env("HOME", &self.home)
@@ -833,14 +948,33 @@ impl Setup {
         for (var, _) in KNOWN_AGENTS {
             cmd.env_remove(var);
         }
-        // The agent says who it is: since the identity review (28 Oct 2026)
-        // an unmarked commit with no terminal is left to git, unsigned, and
-        // these tests are about the agent's rules, leases and signatures.
-        cmd.env("AGENT_SIGN_AGENT_NAME", "Test Agent");
         for (k, v) in extra_env {
             cmd.env(k, v);
         }
         cmd.output().unwrap()
+    }
+
+    /// A working copy to start a session in that is not `repo` but whose
+    /// writable folders (the session may write only its own working copy)
+    /// include `repo`'s git folder: a linked worktree of `repo`. The tests
+    /// that point a commit at another repository with `-C` or `GIT_DIR` ran
+    /// from a folder that was no repository at all; a session there could
+    /// write nothing, so the commit is made in the repository `repo`, and
+    /// the session runs from its linked worktree.
+    fn elsewhere(&self, repo: &Path) -> PathBuf {
+        let wt = self.home.join("not-a-repo");
+        git_ok(
+            repo,
+            &[
+                "worktree",
+                "add",
+                "-q",
+                wt.to_str().unwrap(),
+                "-b",
+                "elsewhere",
+            ],
+        );
+        wt
     }
 
     fn lease_repos(&self) -> Vec<String> {
@@ -861,8 +995,10 @@ fn a_commit_pointed_at_a_repository_with_dash_c_names_that_repository() {
     let s = Setup::new("", false);
     let repo = s.repo("r", "feat/a");
     stage(&repo, "a.txt");
-    let elsewhere = s.home.join("not-a-repo");
-    fs::create_dir_all(&elsewhere).unwrap();
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched. The session starts in a linked worktree of the repository
+    // (see `Setup::elsewhere`), not in a folder that is no repository.
+    let elsewhere = s.elsewhere(&repo);
     let out = s.agent_commit_from(&elsewhere, &["-C", repo.to_str().unwrap()], &[]);
     assert!(out.status.success(), "{}", stderr(&out));
     let canonical = fs::canonicalize(&repo).unwrap().display().to_string();
@@ -884,8 +1020,9 @@ fn a_commit_pointed_at_a_repository_with_git_dir_names_that_repository() {
     let s = Setup::new("", false);
     let repo = s.repo("r", "feat/a");
     stage(&repo, "a.txt");
-    let elsewhere = s.home.join("not-a-repo");
-    fs::create_dir_all(&elsewhere).unwrap();
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched; the session starts in a linked worktree (`Setup::elsewhere`).
+    let elsewhere = s.elsewhere(&repo);
     let git_dir = repo.join(".git");
     let out = s.agent_commit_from(
         &elsewhere,
@@ -1062,7 +1199,10 @@ fn a_dash_c_commit_asks_for_the_other_repository_not_the_working_one() {
     let a = s.repo("a", "feat/a");
     assert!(s.agent_commit(&a, "a.txt").status.success());
     assert_eq!(s.times_asked(), 1);
-    let b = s.repo("b", "feat/b");
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched, and a session may write only its own working copy, so the
+    // other repository is a repository of its own inside `a`'s working copy.
+    let b = s.repo("a/b", "feat/b");
     stage(&b, "b.txt");
     let out = s.agent_commit_from(&a, &["-C", b.to_str().unwrap()], &[]);
     assert!(out.status.success(), "{}", stderr(&out));

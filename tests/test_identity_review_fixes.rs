@@ -34,11 +34,21 @@
 //! directory. The person's signer is a fake that logs one line per call and
 //! exits 1. Every wrapper run, and every service start, is bounded in time.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+
+#[path = "support/memory_keys.rs"]
+mod memory_keys;
+
+#[path = "support/no_plain_keys.rs"]
+mod no_plain_keys;
+use die_with_parent::DieWithParent;
+#[path = "support/launch.rs"]
+mod launch;
+
 use std::ffi::OsString;
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
 use std::os::unix::fs::PermissionsExt;
-use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
@@ -83,11 +93,38 @@ fn claude_principal() -> String {
     format!("claude-code.{}@agents.local", session8(SESSION))
 }
 
-fn claude_identity() -> AgentIdentity {
-    AgentIdentity {
-        slug: "claude-code".into(),
-        name: "Claude Code".into(),
-        principal: claude_principal(),
+/// The shape of a launched Claude Code session's principal and git
+/// identity: `claude-code.<8 hex>@agents.local`, checked, and returned.
+///
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. The service makes a session's id, so the tests that expect a
+/// signature as the agent read the principal back instead of computing it
+/// from the id in the agent's marks ([`claude_principal`]).
+fn launched_claude_principal(w: &World, repo: &Path, rev: &str) -> String {
+    let email = w.git_ok(repo, &["log", "-1", "--format=%ce", rev]);
+    let session = email
+        .strip_prefix("claude-code.")
+        .and_then(|rest| rest.strip_suffix("@agents.local"))
+        .unwrap_or("");
+    assert!(
+        session.len() == 8 && session.bytes().all(|b| b.is_ascii_hexdigit()),
+        "{rev}'s committer {email:?} isn't a launched claude-code session's principal"
+    );
+    email
+}
+
+/// Raises this process's open-file limit (a test service started after
+/// this inherits it), for the test that holds over a thousand sessions.
+fn raise_open_file_limit(wanted: u64) {
+    let mut limit = libc::rlimit {
+        rlim_cur: 0,
+        rlim_max: 0,
+    };
+    // SAFETY: getrlimit and setrlimit take a pointer to a valid rlimit.
+    unsafe {
+        assert_eq!(libc::getrlimit(libc::RLIMIT_NOFILE, &mut limit), 0);
+        limit.rlim_cur = wanted.min(limit.rlim_max);
+        assert_eq!(libc::setrlimit(libc::RLIMIT_NOFILE, &limit), 0);
     }
 }
 
@@ -118,6 +155,15 @@ struct World {
     signer_log: PathBuf,
     auth_log: PathBuf,
     service: Option<Child>,
+    /// The principal each token from [`World::token`] was issued for, so
+    /// [`World::sign`] can name it as the commit's committer.
+    /// DELIBERATE EVAL CHANGE (caller identity, P2, 31 Oct 2026).
+    token_principals: std::cell::RefCell<std::collections::HashMap<String, String>>,
+    /// The launched Claude Code session the raw-protocol tests play, made
+    /// the first time one needs it ([`World::claude_session`]).
+    /// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    /// launched.
+    claude: std::cell::OnceCell<launch::Session>,
 }
 
 impl Drop for World {
@@ -125,6 +171,11 @@ impl Drop for World {
         if let Some(mut child) = self.service.take() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        // The runtime half of the no-unprotected-test-keys guard: nothing a
+        // test did may leave an unencrypted private key under its home.
+        if !std::thread::panicking() {
+            no_plain_keys::assert_no_plain_private_keys(&self.home);
         }
     }
 }
@@ -193,6 +244,8 @@ impl World {
             real_git,
             ssh_keygen,
             service: None,
+            token_principals: Default::default(),
+            claude: Default::default(),
             _dir: dir,
         };
         world.write_person_setup(signer, config);
@@ -233,14 +286,11 @@ impl World {
     }
 
     fn write_person_setup(&self, signer: PersonSigner, config: &str) {
+        // Only the public half is ever needed (git's `user.signingkey` names the
+        // `.pub` file; the signer is the fake below). The key is made in memory and
+        // never written, so no private key exists on disk.
         let key = self.home.join("person_key");
-        let out = self
-            .cmd(&self.ssh_keygen)
-            .args(["-q", "-t", "ed25519", "-N", "", "-C", "person", "-f"])
-            .arg(&key)
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "ssh-keygen: {}", text(&out));
+        memory_keys::write_public_only(&key, "person");
 
         let fake = self.fake_signer();
         fs::write(
@@ -287,6 +337,7 @@ impl World {
     fn service_command(&self, args: &[&str]) -> Command {
         let log = fs::File::create(self.home.join("service.log")).unwrap();
         let mut cmd = self.cmd(Path::new(env!("CARGO_BIN_EXE_agent-signd")));
+        cmd.die_with_parent();
         cmd.arg("--socket")
             .arg(&self.socket)
             .args(args)
@@ -414,6 +465,42 @@ impl World {
         self.agent(repo, marks, &["commit", "-m", &format!("feat: {file}")])
     }
 
+    /// The wrapper run as a launched Claude Code session (`agent-sign launch
+    /// --agent claude-code`) with `args`, in `repo`.
+    ///
+    /// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    /// launched.
+    fn launched(&self, repo: &Path, args: &[&str]) -> Output {
+        let mut cmd = self.cmd(Path::new(env!("CARGO_BIN_EXE_agent-sign")));
+        cmd.args(["launch", "--agent", "claude-code", "--"])
+            .arg(env!("CARGO_BIN_EXE_agent-git"))
+            .args(args)
+            .current_dir(repo);
+        run_within(cmd, &format!("launched agent git {args:?}"))
+    }
+
+    /// [`World::agent_commit`], as a launched Claude Code session.
+    fn launched_commit(&self, repo: &Path, file: &str) -> Output {
+        self.stage(repo, file, &format!("{file}\n"));
+        self.launched(repo, &["commit", "-m", &format!("feat: {file}")])
+    }
+
+    /// The launched Claude Code session the raw-protocol tests play.
+    fn claude_session(&self) -> &launch::Session {
+        self.claude
+            .get_or_init(|| launch::start_session(&self.socket, "claude-code"))
+    }
+
+    /// The identity the service gave [`World::claude_session`].
+    fn claude_identity(&self) -> AgentIdentity {
+        self.claude_session().identity.clone()
+    }
+
+    /// `request` on [`World::claude_session`]'s channel.
+    fn session_ask(&self, request: &Request) -> Response {
+        self.claude_session().ask(request)
+    }
+
     fn rev(&self, repo: &Path, rev: &str) -> String {
         self.git_ok(repo, &["rev-parse", rev])
     }
@@ -471,20 +558,6 @@ impl World {
         send_request(&self.socket, request).expect("the test service answers")
     }
 
-    /// Sends one raw JSON request line to the test service and reads the
-    /// answer, for requests whose shape this change extends (a `SignCommit`
-    /// that names its repository and branch).
-    fn ask_raw(&self, json: serde_json::Value) -> Response {
-        let mut stream = UnixStream::connect(&self.socket).unwrap();
-        stream
-            .set_read_timeout(Some(Duration::from_secs(20)))
-            .unwrap();
-        writeln!(stream, "{json}").unwrap();
-        let mut line = String::new();
-        BufReader::new(&stream).read_line(&mut line).unwrap();
-        serde_json::from_str(&line).unwrap_or_else(|e| panic!("bad answer {line:?}: {e}"))
-    }
-
     fn lease(&self, repo: &str, branch: &str) {
         let granted = self.ask(&Request::RequestLease {
             repo: repo.to_string(),
@@ -499,8 +572,17 @@ impl World {
     }
 
     fn token(&self, request: Request) -> String {
-        match self.ask(&request) {
-            Response::TokenIssued { token } => token,
+        match self.session_ask(&request) {
+            Response::TokenIssued { token } => {
+                if let Request::IssueIdentifiedToken { identity, .. }
+                | Request::IssueRunToken { identity, .. } = &request
+                {
+                    self.token_principals
+                        .borrow_mut()
+                        .insert(token.clone(), identity.principal.clone());
+                }
+                token
+            }
             other => panic!("no token for {request:?}: {other:?}"),
         }
     }
@@ -508,24 +590,50 @@ impl World {
     /// `SignCommit` with the repository and branch the signing program
     /// reports.
     fn sign(&self, token: &str, repo: &str, branch: &str) -> Response {
+        self.sign_on(self.claude_session(), token, repo, branch)
+    }
+
+    /// [`World::sign`] on `session`'s channel.
+    fn sign_on(
+        &self,
+        session: &launch::Session,
+        token: &str,
+        repo: &str,
+        branch: &str,
+    ) -> Response {
         // Real object/header fixture independent of the candidate validator:
         // it changes no paths, retaining this test's original token assertions.
         let tree = self.git_ok(Path::new(repo), &["rev-parse", "HEAD^{tree}"]);
         let parent = self.git_ok(Path::new(repo), &["rev-parse", "HEAD"]);
+        // Requirement change (plan "next: real use on servers", check 6c,
+        // 30 Oct 2026): the service signs only a committer date inside the
+        // signing certificate's window, so the fixture is dated now (it was
+        // the fixed 1700000000).
+        //
+        // DELIBERATE EVAL CHANGE (caller identity, P2, 31 Oct 2026): the service signs
+        // only a commit whose one committer is the token's principal, so the
+        // committer is the principal the token was issued for (it was
+        // "Fixture <fixture@example.invalid>" for every token).
+        let now = agent_sign::agents_ca::now_secs();
+        let committer = self
+            .token_principals
+            .borrow()
+            .get(token)
+            .map(|p| format!("Agent <{p}>"))
+            .unwrap_or_else(|| "Fixture <fixture@example.invalid>".to_string());
         let buffer = format!(
-            "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> 1700000000 +0000\ncommitter Fixture <fixture@example.invalid> 1700000000 +0000\n\ntest: token fixture\n",
+            "tree {}\nparent {}\nauthor Fixture <fixture@example.invalid> {now} +0000\ncommitter {committer} {now} +0000\n\ntest: token fixture\n",
             tree.trim(),
             parent.trim()
         );
-        self.ask_raw(serde_json::json!({
-            "type": "SignCommit",
-            "payload": {
-                "token": token,
-                "buffer_b64": base64::engine::general_purpose::STANDARD.encode(buffer.as_bytes()),
-                "repo": repo,
-                "branch": branch,
-            }
-        }))
+        // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+        // launched: asked on the session's channel.
+        session.ask(&Request::SignCommit {
+            token: token.to_string(),
+            buffer_b64: base64::engine::general_purpose::STANDARD.encode(buffer.as_bytes()),
+            repo: Some(repo.to_string()),
+            branch: Some(branch.to_string()),
+        })
     }
 }
 
@@ -567,14 +675,18 @@ fn f1_a_repository_file_cant_put_another_name_on_agent_commits() {
          [agent]\nname = \"Repo Agent\"\nemail = \"repo.agent@example.com\"\n",
     )
     .unwrap();
-    let out = w.agent_commit(&repo, CLAUDE, "agent.txt");
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched; the identity is the launched session's, read back.
+    let out = w.launched_commit(&repo, "agent.txt");
     assert_ok(&w, &out, "agent commit in a repository with a hostile file");
+    let principal = launched_claude_principal(&w, &repo, "HEAD");
+    let ident = format!("Claude Code <{principal}>");
     assert_eq!(
         w.author_and_committer(&repo, "HEAD"),
-        (claude_ident(), claude_ident()),
+        (ident.clone(), ident),
         "a repository's file changed who an agent commit is attributed to"
     );
-    assert_eq!(w.signature(&repo, "HEAD"), ("G".into(), claude_principal()));
+    assert_eq!(w.signature(&repo, "HEAD"), ("G".into(), principal));
     let err = stderr(&out);
     let warnings: Vec<&str> = err.lines().filter(|l| l.contains("ignored")).collect();
     assert_eq!(
@@ -742,7 +854,13 @@ fn f3_rebasing_main_from_another_branch_makes_no_agent_commit_on_main() {
     let main_before = w.rev(&repo, "main");
     // From `feature`, rebase `main` onto it: git checks out main and replays
     // its commits there.
-    let _ = w.agent(&repo, CLAUDE, &["rebase", "feature", "main"]);
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched. The property is that no commit signed as the agent lands on
+    // main through a rebase: the launched session's run token is for the
+    // branch it started on, and the service refuses a signature on main.
+    // (A plain process's unsigned rebase is a different matter: it signs
+    // nothing; see docs/caller-identity.md, the plain path.)
+    let _ = w.launched(&repo, &["rebase", "feature", "main"]);
     assert_eq!(
         w.rev(&repo, "main"),
         main_before,
@@ -755,14 +873,19 @@ fn f3_rebasing_main_from_another_branch_makes_no_agent_commit_on_main() {
 #[test]
 fn f3_a_run_token_signs_nothing_in_another_repository() {
     let w = World::new(PersonSigner::Fake, "", true);
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched. A session may write only its own working copy, so for the
+    // other repository to be writable at all (and the test to mean
+    // something) it is a repository of its own inside the session's working
+    // copy.
     let repo = w.repo();
-    let other = w.repo_named("other", "side");
+    let other = w.repo_named("repo/other", "side");
     let other_before = w.rev(&other, "HEAD");
     let exec = format!(
         "cd '{}' && git commit -q --allow-empty -m injected",
         other.display()
     );
-    let _ = w.agent(&repo, CLAUDE, &["rebase", "--exec", &exec, "HEAD~1"]);
+    let _ = w.launched(&repo, &["rebase", "--exec", &exec, "HEAD~1"]);
     assert_eq!(
         w.rev(&other, "HEAD"),
         other_before,
@@ -782,7 +905,7 @@ fn f3_a_commit_token_signs_only_for_its_repository_and_branch() {
         let token = w.token(Request::IssueIdentifiedToken {
             repo: repo.clone(),
             branch: "work".into(),
-            identity: claude_identity(),
+            identity: w.claude_identity(),
         });
         let answer = w.sign(&token, to_repo, to_branch);
         assert!(
@@ -793,7 +916,7 @@ fn f3_a_commit_token_signs_only_for_its_repository_and_branch() {
     let token = w.token(Request::IssueIdentifiedToken {
         repo: repo.clone(),
         branch: "work".into(),
-        identity: claude_identity(),
+        identity: w.claude_identity(),
     });
     let answer = w.sign(&token, &repo, "work");
     assert!(
@@ -1028,7 +1151,7 @@ fn f7_a_git_run_counts_once_against_the_rate_limit_however_many_commits_it_signs
         w.token(Request::IssueRunToken {
             repo: repo.clone(),
             branch: "work".into(),
-            identity: claude_identity(),
+            identity: w.claude_identity(),
         })
     };
     // One run (a rebase, say) signs 4 commits: all go through.
@@ -1044,10 +1167,10 @@ fn f7_a_git_run_counts_once_against_the_rate_limit_however_many_commits_it_signs
     run();
     run();
     // ...and a fourth separate run doesn't.
-    let fourth = w.ask(&Request::IssueRunToken {
+    let fourth = w.session_ask(&Request::IssueRunToken {
         repo: repo.clone(),
         branch: "work".into(),
-        identity: claude_identity(),
+        identity: w.claude_identity(),
     });
     match fourth {
         Response::Error { message } => assert!(
@@ -1072,8 +1195,16 @@ fn sshsig_public_key(armored: &str) -> Vec<u8> {
     raw[14..14 + len].to_vec()
 }
 
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. The service keeps at most 1024 session keys, and drops the
+/// least recently used first. A launched session's key lives while the
+/// session does, so this holds 1025 sessions open at once (the test raises
+/// its open-file limit for them): the first one's key is evicted by the
+/// 1024 newer ones, and it gets a new key when it signs again. (It was 1025
+/// session ids named by a plain process.)
 #[test]
 fn f7_session_keys_are_capped_least_recently_used_first() {
+    raise_open_file_limit(8192);
     let w = World::new(
         PersonSigner::Fake,
         "[security]\nmax_commits_per_minute = 1000000\n",
@@ -1081,29 +1212,39 @@ fn f7_session_keys_are_capped_least_recently_used_first() {
     );
     let repo = w.canonical(&w.repo());
     w.lease(&repo, "work");
-    let sign_as = |identity: AgentIdentity| -> Vec<u8> {
-        let token = w.token(Request::IssueIdentifiedToken {
+    let sign_as = |session: &launch::Session| -> Vec<u8> {
+        let issued = session.ask(&Request::IssueIdentifiedToken {
             repo: repo.clone(),
             branch: "work".into(),
-            identity,
+            identity: session.identity.clone(),
         });
-        match w.sign(&token, &repo, "work") {
+        let Response::TokenIssued { token } = issued else {
+            panic!("no token for {}: {issued:?}", session.principal);
+        };
+        w.token_principals
+            .borrow_mut()
+            .insert(token.clone(), session.principal.clone());
+        match w.sign_on(session, &token, &repo, "work") {
             Response::Signed { signature_pem } => sshsig_public_key(&signature_pem),
             other => panic!("not signed: {other:?}"),
         }
     };
-    let first = sign_as(AgentIdentity::new("codex", "Codex", Some("first")));
+    let first_session = launch::start_session(&w.socket, "codex");
+    let first = sign_as(&first_session);
     assert_eq!(
         first,
-        sign_as(AgentIdentity::new("codex", "Codex", Some("first"))),
+        sign_as(&first_session),
         "the same session should keep its key while it's in use"
     );
-    for i in 0..1024 {
-        sign_as(AgentIdentity::new("codex", "Codex", Some(&format!("s{i}"))));
+    let mut newer = Vec::new();
+    for _ in 0..1024 {
+        let session = launch::start_session(&w.socket, "codex");
+        sign_as(&session);
+        newer.push(session);
     }
     assert_ne!(
         first,
-        sign_as(AgentIdentity::new("codex", "Codex", Some("first"))),
+        sign_as(&first_session),
         "1024 newer sessions should have evicted the least recently used key"
     );
 }
@@ -1121,10 +1262,10 @@ fn f7_a_repository_named_by_a_link_shares_its_lease_and_rate_window() {
     let (real, link) = (w.canonical(&repo), link.to_string_lossy().into_owned());
     w.lease(&real, "work");
     let issue = |r: &str| {
-        w.ask(&Request::IssueIdentifiedToken {
+        w.session_ask(&Request::IssueIdentifiedToken {
             repo: r.to_string(),
             branch: "work".into(),
-            identity: claude_identity(),
+            identity: w.claude_identity(),
         })
     };
     let via_link = issue(&link);
@@ -1151,7 +1292,7 @@ fn leaked_token(w: &World, repo: &Path) -> String {
     w.token(Request::IssueIdentifiedToken {
         repo,
         branch: "work".into(),
-        identity: claude_identity(),
+        identity: w.claude_identity(),
     })
 }
 

@@ -90,6 +90,20 @@ pub enum Request {
         branch: String,
         identity: AgentIdentity,
     },
+    /// The plain path's policy-only question (D1, 1 Nov 2026): may an agent
+    /// nobody launched make an UNSIGNED commit in `repo` on `branch`? The
+    /// service checks the name rules (allowed agents, a person's name, the
+    /// machine's domain), that no approval or launched session holds the
+    /// name, the protected branches and the rate limit, and counts the commit
+    /// in the repository's rate window. Answered [`Response::Success`] or
+    /// [`Response::Error`]; it never makes a token, a lease or a signature,
+    /// and a launched session's channel refuses it. The plain path has no
+    /// attested identity, so its commits carry no signature at all.
+    CheckPlainCommit {
+        repo: String,
+        branch: String,
+        identity: AgentIdentity,
+    },
     /// A signature over `buffer_b64` with `token`. `repo` and `branch` are
     /// where the git run asking is writing, as the signing program finds
     /// them (see [`crate::git_place`]): the service refuses when they aren't
@@ -103,6 +117,49 @@ pub enum Request {
         #[serde(default)]
         branch: Option<String>,
     },
+    /// A signature over `buffer_b64` as the agent a commit approval names
+    /// (docs/caller-identity.md, path 1). `approval` is the approval's exact
+    /// JSON text ([`crate::commit_approval::CommitApproval`]),
+    /// `approval_signature` an armored SSHSIG over it by the commitments
+    /// approval key in [`crate::commit_approval::APPROVAL_NAMESPACE`], and
+    /// `repo` and `branch` where the commit is made. Answered
+    /// [`Response::Signed`] only when every check passes; needs no lease.
+    SignApproved {
+        approval: String,
+        approval_signature: String,
+        buffer_b64: String,
+        repo: String,
+        branch: String,
+    },
+    /// Starts a launched session for `agent` (a display name or a slug, as
+    /// `AGENT_SIGN_AGENT_NAME` takes them): sent by `agent-sign launch`
+    /// only. The service makes the session's id and principal, and answers
+    /// [`Response::SessionStarted`] with the session's channel attached
+    /// (`SCM_RIGHTS`; see [`crate::session`]). The connection it came on is
+    /// the session's registration: the session ends when it closes.
+    LaunchSession {
+        agent: String,
+    },
+    /// System mode: the launcher registers a session in `slot`, whose
+    /// account is `uid` and whose systemd unit is `unit`
+    /// (`agent-session@<slot>.service`), for `agent` (docs/system-mode.md,
+    /// section 4). Accepted only on the launcher-only socket and only from
+    /// the `[launcher] account`'s uid as the kernel reports it; answered
+    /// [`Response::SessionStarted`] with no descriptor attached. The
+    /// connection is the registration: the session ends when it closes. The
+    /// service then counts a caller as this session only by its uid, its
+    /// unit and its live process (`crate::kernel_facts`), never by anything
+    /// it says.
+    RegisterSession {
+        slot: u32,
+        uid: u32,
+        unit: String,
+        agent: String,
+    },
+    /// Who this launched session is: answered [`Response::SessionIdentity`]
+    /// only to a launched session (a stream over its channel in one-account
+    /// mode; a process of its slot account in its unit in system mode).
+    SessionIdentity,
     GetStatus {
         repo: String,
     },
@@ -165,6 +222,17 @@ pub enum Response {
     PendingList {
         pending: Vec<PendingInfo>,
     },
+    /// A launched session started: its principal and the id the service
+    /// made for it. Its channel comes attached to this answer.
+    SessionStarted {
+        principal: String,
+        session: String,
+    },
+    /// The identity of the launched session whose channel the request came
+    /// in on.
+    SessionIdentity {
+        identity: AgentIdentity,
+    },
     Success,
     Error {
         message: String,
@@ -181,12 +249,17 @@ pub fn default_socket_path() -> PathBuf {
     crate::paths::state_dir().join("daemon.sock")
 }
 
-/// The socket a client (CLI, git wrapper, signing program) connects to:
-/// `AGENT_SIGN_SOCKET`, else `AGENT_SIGN_SOCKET`, else [`default_socket_path`].
-/// The service itself ignores these variables and uses `--socket` or the default.
+/// The socket a client (CLI, git wrapper, signing program) connects to, in
+/// this order (docs/system-mode.md, section 4): `AGENT_SIGN_SOCKET` if set;
+/// else the `[service] socket` of `/etc/agent-sign/system.toml`, if that
+/// file exists ([`crate::system_config::client_socket`]); else
+/// [`default_socket_path`], which is what a laptop uses.
+/// The service itself ignores the variable and uses `--socket`, then the
+/// same file, then the default.
 pub fn client_socket_path() -> PathBuf {
     crate::paths::env_var("SOCKET")
         .map(PathBuf::from)
+        .or_else(crate::system_config::client_socket)
         .unwrap_or_else(default_socket_path)
 }
 
@@ -217,7 +290,7 @@ pub fn send_request(
 /// yet (the moments a restart leaves), for up to `wait`. Any other error, or
 /// one that outlasts the wait, is returned as is: a service that doesn't come
 /// back still fails the commit.
-fn connect_waiting(socket_path: &Path, wait: Duration) -> std::io::Result<UnixStream> {
+pub fn connect_waiting(socket_path: &Path, wait: Duration) -> std::io::Result<UnixStream> {
     let start = Instant::now();
     loop {
         match UnixStream::connect(socket_path) {
@@ -241,7 +314,17 @@ pub fn send_request_waiting(
     req: &Request,
     wait: Duration,
 ) -> Result<Response, Box<dyn std::error::Error>> {
-    let mut stream = connect_waiting(socket_path, wait)?;
+    let stream = connect_waiting(socket_path, wait)?;
+    request_on(stream, req)
+}
+
+/// Sends one request on an open `stream` and reads the answer: the
+/// service's socket, or a launched session's private stream
+/// ([`crate::session::Channel::open_stream`]).
+pub fn request_on(
+    mut stream: UnixStream,
+    req: &Request,
+) -> Result<Response, Box<dyn std::error::Error>> {
     let mut serialized = serde_json::to_string(req)?;
     serialized.push('\n');
     stream.write_all(serialized.as_bytes())?;
@@ -257,6 +340,26 @@ pub fn send_request_waiting(
 
     let resp: Response = serde_json::from_str(&line)?;
     Ok(resp)
+}
+
+/// Asks the service: over this process's launched session's channel when it
+/// has one ([`crate::session::Channel::from_env`]), so the service knows the
+/// session from the channel, never from the request; otherwise on the
+/// service's socket ([`client_socket_path`]).
+pub fn ask_service(req: &Request) -> Result<Response, Box<dyn std::error::Error>> {
+    match crate::session::Channel::from_env() {
+        Some(channel) => channel.ask(req),
+        None => send_request(&client_socket_path(), req),
+    }
+}
+
+/// Where [`ask_service`] asks, for messages: the session's channel, or the
+/// socket's path.
+pub fn service_place() -> String {
+    match crate::session::Channel::from_env() {
+        Some(channel) => format!("this session's channel (descriptor {})", channel.fd()),
+        None => client_socket_path().display().to_string(),
+    }
 }
 
 pub fn send_response(

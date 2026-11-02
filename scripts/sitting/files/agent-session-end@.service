@@ -1,0 +1,70 @@
+# The end-of-session check for slot %i, run by agent-launchd after the session's
+# unit has fully stopped. It runs as the slot's account in a unit of its own, so
+# it is never taken for the session. It checks that every working copy is
+# committed, writes the session's commits to bundles in current/out, and says
+# what it found. It runs git in the session's repository, which the session
+# controls, so it must never run as the launcher: the worst a hostile session
+# can make it do is report "clean" and then lose its own files. No network.
+[Unit]
+Description=agent-sign end-of-session check for slot %i
+
+[Service]
+Type=exec
+User=agent-slot-%i
+Group=agent-slot-%i
+Environment=HOME=/var/lib/agent-slots/%i/current/home
+WorkingDirectory=/var/lib/agent-slots/%i/current
+ExecStart=/opt/agent-sign/current/bin/agent-sign session-end
+StandardInput=null
+# Opened by systemd as root, so under /var/lib/agent-launch-io only (see
+# agent-session@.service; review finding A-2).
+StandardOutput=append:/var/lib/agent-launch-io/logs/%i.out
+StandardError=append:/var/lib/agent-launch-io/logs/%i.out
+KillMode=control-group
+RuntimeMaxSec=30min
+UMask=0077
+# Write access to current/ only.
+ProtectSystem=strict
+TemporaryFileSystem=/var/lib/agent-slots:ro
+BindPaths=/var/lib/agent-slots/%i/current
+ProtectHome=yes
+InaccessiblePaths=-/var/lib/agent-sign -/var/lib/agent-launch -/var/lib/agent-launch-io
+PrivateTmp=yes
+PrivateDevices=yes
+PrivateIPC=yes
+PrivateNetwork=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+LockPersonality=yes
+RestrictRealtime=yes
+LimitCORE=0
+# What the session may ask the kernel for (review round 2, M2 and L5). A
+# deny-list, so ordinary programs keep working: no clock changes, CPU emulation,
+# kernel modules, raw I/O, reboot, swap or obsolete calls, and no keyring calls
+# (add_key, keyctl, request_key): the per-uid user keyring (@u) lasts from one
+# session to the next in the same slot, and nothing may be put in it. A denied
+# call fails with EPERM (the program carries on) instead of killing the session.
+# RestrictNamespaces is left out on purpose: agents' own sandboxes need user
+# namespaces (Claude Code's sandbox on Linux uses bubblewrap), and unshare,
+# clone, mount and setns stay allowed.
+SystemCallArchitectures=native
+SystemCallFilter=~@clock @cpu-emulation @module @raw-io @reboot @swap @obsolete add_key keyctl request_key
+SystemCallErrorNumber=EPERM
+# PrivateDevices bind-mounts the HOST's /dev/shm, and PrivateTmp and PrivateIPC
+# don't cover it, so files left there would reach the next session in this slot
+# (D6, review round 2, M2). A fresh tmpfs per session, still writable and usable
+# by programs.
+TemporaryFileSystem=/dev/shm:mode=1777
+# Limits for everything in the slot. Defaults: half the machine's memory and
+# systemd's own default share of the kernel's task limit, made explicit. The
+# sitting's --slot-memory-max and --slot-tasks-max rewrite these two lines.
+MemoryMax=50%
+TasksMax=15%

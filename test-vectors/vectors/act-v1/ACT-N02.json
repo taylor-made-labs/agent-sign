@@ -1,0 +1,57 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ACT-N02",
+  "family": "act-v1",
+  "legacy": "L06",
+  "kind": "negative",
+  "tags": [
+    "divergence:first-key-wins"
+  ],
+  "about": "signed by the person's second registered key: only the first key counts today",
+  "input": {
+    "act": {
+      "id": "a1",
+      "kind": "assert",
+      "party": "person:me",
+      "domain": "suite:test",
+      "seq": 1,
+      "claims": [
+        [
+          "_:self",
+          "rdf:type",
+          "ex:Thing"
+        ]
+      ],
+      "sig": {
+        "key": "k-me#2",
+        "ed25519": "oGpfUl391V6IQqYnnlrgYGLLPUIcP3BeSmPRgmZQKFHZu423CmeTKYQr5FeBSVPl5YVXGinIe7svvFFumatIAQ=="
+      }
+    },
+    "registry": {
+      "parties": {
+        "person:me": {
+          "person": true,
+          "keys": [
+            {
+              "id": "k-me#1",
+              "ed25519": "jqzHQeB0+6Wxef3qiXReaWOUqkbeSsD64FIx+3z7iAc="
+            },
+            {
+              "id": "k-me#2",
+              "ed25519": "XdEafM/HiBfZf29J1GLXy4r1uWgaGIv4sDxB9vCmab4="
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "not-the-enrolled-key"
+  },
+  "today": {
+    "counts": false,
+    "reason": "not-the-party-signing-key",
+    "agreesWithExpected": true
+  }
+}

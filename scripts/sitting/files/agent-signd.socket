@@ -1,0 +1,19 @@
+# The service's socket, for everyone. agent-sign's sitting installs this file.
+# Every request on it is decided by the uid (and for sessions, the unit) that the
+# kernel reports for the caller, so a group would add nothing, and it would break
+# every agent process already running when the sitting happens (a process only
+# gets a new group at its next login).
+[Unit]
+Description=agent-sign service socket (everyone; the service decides by the caller)
+
+[Socket]
+ListenStream=/run/agent-sign/daemon.sock
+SocketMode=0666
+SocketUser=agent-sign
+SocketGroup=agent-sign
+DirectoryMode=0755
+FileDescriptorName=daemon
+Service=agent-signd.service
+
+[Install]
+WantedBy=sockets.target

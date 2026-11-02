@@ -1,0 +1,51 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D16",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "negative",
+  "tags": [
+    "divergence:duplicate-key"
+  ],
+  "about": "a duplicate key: parsers keep the last",
+  "input": {
+    "json_text": "{\"a\":1,\"a\":2}"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "duplicate-key"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b2261223a327d"
+      },
+      "L05": {
+        "bytes": "7b2261223a327d"
+      },
+      "L09": {
+        "bytes": "7b2261223a327d"
+      },
+      "L12": {
+        "bytes": "7b2261223a327d"
+      },
+      "L13": {
+        "bytes": "7b2261223a327d"
+      },
+      "L07": {
+        "bytes": "7b2261223a327d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [],
+    "wronglyEncode": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": false
+  }
+}

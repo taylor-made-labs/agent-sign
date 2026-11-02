@@ -1,0 +1,47 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D18",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "negative",
+  "tags": [
+    "divergence:non-finite"
+  ],
+  "about": "a number too big for a double: JavaScript reads Infinity",
+  "input": {
+    "json_text": "{\"n\":1e400}"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "non-integer-number"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b226e223a6e756c6c7d"
+      },
+      "L05": {
+        "bytes": "7b226e223a6e756c6c7d"
+      },
+      "L09": {
+        "error": "refuses"
+      },
+      "L12": {
+        "error": "refuses"
+      },
+      "L13": {
+        "error": "refuses"
+      },
+      "L07": {
+        "error": "refuses"
+      }
+    },
+    "encodersDisagree": true,
+    "matchExpected": [],
+    "wronglyEncode": [
+      "L01",
+      "L05"
+    ],
+    "agreesWithExpected": false
+  }
+}

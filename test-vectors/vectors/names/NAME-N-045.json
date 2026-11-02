@@ -1,0 +1,23 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-N-045",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "negative",
+  "tags": [
+    "P8"
+  ],
+  "about": "a look-alike party: capital M",
+  "input": {
+    "op": "party-to-name",
+    "party": "person:Me"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "look-alike-name"
+  },
+  "today": {
+    "result": "refused",
+    "agreesWithExpected": true
+  }
+}

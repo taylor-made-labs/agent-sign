@@ -1,0 +1,364 @@
+{
+ "{\"act\":\"register-passkey\",\"assurance\":\"presence\",\"signer_kind\":\"person\",\"widens\":false,\"available\":[\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "presence",
+  "record": {
+   "assurance": "presence",
+   "on_behalf_of": "person",
+   "signer_kind": "person"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"message\",\"assurance\":\"device\",\"signer_kind\":\"browser\",\"widens\":false,\"available\":[\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "device",
+  "record": {
+   "assurance": "device",
+   "on_behalf_of": "person",
+   "signer_kind": "browser"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"approve-intent\",\"assurance\":\"device\",\"signer_kind\":\"browser\",\"widens\":false,\"available\":[\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "device",
+  "record": {
+   "assurance": "device",
+   "on_behalf_of": "person",
+   "signer_kind": "browser"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"approve-intent\",\"assurance\":\"os-account\",\"signer_kind\":\"device\",\"widens\":false,\"available\":[\"device\",\"os-account\"]}": {
+  "accepted": false,
+  "needs": "device",
+  "record": null,
+  "ruled_out_by": [
+   {
+    "entry": "refuse-needs-device",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:needs",
+      "lvl:device"
+     ],
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:os-account"
+     ],
+     [
+      "lvl:device",
+      "sg:above",
+      "lvl:os-account"
+     ]
+    ],
+    "reason": "needs-device"
+   }
+  ],
+  "say": "needs one of your signed-in devices",
+  "why": "needs-device"
+ },
+ "{\"act\":\"register-passkey\",\"assurance\":\"presence\",\"signer_kind\":\"person\",\"widens\":false,\"available\":[\"os-account\"]}": {
+  "accepted": true,
+  "needs": "presence",
+  "record": {
+   "assurance": "presence",
+   "on_behalf_of": "person",
+   "signer_kind": "person"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"approve-intent\",\"assurance\":\"agent\",\"signer_kind\":\"agent-role\",\"widens\":false,\"available\":[\"device\",\"os-account\"]}": {
+  "accepted": false,
+  "needs": "device",
+  "record": null,
+  "ruled_out_by": [
+   {
+    "entry": "high-stakes-signers",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:stakes",
+      "sg:high"
+     ],
+     [
+      "sg:q",
+      "sg:signer",
+      "sk:agent-role"
+     ]
+    ],
+    "reason": "not-the-persons-signer"
+   },
+   {
+    "entry": "refuse-needs-device",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:needs",
+      "lvl:device"
+     ],
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:agent"
+     ],
+     [
+      "lvl:device",
+      "sg:above",
+      "lvl:agent"
+     ]
+    ],
+    "reason": "needs-device"
+   },
+   {
+    "entry": "signer-cannot-stand-here",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:agent"
+     ],
+     [
+      "sg:q",
+      "sg:signer",
+      "sk:agent-role"
+     ]
+    ],
+    "reason": "not-the-persons-signer"
+   }
+  ],
+  "say": "this signer cannot act for you at this level",
+  "why": "not-the-persons-signer"
+ },
+ "{\"act\":\"enroll-device\",\"assurance\":\"device\",\"signer_kind\":\"browser\",\"widens\":false,\"available\":[\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "device",
+  "record": {
+   "assurance": "device",
+   "on_behalf_of": "person",
+   "signer_kind": "browser"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"approve-intent\",\"assurance\":\"presence\",\"signer_kind\":\"person\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "presence",
+  "record": {
+   "assurance": "presence",
+   "on_behalf_of": "person",
+   "signer_kind": "person"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"message\",\"assurance\":\"device\",\"signer_kind\":\"browser\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "device",
+  "record": {
+   "assurance": "device",
+   "on_behalf_of": "person",
+   "signer_kind": "browser"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"message\",\"assurance\":\"presence\",\"signer_kind\":\"person\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "device",
+  "record": {
+   "assurance": "presence",
+   "on_behalf_of": "person",
+   "signer_kind": "person"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"register-passkey\",\"assurance\":\"presence\",\"signer_kind\":\"person\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": true,
+  "needs": "presence",
+  "record": {
+   "assurance": "presence",
+   "on_behalf_of": "person",
+   "signer_kind": "person"
+  },
+  "ruled_out_by": [],
+  "say": null,
+  "why": null
+ },
+ "{\"act\":\"approve-intent\",\"assurance\":\"device\",\"signer_kind\":\"browser\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": false,
+  "needs": "presence",
+  "record": null,
+  "ruled_out_by": [
+   {
+    "entry": "refuse-needs-presence",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:needs",
+      "lvl:presence"
+     ],
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:device"
+     ],
+     [
+      "lvl:presence",
+      "sg:above",
+      "lvl:device"
+     ]
+    ],
+    "reason": "needs-presence"
+   }
+  ],
+  "say": "needs your finger",
+  "why": "needs-presence"
+ },
+ "{\"act\":\"approve-intent\",\"assurance\":\"os-account\",\"signer_kind\":\"device\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": false,
+  "needs": "presence",
+  "record": null,
+  "ruled_out_by": [
+   {
+    "entry": "refuse-needs-presence",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:needs",
+      "lvl:presence"
+     ],
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:os-account"
+     ],
+     [
+      "lvl:presence",
+      "sg:above",
+      "lvl:os-account"
+     ]
+    ],
+    "reason": "needs-presence"
+   }
+  ],
+  "say": "needs your finger",
+  "why": "needs-presence"
+ },
+ "{\"act\":\"approve-intent\",\"assurance\":\"agent\",\"signer_kind\":\"agent-role\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": false,
+  "needs": "presence",
+  "record": null,
+  "ruled_out_by": [
+   {
+    "entry": "high-stakes-signers",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:stakes",
+      "sg:high"
+     ],
+     [
+      "sg:q",
+      "sg:signer",
+      "sk:agent-role"
+     ]
+    ],
+    "reason": "not-the-persons-signer"
+   },
+   {
+    "entry": "refuse-needs-presence",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:needs",
+      "lvl:presence"
+     ],
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:agent"
+     ],
+     [
+      "lvl:presence",
+      "sg:above",
+      "lvl:agent"
+     ]
+    ],
+    "reason": "needs-presence"
+   },
+   {
+    "entry": "signer-cannot-stand-here",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:agent"
+     ],
+     [
+      "sg:q",
+      "sg:signer",
+      "sk:agent-role"
+     ]
+    ],
+    "reason": "not-the-persons-signer"
+   }
+  ],
+  "say": "this signer cannot act for you at this level",
+  "why": "not-the-persons-signer"
+ },
+ "{\"act\":\"enroll-device\",\"assurance\":\"device\",\"signer_kind\":\"browser\",\"widens\":false,\"available\":[\"presence\",\"device\",\"os-account\"]}": {
+  "accepted": false,
+  "needs": "presence",
+  "record": null,
+  "ruled_out_by": [
+   {
+    "entry": "refuse-needs-presence",
+    "kind": "entry",
+    "premises": [
+     [
+      "sg:q",
+      "sg:needs",
+      "lvl:presence"
+     ],
+     [
+      "sg:q",
+      "sg:assurance",
+      "lvl:device"
+     ],
+     [
+      "lvl:presence",
+      "sg:above",
+      "lvl:device"
+     ]
+    ],
+    "reason": "needs-presence"
+   }
+  ],
+  "say": "needs your finger",
+  "why": "needs-presence"
+ }
+}

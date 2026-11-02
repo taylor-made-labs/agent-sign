@@ -1,17 +1,124 @@
 name: Release
 
+# A release is published by a workflow_dispatch run of THIS file on main, with
+# the tag as its input. Nothing a tag push starts can publish: a tag push would
+# read this file (and ci.yml, and the checker) from the tagged commit, which
+# anyone with write access can choose, so a tag on a commit whose release.yml
+# dropped the gate would publish. Here the files that run are main's. Jobs, in
+# order, and each needs the one before it:
+#
+#   on-main          fails unless this run is on refs/heads/main, the tag has
+#                    the release form, and the tag's commit is an ancestor of
+#                    origin/main; then resolves the tag to its commit ONCE and
+#                    outputs it (sha). Every job below needs it, and every
+#                    later use of the commit is that output, never the tag name
+#                    (a branch named like the tag would shadow the bare name).
+#   quality          main's own ci.yml, called with that commit as its ref:
+#                    every job there (tests on all three platforms, clippy,
+#                    fmt, secret scan, licenses, the release-graph check, the
+#                    install test) runs on the tagged commit, in this same run
+#   build-release    builds and packages that commit on each platform, records the
+#                    archive's sha256 next to it, and attests the archive's
+#                    build provenance (signed by GitHub outside the artifact;
+#                    the sha256 file travels with the archive, so on its own it
+#                    proves only that the two match each other)
+#   verify-artifacts downloads each archive on its own platform, re-checks the
+#                    sha256 and that the attestation was made by this workflow
+#                    on main, unpacks it, runs its programs with --version, and
+#                    runs scripts/check-binary-clean.sh on them
+#   publish-release  runs in the "release" environment, re-checks the sha256
+#                    and the attestation of what it downloaded, checks the tag
+#                    still names the commit that was built, then publishes the
+#                    tag; a tag with a "-" in it (v1.0.0-rc1) publishes as a
+#                    prerelease
+#
+# Someone with write access can still dispatch a modified copy of this file
+# from another branch; nothing in this file stops that. The environment
+# "release" gates the honest path only. It does not stop a modified copy, which
+# can leave it out. What holds is repository settings: who has write access,
+# branch protection with required approvals on main, and the tag ruleset. They
+# are listed, with how to cut a release, in docs/RELEASE_CHECKLIST.md.
+#
+# scripts/check-release-graph.py checks this shape (locally and in ci.yml's
+# release-graph job). It is a structural check: it runs no workflow, and it
+# cannot see repository settings.
+
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'The tag to release, already pushed, for example v1.2.3'
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  # The input reaches scripts as an environment variable, never pasted into one.
+  TAG: ${{ inputs.tag }}
 
 jobs:
+  # Each step here is a gate step: exactly one command, so that nothing can
+  # hide a failure (the checker refuses any other shape; the one line that
+  # resolves the tag is the single exception it knows by its exact text). Their
+  # order matters in that the fetch comes before the ancestor test and the
+  # resolve step, then the check of its shape, come last.
+  on-main:
+    name: Run is on main, tag is on main
+    # The output is the tag's commit, resolved once as refs/tags/<tag>^{commit}.
+    # Never a bare tag name as a ref later: actions/checkout prefers a branch of
+    # the same name, and a writer can push one.
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the whole history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+
+      - name: Fail unless this run is on main
+        run: test "$GITHUB_REF" = refs/heads/main
+
+      # The same regex is the "Tag name check" in docs/RELEASE_CHECKLIST.md (the
+      # tag ruleset's own pattern is a glob, v*.*.*, which is broader).
+      - name: Fail unless the tag name has the release form
+        run: '[[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$ ]]'
+
+      - name: Fetch main and the tags
+        run: git fetch origin main --tags
+
+      - name: Fail unless the tagged commit is an ancestor of origin/main
+        run: git merge-base --is-ancestor "refs/tags/$TAG^{commit}" origin/main
+
+      - name: Resolve the tag to a commit, once
+        id: resolve
+        run: echo "sha=$(git rev-parse "refs/tags/$TAG^{commit}")" >> "$GITHUB_OUTPUT"
+
+      # echo succeeds even when rev-parse fails, which would write an empty sha.
+      - name: Fail unless the resolved commit is a full commit hash
+        run: '[[ "${{ steps.resolve.outputs.sha }}" =~ ^[0-9a-f]{40}$ ]]'
+
+  quality:
+    name: Quality gate (main's ci.yml on the tagged commit)
+    needs: on-main
+    uses: ./.github/workflows/ci.yml
+    with:
+      ref: ${{ needs.on-main.outputs.sha }}
+    # Only for the secret scan, if gitleaks asks for a licence (an organization).
+    secrets:
+      GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
   build-release:
     name: Build (${{ matrix.target }})
+    needs: [on-main, quality]
     runs-on: ${{ matrix.os }}
+    # The attestation permissions are on this job and no other.
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -35,12 +142,23 @@ jobs:
             archive_name: agent-sign-aarch64-unknown-linux-gnu
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+      # The commit the tag named when on-main ran, not the branch this run was
+      # dispatched from, and not the bare tag name (a branch of that name wins).
+      - name: Checkout the tagged commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          ref: ${{ needs.on-main.outputs.sha }}
+
+      # A job reads needs.on-main only if it lists on-main in its own needs; an
+      # empty sha would make the checkout fall back to main's head.
+      - name: Fail unless the checkout is the commit that was checked
+        run: test "$(git rev-parse HEAD)" = "${{ needs.on-main.outputs.sha }}"
+
+      # The version is pinned exactly, and must equal rust-toolchain.toml.
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable branch; the toolchain: input below picks the version
+        with:
+          toolchain: 1.98.1
           targets: ${{ matrix.target }}
 
       - name: Build release binaries
@@ -59,35 +177,136 @@ jobs:
           done
           cp "target/${{ matrix.target }}/release/agent-git" "$STAGING_DIR/bin/git"
 
-          # Copy scripts and metadata
+          # Copy scripts and metadata. The checker's test fixtures (deliberately
+          # broken workflows) are for the repository, not for users.
           cp -r scripts/* "$STAGING_DIR/scripts/"
+          rm -rf "$STAGING_DIR/scripts/test-fixtures"
           cp README.md LICENSE-MIT LICENSE-APACHE "$STAGING_DIR/"
 
-          # Create archive
+          # Create the archive at pkg/<name>.tar.gz (the path the attestation
+          # step names; the checker compares the two) and record its sha256, to
+          # be re-checked after download in verify-artifacts and again in
+          # publish-release.
+          tar -czf "pkg/${{ matrix.archive_name }}.tar.gz" -C pkg "${{ matrix.archive_name }}"
           cd pkg
-          tar -czf "${{ matrix.archive_name }}.tar.gz" "${{ matrix.archive_name }}"
           shasum -a 256 "${{ matrix.archive_name }}.tar.gz" > "${{ matrix.archive_name }}.sha256"
 
+      # Signed by GitHub for this workflow run; verify-artifacts and
+      # publish-release check it with `gh attestation verify`, requiring this
+      # workflow, run on main.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: pkg/${{ matrix.archive_name }}.tar.gz
+
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ${{ matrix.archive_name }}
           path: |
             pkg/*.tar.gz
             pkg/*.sha256
+          if-no-files-found: error
+
+  # Each archive is checked on a runner of its own platform, because its
+  # programs have to run there. The x86_64 macOS archive is built on the arm64
+  # runner and runs here under Rosetta. The scripts it runs come from main's
+  # checkout (this run's own), the archive from the tag.
+  verify-artifacts:
+    name: Verify (${{ matrix.target }})
+    needs: build-release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive_name: agent-sign-aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive_name: agent-sign-x86_64-apple-darwin
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive_name: agent-sign-x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive_name: agent-sign-aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Download the built archive
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: ${{ matrix.archive_name }}
+          path: downloaded
+
+      - name: Re-check the sha256 recorded at build
+        shell: bash
+        run: |
+          cd downloaded
+          shasum -a 256 -c "${{ matrix.archive_name }}.sha256"
+
+      # The sha256 file came in the same artifact as the archive, so the step
+      # above shows only that the two agree. The attestation was made at build
+      # and is signed outside the artifact; it must come from this workflow
+      # (release.yml) run on main.
+      - name: Verify the build provenance of the archive
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify "downloaded/${{ matrix.archive_name }}.tar.gz" --repo ${{ github.repository }} --signer-workflow ${{ github.repository }}/.github/workflows/release.yml --source-ref refs/heads/main
+
+      - name: Unpack, run the programs with --version, check them clean
+        shell: bash
+        run: |
+          mkdir unpacked
+          tar -xzf "downloaded/${{ matrix.archive_name }}.tar.gz" -C unpacked
+          bin="unpacked/${{ matrix.archive_name }}/bin"
+          for n in agent-signd agent-sign agent-ssh-sign agent-git git; do
+            test -x "$bin/$n" || { echo "missing program: $n" >&2; exit 1; }
+          done
+          "$bin/agent-sign" --version
+          "$bin/agent-signd" --version
+          "$bin/agent-git" --version
+          scripts/check-binary-clean.sh "$bin"
 
   publish-release:
     name: Publish GitHub Release
-    needs: build-release
+    needs: [on-main, quality, build-release, verify-artifacts]
+    # Required reviewers on this environment hold the publish for a human, and
+    # its deployment branches are limited to main (repository settings).
+    environment: release
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Download all built artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: release-artifacts
+
+      # What is published is exactly what was verified: its sha256 is checked
+      # once more here, right before publishing.
+      - name: Re-check the sha256 of every archive about to be published
+        run: |
+          for d in release-artifacts/*/; do
+            (cd "$d" && shasum -a 256 -c ./*.sha256)
+          done
+
+      - name: Verify the build provenance of every archive about to be published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for t in release-artifacts/*/*.tar.gz; do
+            gh attestation verify "$t" --repo ${{ github.repository }} --signer-workflow ${{ github.repository }}/.github/workflows/release.yml --source-ref refs/heads/main
+          done
 
       - name: Consolidate archives and generate combined checksums
         run: |
@@ -97,12 +316,24 @@ jobs:
           sha256sum *.tar.gz > SHA256SUMS.txt
           cat SHA256SUMS.txt
 
+      # The tag was resolved once, in on-main, and built from that commit. The
+      # approval wait can be long: if the tag was moved or deleted meanwhile,
+      # stop here, rather than publish something else or have the release step
+      # create the tag at main's head.
+      - name: Fetch the tags again
+        run: git fetch --force --tags origin
+
+      - name: Fail unless the tag still names the commit that was built
+        run: test "$(git rev-parse "refs/tags/$TAG^{commit}")" = "${{ needs.on-main.outputs.sha }}"
+
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
+          tag_name: ${{ inputs.tag }}
+          target_commitish: ${{ needs.on-main.outputs.sha }}
           files: |
             dist/*.tar.gz
             dist/SHA256SUMS.txt
           generate_release_notes: true
           draft: false
-          prerelease: false
+          prerelease: ${{ contains(inputs.tag, '-') }}

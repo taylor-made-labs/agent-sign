@@ -1,0 +1,163 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "PASS-N-P8f",
+  "family": "passkey-act",
+  "legacy": "L02",
+  "kind": "negative",
+  "tags": [
+    "P8"
+  ],
+  "about": "a validly signed browser-key act whose party is the look-alike \"person:me \"",
+  "input": {
+    "context": {
+      "rpId": "localhost",
+      "origins": [
+        "http://localhost:5173"
+      ],
+      "pinnedPasskeys": [
+        "ORxAWyQEdrarCAu5zWr1qQSpn4qgyNWr08dfXG7HPVw"
+      ]
+    },
+    "events": [
+      {
+        "id": "8692f10d-6daf-4be3-bb6f-69770784f34b",
+        "type": "suite.chat-app.device-key-registered",
+        "source": "suite://local/mac/chat-app",
+        "time": "2026-10-23T12:00:00.000Z",
+        "product": "chat-app",
+        "kind": "device-key-registered",
+        "machine": "mac",
+        "subject": "ev.chat-app.device-key-registered.mac",
+        "data": {
+          "party": "person:me",
+          "keyId": "x-ab05b765ff6edeea55c26b9a093f9530",
+          "publicKey": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "7_xU6cxIuuYHLb0oBLRw71XzPZA2agN7Smc1DYTSTh0",
+            "y": "YFN_V3alnXGUhnRedeYT_o_QopT-1nMIPaO4jw44gRw"
+          },
+          "device": "test-browser"
+        },
+        "seq": 53,
+        "stream": "EV_CHAT_APP",
+        "order": 1792756851000000,
+        "publisher": "UBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB"
+      },
+      {
+        "id": "e43facd7-5f05-4944-84d6-3d769a5fc112",
+        "type": "suite.unharness.device-key-registered",
+        "source": "suite://local/mac/unharness",
+        "time": "2026-10-23T12:00:00.000Z",
+        "product": "unharness",
+        "kind": "device-key-registered",
+        "machine": "mac",
+        "subject": "ev.unharness.device-key-registered.mac",
+        "data": {
+          "party": "agent:pm",
+          "keyId": "x-9bc1239728ef465379ff7786144b066d",
+          "publicKey": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "brgXF0KV1Qn7OdbbCXp0HcCA99oTqK2Ra6Pcnc0eN7Q",
+            "y": "YZEcag78IfqczpevGI_YOyHl43QEu-16kxQM__xzPkg"
+          },
+          "device": "pm-worker"
+        },
+        "seq": 54,
+        "stream": "EV_UNHARNESS",
+        "order": 1792756852000000
+      },
+      {
+        "id": "reg-taylor-passkey",
+        "type": "suite.chat-app.passkey-registered",
+        "source": "suite://local/mac/chat-app",
+        "time": "2026-10-23T12:00:00.000Z",
+        "product": "chat-app",
+        "kind": "passkey-registered",
+        "machine": "mac",
+        "subject": "ev.chat-app.passkey-registered.mac",
+        "conversation": "c-test",
+        "data": {
+          "party": "person:me",
+          "sentence": "I add this passkey (Touch ID on my Mac) to the ones that sign for me.",
+          "credentialId": "ORxAWyQEdrarCAu5zWr1qQSpn4qgyNWr08dfXG7HPVw",
+          "publicKey": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "OhaU9jHDc_UjGgM9yCGCRH13baBXCH9XdrHWSmuaBEY",
+            "y": "Rh8ZnvHcQWrfzcnI_WjZk1885DBvnTuKMGk-g16hvfA"
+          },
+          "rpId": "localhost",
+          "origin": "http://localhost:5173",
+          "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2NFAAAAAQAAAAAAAAAAAAAAAAAAAAAAIDkcQFskBHa2qwgLuc1q9akEqZ-KoMjVq9PHX1xuxz1cpQECAyYgASFYIDoWlPYxw3P1IxoDPcghgkR9d22gVwh_V3ax1kprmgRGIlggRh8ZnvHcQWrfzcnI_WjZk1885DBvnTuKMGk-g16hvfA",
+          "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uY3JlYXRlIiwiY2hhbGxlbmdlIjoiNUwxd3ZKYzNJa2JVYTIzTTM5eWZxd29uREtaR2l4el9EZmtZNERWcWVNayIsIm9yaWdpbiI6Imh0dHA6Ly9sb2NhbGhvc3Q6NTE3MyIsImNyb3NzT3JpZ2luIjpmYWxzZX0"
+        },
+        "seq": 55,
+        "stream": "EV_CHAT_APP",
+        "order": 1792756853000000
+      }
+    ],
+    "act": {
+      "id": "4fbd707c-d1a4-41c4-b3c2-f3851823d293",
+      "type": "suite.chat-app.signed-act",
+      "source": "suite://local/undefined/chat-app",
+      "time": "2026-10-23T12:00:00.000Z",
+      "product": "chat-app",
+      "kind": "signed-act",
+      "subject": "ev.chat-app.signed-act.undefined",
+      "conversation": "c-test",
+      "data": {
+        "actKind": "message",
+        "sentence": "hello there",
+        "party": "person:me ",
+        "signature": {
+          "alg": "ES256",
+          "keyId": "x-ab05b765ff6edeea55c26b9a093f9530",
+          "value": "X_sgcdci2XHNHzR6ww8zyaV9ZuibJ3GzfPySR423uy7anyoswcNk4Oa4KDNxlFZSWlWuabrk9QG9ZCipx5H_ag"
+        }
+      },
+      "seq": 61,
+      "stream": "EV_CHAT_APP",
+      "order": 1792756859000000
+    },
+    "mode": "verify"
+  },
+  "policy": [
+    {
+      "question": {
+        "act": "register-passkey",
+        "assurance": "presence",
+        "signer_kind": "person",
+        "widens": false,
+        "available": [
+          "device",
+          "os-account"
+        ]
+      },
+      "answer": {
+        "accepted": true,
+        "needs": "presence",
+        "record": {
+          "assurance": "presence",
+          "on_behalf_of": "person",
+          "signer_kind": "person"
+        },
+        "ruled_out_by": [],
+        "say": null,
+        "why": null
+      }
+    }
+  ],
+  "expected": {
+    "result": "refused",
+    "reason": "bad-party"
+  },
+  "today": {
+    "status": "refused",
+    "reason": "bad-party",
+    "say": "that isn't a name this suite recognises",
+    "note": "reason strings are today's vocabulary; a replay compares result, signer and strength",
+    "agreesWithExpected": true
+  }
+}

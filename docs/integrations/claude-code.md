@@ -38,7 +38,10 @@ Check from inside a session that `git` is the wrapper: ask it to run
   principal once the agents' trust line is in your allowed-signers file (the
   installer adds it). GitHub shows these commits as Unverified: it doesn't
   check SSH certificate signatures, and they aren't yours.
-- Claude Code runs as your user, so it could read the agents' certificate
-  authority key, edit agent-sign's config, or call the real git directly if
-  it set out to. agent-sign catches mistakes, not a determined agent; the
-  identities are attribution, not a security boundary.
+- On a [named machine](../../README.md#naming-the-machine) the principal is
+  `claude-code.<8 hex characters>@<machine>.agents.local`.
+- Claude Code runs in the same OS account as agent-sign, so it could claim
+  another agent's name, make the machine trust a key of its own, edit
+  agent-sign's config, or call the real git directly if it set out to.
+  agent-sign catches mistakes, not a determined agent: see
+  [What a signature proves](../../README.md#what-a-signature-proves).

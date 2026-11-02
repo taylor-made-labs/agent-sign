@@ -1,0 +1,24 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-009",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [
+    "party-mapping"
+  ],
+  "about": "today's party agent:pm maps to one name",
+  "input": {
+    "op": "party-to-name",
+    "party": "agent:pm"
+  },
+  "expected": {
+    "result": "accepted",
+    "name": "spiffe://suite.local/agent-role/pm"
+  },
+  "today": {
+    "result": "accepted",
+    "name": "spiffe://suite.local/agent-role/pm",
+    "agreesWithExpected": true
+  }
+}

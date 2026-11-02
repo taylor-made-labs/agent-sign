@@ -1,0 +1,563 @@
+{
+ "about": "Warrants (a person's signed grant of use of a credential) found in ntaild's conformance logs, all signed with public test keys. No warrant signed with a real key is readable from the agents account: real ones, if any, live in ntaild's store on the server, under the service's own account.",
+ "tool": "capture-ntaild.mjs",
+ "count": 79,
+ "countedByToday": 77,
+ "warrants": [
+  {
+   "file": "conformance/logs/credentials/C01.json",
+   "fileSha256": "bda1c37757e2d8cbbb1cab697c4b4232dcc84d1bc5bbff67d69a9bd8cd309e55",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C02.json",
+   "fileSha256": "2282b51137a8263249665d61b9b055df3936c5448d8db6b08ae20c96f0e41691",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C03.json",
+   "fileSha256": "6ca116efdac97a1ef26edfb09794d4f0723cb2d0e546341f69439b38c782823f",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C04.json",
+   "fileSha256": "9146bdbf4503c18b392c5345e35d731bc45f200dafee0e6420cb20fd088f443b",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C05.json",
+   "fileSha256": "deb1b28e2c48fd8d2c5037448788d9b7071ed636979b16f60b3eef715c33eee0",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C06.json",
+   "fileSha256": "bcea87042a977350d8ace93bac07859541947e0af772dff259d1678d7dceff0f",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C07.json",
+   "fileSha256": "a89f997a4cfd8842a90646789589538644d9710a1377cc35f69c326d428f8254",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C07.json",
+   "fileSha256": "a89f997a4cfd8842a90646789589538644d9710a1377cc35f69c326d428f8254",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C08.json",
+   "fileSha256": "8c72eadb7b8e4edcf60cf7418c3bddc2bb0b9909a2d1f4b99bc84f4d2d9ffcf4",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C08.json",
+   "fileSha256": "8c72eadb7b8e4edcf60cf7418c3bddc2bb0b9909a2d1f4b99bc84f4d2d9ffcf4",
+   "party": "agent:a1",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C09.json",
+   "fileSha256": "cab0092b6956d71b02a713fbbf8e91259a5e0e432d466d3ee1df057df773e563",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C09.json",
+   "fileSha256": "cab0092b6956d71b02a713fbbf8e91259a5e0e432d466d3ee1df057df773e563",
+   "party": "agent:a1",
+   "id": "w4",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C10.json",
+   "fileSha256": "0eace5759e5dccd902190dc3d355acd996f6bdf986084da8b253983644d383de",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C10.json",
+   "fileSha256": "0eace5759e5dccd902190dc3d355acd996f6bdf986084da8b253983644d383de",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C11.json",
+   "fileSha256": "32945f8a3799a897c8fe02ec2ccfa4f3eb92344e0b85aef14a5dacc679fe6452",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C11.json",
+   "fileSha256": "32945f8a3799a897c8fe02ec2ccfa4f3eb92344e0b85aef14a5dacc679fe6452",
+   "party": "agent:a3",
+   "id": "w5",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C12.json",
+   "fileSha256": "43a64fc5782e0c2d0cdb1d368f44ce5b85ef7b1fb9e0db9c9088cf702ad057e8",
+   "party": "agent:a1",
+   "id": "w6",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C13.json",
+   "fileSha256": "da56565ae0642eebd1f445de2e8d5a24594f64113e26ac8029e6da66c1210ac2",
+   "party": "person:me",
+   "id": "w7",
+   "counts": false,
+   "ignoredBecause": "not-the-party-signing-key"
+  },
+  {
+   "file": "conformance/logs/credentials/C14.json",
+   "fileSha256": "3db1da05f125f392245e81407288160f1f5509955d896c6985d341798be76de7",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C14.json",
+   "fileSha256": "3db1da05f125f392245e81407288160f1f5509955d896c6985d341798be76de7",
+   "party": "agent:a1",
+   "id": "a2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C15.json",
+   "fileSha256": "13c8b5cbbbee0ac2e2690f25b43ebc15e57bbab2e788358e3924de22798afff5",
+   "party": "person:me",
+   "id": "w8",
+   "counts": false,
+   "ignoredBecause": "unsigned"
+  },
+  {
+   "file": "conformance/logs/credentials/C20.json",
+   "fileSha256": "eec25b5b29bb81d16e2450f9fd2efbc3baad11104ee7a29838f1e0dc69ac8068",
+   "party": "person:me",
+   "id": "w9",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C21.json",
+   "fileSha256": "b427ede36a5cc691db2420051e2d06f50d43eb478537a97671f96c5477c87b0a",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C22.json",
+   "fileSha256": "82192648ee6dc16b5a8509e2897514841b4dc37e5921f1a0cb775123ae0cafd8",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials/C22.json",
+   "fileSha256": "82192648ee6dc16b5a8509e2897514841b4dc37e5921f1a0cb775123ae0cafd8",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X01.json",
+   "fileSha256": "3b4378c8cf6283c8b36e9be72410a0a9d7dd5426cd49c0b1ee7717844cde4490",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X01.json",
+   "fileSha256": "3b4378c8cf6283c8b36e9be72410a0a9d7dd5426cd49c0b1ee7717844cde4490",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X01.json",
+   "fileSha256": "3b4378c8cf6283c8b36e9be72410a0a9d7dd5426cd49c0b1ee7717844cde4490",
+   "party": "agent:a2",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X01.json",
+   "fileSha256": "3b4378c8cf6283c8b36e9be72410a0a9d7dd5426cd49c0b1ee7717844cde4490",
+   "party": "agent:a3",
+   "id": "w4",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X01.json",
+   "fileSha256": "3b4378c8cf6283c8b36e9be72410a0a9d7dd5426cd49c0b1ee7717844cde4490",
+   "party": "agent:a4",
+   "id": "w5",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X02.json",
+   "fileSha256": "45102a16f38610bc788607fca9ce6c55a1eeb2d626c6b352dbcb3df2cc5e94e8",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X02.json",
+   "fileSha256": "45102a16f38610bc788607fca9ce6c55a1eeb2d626c6b352dbcb3df2cc5e94e8",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X02.json",
+   "fileSha256": "45102a16f38610bc788607fca9ce6c55a1eeb2d626c6b352dbcb3df2cc5e94e8",
+   "party": "agent:a2",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X02.json",
+   "fileSha256": "45102a16f38610bc788607fca9ce6c55a1eeb2d626c6b352dbcb3df2cc5e94e8",
+   "party": "agent:a3",
+   "id": "w4",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X02.json",
+   "fileSha256": "45102a16f38610bc788607fca9ce6c55a1eeb2d626c6b352dbcb3df2cc5e94e8",
+   "party": "agent:a4",
+   "id": "w5",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X03.json",
+   "fileSha256": "f2197a27f7ef898d62cd0a0e4b2c96dc51f51009ca8e63a3ce418430f829aaf8",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X03.json",
+   "fileSha256": "f2197a27f7ef898d62cd0a0e4b2c96dc51f51009ca8e63a3ce418430f829aaf8",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X03.json",
+   "fileSha256": "f2197a27f7ef898d62cd0a0e4b2c96dc51f51009ca8e63a3ce418430f829aaf8",
+   "party": "agent:a2",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X03.json",
+   "fileSha256": "f2197a27f7ef898d62cd0a0e4b2c96dc51f51009ca8e63a3ce418430f829aaf8",
+   "party": "agent:a3",
+   "id": "w4",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X03.json",
+   "fileSha256": "f2197a27f7ef898d62cd0a0e4b2c96dc51f51009ca8e63a3ce418430f829aaf8",
+   "party": "agent:a4",
+   "id": "w5",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X04.json",
+   "fileSha256": "42ad5c510a58899b9be3d41226df9414903109b885614699907d1171dc72b288",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X05.json",
+   "fileSha256": "dd51bd2ee788d6709899eaac3ae4af7a8a6b09ad739de92d8e40b655d7b77f7f",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X06.json",
+   "fileSha256": "7a501844289c956f8c541cd8e91682d58722085c325f23cb3db85925847e65c5",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X07.json",
+   "fileSha256": "ad34dbe69738349c5d69145fa815a6c74cf386895a184c89d0ad42c98c1ba558",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X07.json",
+   "fileSha256": "ad34dbe69738349c5d69145fa815a6c74cf386895a184c89d0ad42c98c1ba558",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X08.json",
+   "fileSha256": "7740a760d0b186248b07c5b6d9b405afa6d8f5231a2373392c107052352716e8",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X08.json",
+   "fileSha256": "7740a760d0b186248b07c5b6d9b405afa6d8f5231a2373392c107052352716e8",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X09.json",
+   "fileSha256": "5e4cff03b60556e6b997a43bfdd5c690a705fcedeafc5048d5b76279c759f5af",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X10.json",
+   "fileSha256": "0d3336833e70271a862caa90feff369f6dd7bd9949ae1ca7d38e24e0a82f7246",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X10.json",
+   "fileSha256": "0d3336833e70271a862caa90feff369f6dd7bd9949ae1ca7d38e24e0a82f7246",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X11.json",
+   "fileSha256": "aa97afd2f27113a2a2d404cf5c06f4d8e01b86c2339b917dfb2a1fa8b82385cc",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-extra/X12.json",
+   "fileSha256": "d1d87fbdf5e0710ea08f09e36c2c5ed6c668a1cb043abe1bd00ffc67b12e5b32",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V01.json",
+   "fileSha256": "fb07fdbe62238c1a4f548b01f7d97d90291167a36c5e6133b354a1d977826345",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V01.json",
+   "fileSha256": "fb07fdbe62238c1a4f548b01f7d97d90291167a36c5e6133b354a1d977826345",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V01.json",
+   "fileSha256": "fb07fdbe62238c1a4f548b01f7d97d90291167a36c5e6133b354a1d977826345",
+   "party": "agent:a1",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V02.json",
+   "fileSha256": "e6bd1986ed18ee161bd99ad9433ec052014cbdfe349dd3949bb6fa8acf60d1ef",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V02.json",
+   "fileSha256": "e6bd1986ed18ee161bd99ad9433ec052014cbdfe349dd3949bb6fa8acf60d1ef",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V02.json",
+   "fileSha256": "e6bd1986ed18ee161bd99ad9433ec052014cbdfe349dd3949bb6fa8acf60d1ef",
+   "party": "agent:a1",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V03.json",
+   "fileSha256": "1bb093ea15710eeaf23fe6c2718b34223d9ce948814f29ffe869e39f6323ee71",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V03.json",
+   "fileSha256": "1bb093ea15710eeaf23fe6c2718b34223d9ce948814f29ffe869e39f6323ee71",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V03.json",
+   "fileSha256": "1bb093ea15710eeaf23fe6c2718b34223d9ce948814f29ffe869e39f6323ee71",
+   "party": "agent:a1",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V04.json",
+   "fileSha256": "1a50bca406beaf9509b925d6d5f833ca8a9d1809b5f4b8a2edb89ae96c45396e",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V04.json",
+   "fileSha256": "1a50bca406beaf9509b925d6d5f833ca8a9d1809b5f4b8a2edb89ae96c45396e",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V04.json",
+   "fileSha256": "1a50bca406beaf9509b925d6d5f833ca8a9d1809b5f4b8a2edb89ae96c45396e",
+   "party": "agent:a1",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V05.json",
+   "fileSha256": "df139e754b5b7a733437bbe2df59006fd688aa00da932231121b7df313a64b7d",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V05.json",
+   "fileSha256": "df139e754b5b7a733437bbe2df59006fd688aa00da932231121b7df313a64b7d",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V05.json",
+   "fileSha256": "df139e754b5b7a733437bbe2df59006fd688aa00da932231121b7df313a64b7d",
+   "party": "agent:a1",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V06.json",
+   "fileSha256": "0ca94100ed9d5cd3bdd537697fc0ab9b8c644fdff4282a498ad7cb39168ca7d1",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V06.json",
+   "fileSha256": "0ca94100ed9d5cd3bdd537697fc0ab9b8c644fdff4282a498ad7cb39168ca7d1",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V06.json",
+   "fileSha256": "0ca94100ed9d5cd3bdd537697fc0ab9b8c644fdff4282a498ad7cb39168ca7d1",
+   "party": "agent:a1",
+   "id": "w3",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V07.json",
+   "fileSha256": "ba37773958f5ca866f197922f05c387e90c01627093d19dcf9f7b8d04233ce06",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V08.json",
+   "fileSha256": "bce38e621944fab08b416d293208db70568e84b462e550343252a45eae202839",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V09.json",
+   "fileSha256": "c41752d25c3915eacd3fdc4555bb95d09e88ddd93bad10422a08663187130761",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V10.json",
+   "fileSha256": "fc257ef62ac90f380b70ae844162a9520a9b4ec30ba06d5bbffcb20826510cbf",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V11.json",
+   "fileSha256": "e3774b3a11ff3d4b5d44eafed4d6107208064cfeb21c5fe991db111430ec64f8",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V12.json",
+   "fileSha256": "11b5436c5f6b25bafcf33b9f30ddac4aa115510138477029fea53846c16b4a99",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V13.json",
+   "fileSha256": "84e132f2ca944b8906546d0bb5d42e582c5b4a9bed4c85e88d2a46ec227978cf",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V13.json",
+   "fileSha256": "84e132f2ca944b8906546d0bb5d42e582c5b4a9bed4c85e88d2a46ec227978cf",
+   "party": "agent:a1",
+   "id": "w2",
+   "counts": true
+  },
+  {
+   "file": "conformance/logs/credentials-review/V15.json",
+   "fileSha256": "3e0633efa67671c672f2cd9989ddc999878c9e9b9d68c2b51a946f7fb2272b8b",
+   "party": "person:me",
+   "id": "w1",
+   "counts": true
+  }
+ ]
+}

@@ -1,0 +1,47 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "DEV-P03",
+  "family": "device-es256",
+  "legacy": "L01 L03",
+  "kind": "positive",
+  "tags": [],
+  "about": "non-ASCII content, including a character outside the BMP",
+  "input": {
+    "registrations": [
+      {
+        "party": "person:me",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "PQ6z9MZMlIf-PTIiVJfoNtS8dQGuo1UErTlG6hj9tJM",
+          "y": "lLwrTOyWftQNuzvY-9gpfhrUYfjmEdh8u1LEE4-PHjs"
+        },
+        "device": "test-browser"
+      }
+    ],
+    "party": "person:me",
+    "id": "e-3",
+    "conversation": "c-3",
+    "data": {
+      "act": "message",
+      "content": "café 日本 😀",
+      "party": "person:me",
+      "signature": {
+        "alg": "ES256",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "value": "uzAH0E9LmWXAxRXSx77c-NNIWo9qY-4vgjlJmo9bywf2rXbOm7VgK3GtUrrLGcD7wfy23ytS-la_-5HnyW3Jhw"
+      }
+    }
+  },
+  "expected": {
+    "result": "accepted",
+    "signer": "device:x-f4de32da9aa20f78ecc5225df454e6c6",
+    "onBehalfOf": "person:me",
+    "strength": "device"
+  },
+  "today": {
+    "ring": "valid",
+    "agreesWithExpected": true
+  }
+}

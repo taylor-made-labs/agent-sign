@@ -1,0 +1,45 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "TEAM-N05",
+  "family": "team-record",
+  "legacy": "L05",
+  "kind": "negative",
+  "tags": [
+    "cross-use"
+  ],
+  "about": "a reviewer's key signing the merge rule: reviewers are not Taylor",
+  "input": {
+    "op": "commitment",
+    "trust": {
+      "taylor": {
+        "dev-taylor-1": "MCowBQYDK2VwAyEA3FVy4oO3jTXZbjdBHVRxNq1jqHOdrfbetyboX05DJv8="
+      },
+      "reviewers": {
+        "reviewer-1": "MCowBQYDK2VwAyEAirspPpsVYkoKc9LDkaXIgH9FKWPR4jRjvdwnqKU+3iM="
+      }
+    },
+    "askedId": "suite:merge-rule",
+    "entry": {
+      "id": "suite:merge-rule",
+      "version": 1,
+      "body": {
+        "rule": "merge when checks and review pass",
+        "checks": [
+          "npm test"
+        ]
+      },
+      "hash": "f1800cb04847cf58a55212f4e698fae047e07b3f2b601de00f8ce92dae0127ab",
+      "signedBy": "reviewer-1",
+      "signature": "lRN2ve0Jfsh4UlrNW14Rj8enj6bLZAeQbmZJRDbxFnlT3+QVAXhxERNh4tuUhWsPyltzHMsAc11kB1WWTtMfCg=="
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "key-not-enrolled"
+  },
+  "today": {
+    "accepted": false,
+    "why": "suite:merge-rule is signed by \"reviewer-1\", which is not one of Taylor's enrolled device k",
+    "agreesWithExpected": true
+  }
+}

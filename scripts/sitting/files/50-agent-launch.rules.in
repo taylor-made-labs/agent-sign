@@ -1,0 +1,24 @@
+// agent-sign: only the launcher account may start or stop a slot's session
+// units, and nothing else. Made by agent-sign's sitting for @SLOTS@ slots from
+// scripts/sitting/files/50-agent-launch.rules.in; do not edit.
+//
+// polkit is the system's permission service: systemd asks it whether an
+// account may start or stop a given unit. The names are exact: the unit must
+// be agent-session@N.service or agent-session-end@N.service for a slot N from
+// 1 to @SLOTS@ (no leading zero, no suffix, nothing before it), and the verb
+// must be start or stop. Everything else the launcher account asks systemd for
+// is refused outright, including restarting agent-signd, editing unit files and
+// making a transient unit (which would let it choose `User=root`). Every other
+// account is left to the system's own rules.
+polkit.addRule(function (action, subject) {
+  if (action.id.indexOf("org.freedesktop.systemd1.") !== 0) return polkit.Result.NOT_HANDLED;
+  if (subject.user !== "agent-launch") return polkit.Result.NOT_HANDLED;
+  var unit = action.lookup("unit"), verb = action.lookup("verb");
+  if (action.id === "org.freedesktop.systemd1.manage-units" &&
+      typeof unit === "string" && typeof verb === "string" &&
+      /^agent-session(-end)?@(@SLOT_NUMBERS@)\.service$/.test(unit) &&
+      (verb === "start" || verb === "stop")) {
+    return polkit.Result.YES;
+  }
+  return polkit.Result.NO;
+});

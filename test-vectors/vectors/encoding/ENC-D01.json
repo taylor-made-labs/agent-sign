@@ -1,0 +1,50 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D01",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [
+    "divergence:key-order"
+  ],
+  "about": "key order: a BMP character above U+D800 against an astral one (UTF-16 order puts the astral key first; code-point order puts it last)",
+  "input": {
+    "json_text": "{\"\\uff5e\":1,\"\\ud83d\\ude00\":2}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b22f09f9880223a322c22efbd9e223a317d",
+    "text": "{\"😀\":2,\"～\":1}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b22f09f9880223a322c22efbd9e223a317d"
+      },
+      "L05": {
+        "bytes": "7b22f09f9880223a322c22efbd9e223a317d"
+      },
+      "L09": {
+        "bytes": "7b22f09f9880223a322c22efbd9e223a317d"
+      },
+      "L12": {
+        "bytes": "7b22f09f9880223a322c22efbd9e223a317d"
+      },
+      "L13": {
+        "bytes": "7b22f09f9880223a322c22efbd9e223a317d"
+      },
+      "L07": {
+        "bytes": "7b22efbd9e223a312c22f09f9880223a327d"
+      }
+    },
+    "encodersDisagree": true,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13"
+    ],
+    "agreesWithExpected": false
+  }
+}

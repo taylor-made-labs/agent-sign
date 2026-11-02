@@ -11,6 +11,10 @@
 //! reason: that is the manual check in the release checklist (and the ignored
 //! test below).
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -413,6 +417,7 @@ fn start(dir: &Path, setup: Setup) -> Service {
     )
     .unwrap();
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
+    cmd.die_with_parent();
     cmd.arg("--socket")
         .arg(&socket)
         .env("HOME", dir)
@@ -621,7 +626,14 @@ fn agent_sign_deny_while_the_prompt_is_open_is_a_denial_even_if_the_owner_then_a
         Response::Success
     ));
     // A late "yes" changes nothing.
-    fs::write(&answer, "allow").unwrap();
+    // DELIBERATE EVAL CHANGE (deflake, same property, 1 Nov 2026): the answer
+    // goes in under a temporary name and is renamed into place, so the
+    // stand-in prompt, which waits for the file to exist and then reads it,
+    // can never read it between its creation and its contents (it read ""
+    // and denied: once in a full run on a loaded Pi, and 1 of 40 reruns).
+    let part = answer.with_extension("part");
+    fs::write(&part, "allow").unwrap();
+    fs::rename(&part, &answer).unwrap();
     let message = message_of(waiting.join().unwrap());
     assert!(message.contains("the person denied"), "{message}");
     assert_eq!(lease_count(&svc), 0);
@@ -1085,6 +1097,94 @@ fn the_installer_refuses_programs_that_contain_a_test_stand_in() {
     let installer =
         fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/scripts/install.sh")).unwrap();
     assert_eq!(installer.matches("check-binary-clean.sh").count(), 2);
+}
+
+/// Every `AGENT_SIGN_TEST_*` name used anywhere under `src/`, read from the
+/// source itself so a future test seam is covered without editing this test.
+fn every_test_seam_name_in_src() -> Vec<String> {
+    fn walk(dir: &Path, out: &mut std::collections::BTreeSet<String>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                let text = String::from_utf8_lossy(&fs::read(&path).unwrap()).into_owned();
+                let b = text.as_bytes();
+                let mut i = 0;
+                while let Some(at) = text[i..].find("AGENT_SIGN_TEST_") {
+                    let start = i + at;
+                    let mut end = start + "AGENT_SIGN_TEST_".len();
+                    while end < b.len() && (b[end].is_ascii_uppercase() || b[end] == b'_') {
+                        end += 1;
+                    }
+                    let name = text[start..end].trim_end_matches('_');
+                    if name.len() > "AGENT_SIGN_TEST".len() {
+                        out.insert(name.to_string());
+                    }
+                    i = end;
+                }
+            }
+        }
+    }
+    let mut names = std::collections::BTreeSet::new();
+    walk(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut names,
+    );
+    names.into_iter().collect()
+}
+
+/// Structural guard for the installer's test-build check: a program containing
+/// ANY test seam named in `src/` is refused by both copies of
+/// `check-binary-clean.sh` (the repo's and the sitting's), and a program with
+/// none passes. The list of names is read from `src/`, so adding a seam without
+/// teaching the check about it fails here.
+#[test]
+fn check_binary_clean_refuses_a_program_containing_any_test_seam_named_in_src() {
+    let names = every_test_seam_name_in_src();
+    assert!(
+        names.len() >= 10,
+        "found too few test seam names under src/ ({names:?}); the scan is broken"
+    );
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let scripts = [
+        root.join("scripts/check-binary-clean.sh"),
+        root.join("scripts/sitting/files/check-binary-clean.sh"),
+    ];
+    let mut missed = Vec::new();
+    for script in &scripts {
+        let run = |dir: &Path| Command::new("sh").arg(script).arg(dir).output().unwrap();
+        let clean = tempdir().unwrap();
+        fs::write(
+            clean.path().join("agent-signd"),
+            b"\x7fELF ordinary program text",
+        )
+        .unwrap();
+        assert_eq!(
+            run(clean.path()).status.code(),
+            Some(0),
+            "control: a program with no test seam must pass ({})",
+            script.display()
+        );
+        for name in &names {
+            let dirty = tempdir().unwrap();
+            fs::write(
+                dirty.path().join("agent-signd"),
+                format!("\x7fELF\x00{name}\x00more").as_bytes(),
+            )
+            .unwrap();
+            let out = run(dirty.path());
+            let err = String::from_utf8_lossy(&out.stderr);
+            if out.status.code() != Some(1) || !err.contains("agent-signd") {
+                missed.push(format!("{} accepted {name}", script.display()));
+            }
+        }
+    }
+    assert!(
+        missed.is_empty(),
+        "test seams the check lets through:\n{}",
+        missed.join("\n")
+    );
 }
 
 // --- No clickable or terminal fallback ------------------------------------------

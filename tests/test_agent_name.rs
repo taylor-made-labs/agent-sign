@@ -7,6 +7,10 @@
 //! attribution, not identity: any program can set these variables, which
 //! the README states as a limit.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
@@ -122,6 +126,7 @@ fn author_of_agent_commit(marks: &[(&str, &str)], config_name: Option<&str>) -> 
     let socket = home.join("s.sock");
     let _svc = Service(
         Command::new(env!("CARGO_BIN_EXE_agent-signd"))
+            .die_with_parent()
             .arg("--socket")
             .arg(&socket)
             .arg("--auto-approve")

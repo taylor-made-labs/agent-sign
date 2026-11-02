@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-P02",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [],
+  "about": "BMP keys in code-unit order (e, z, e-acute, a CJK character)",
+  "input": {
+    "json_text": "{\"z\":3,\"é\":1,\"e\":2,\"日\":4}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b2265223a322c227a223a332c22c3a9223a312c22e697a5223a347d",
+    "text": "{\"e\":2,\"z\":3,\"é\":1,\"日\":4}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b2265223a322c227a223a332c22c3a9223a312c22e697a5223a347d"
+      },
+      "L05": {
+        "bytes": "7b2265223a322c227a223a332c22c3a9223a312c22e697a5223a347d"
+      },
+      "L09": {
+        "bytes": "7b2265223a322c227a223a332c22c3a9223a312c22e697a5223a347d"
+      },
+      "L12": {
+        "bytes": "7b2265223a322c227a223a332c22c3a9223a312c22e697a5223a347d"
+      },
+      "L13": {
+        "bytes": "7b2265223a322c227a223a332c22c3a9223a312c22e697a5223a347d"
+      },
+      "L07": {
+        "bytes": "7b2265223a322c227a223a332c22c3a9223a312c22e697a5223a347d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": true
+  }
+}

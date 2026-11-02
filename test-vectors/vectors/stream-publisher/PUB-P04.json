@@ -1,0 +1,45 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "PUB-P04",
+  "family": "stream-publisher",
+  "legacy": "L04",
+  "kind": "positive",
+  "tags": [
+    "legacy"
+  ],
+  "about": "an event with no signature stored at or below the recorded unsigned history",
+  "input": {
+    "registry": {
+      "unsignedThrough": 10,
+      "publishers": [
+        {
+          "publicKey": "UD5DEFG2XRFE7CVMLLUMHPJ7YH3EVQZ47IFEI4EWXETJQUNHR6OG3DSZ",
+          "product": "unharness"
+        }
+      ]
+    },
+    "subject": "ev.unharness.run-started.mac",
+    "headers": {
+      "ce-id": "ev-0001",
+      "ce-type": "suite.unharness.run-started",
+      "ce-source": "unharness/mac",
+      "ce-time": "2026-10-23T12:00:00.000Z",
+      "ce-conversation": "c-1"
+    },
+    "body": "{\"run\":\"run-1\",\"engine\":\"x\"}",
+    "seq": 3,
+    "storedAt": "2026-10-23T12:00:01Z"
+  },
+  "expected": {
+    "result": "accepted",
+    "signer": "none",
+    "onBehalfOf": "none",
+    "strength": "none"
+  },
+  "today": {
+    "accepted": true,
+    "reason": null,
+    "signed": false,
+    "agreesWithExpected": true
+  }
+}

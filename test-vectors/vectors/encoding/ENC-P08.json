@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-P08",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [],
+  "about": "NFC and NFD forms of the same word stay different strings (no normalisation)",
+  "input": {
+    "json_text": "{\"a\":\"café\",\"b\":\"café\"}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b2261223a22636166c3a9222c2262223a2263616665cc81227d",
+    "text": "{\"a\":\"café\",\"b\":\"café\"}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b2261223a22636166c3a9222c2262223a2263616665cc81227d"
+      },
+      "L05": {
+        "bytes": "7b2261223a22636166c3a9222c2262223a2263616665cc81227d"
+      },
+      "L09": {
+        "bytes": "7b2261223a22636166c3a9222c2262223a2263616665cc81227d"
+      },
+      "L12": {
+        "bytes": "7b2261223a22636166c3a9222c2262223a2263616665cc81227d"
+      },
+      "L13": {
+        "bytes": "7b2261223a22636166c3a9222c2262223a2263616665cc81227d"
+      },
+      "L07": {
+        "bytes": "7b2261223a22636166c3a9222c2262223a2263616665cc81227d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": true
+  }
+}

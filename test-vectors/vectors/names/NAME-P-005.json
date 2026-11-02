@@ -1,0 +1,22 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-005",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [],
+  "about": "the agent-role pm has this one name",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local/agent-role/pm"
+  },
+  "expected": {
+    "result": "accepted",
+    "kind": "agent-role",
+    "id": "pm"
+  },
+  "today": {
+    "result": "accepted",
+    "agreesWithExpected": true
+  }
+}

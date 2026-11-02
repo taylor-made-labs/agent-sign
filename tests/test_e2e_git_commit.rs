@@ -2,6 +2,10 @@
 //! each in a temporary home with its own socket.
 //!
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -44,15 +48,28 @@ impl Drop for TestDaemon {
     }
 }
 
+/// The person's config lines that allow the agent these scenarios name,
+/// "Test Agent" (`test-agent`). Requirement change (plan "next: real use on
+/// servers", check 6a, 30 Oct 2026): the service now certifies only built-in
+/// agent names and those listed in `[identity] allowed_agents`, so a test
+/// that names its agent itself lists it, as a user would.
+const ALLOW_TEST_AGENT: &str = "[identity]\nallowed_agents = [\"test-agent\"]\n";
+
 fn start_test_daemon(dir: &Path, bins: &Bins) -> TestDaemon {
     let socket_path = dir.join("test_daemon.sock");
     let keys_dir = dir.join("keys");
     fs::create_dir_all(&keys_dir).unwrap();
+    let config = dir.join(".agent-sign/config.toml");
+    if !config.exists() {
+        fs::create_dir_all(dir.join(".agent-sign")).unwrap();
+        fs::write(&config, ALLOW_TEST_AGENT).unwrap();
+    }
 
     let daemon_bin = &bins.daemon;
 
     // Spawn daemon with test socket and auto-approve
     let child = Command::new(daemon_bin)
+        .die_with_parent()
         .arg("--socket")
         .arg(&socket_path)
         .arg("--auto-approve")
@@ -127,15 +144,19 @@ fn scenario_agent_git_commit_and_verification(bins: &Bins) {
     let agent_git_bin = &bins.git;
     let agent_sign_bin = &bins.sign;
 
-    let commit_output = Command::new(agent_git_bin)
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched. The agent ("Test Agent") is started by `agent-sign launch`,
+    // not named by `AGENT_SIGN_AGENT_NAME` (a plain process with that name
+    // now gets an unsigned commit). The session id is the service's, so the
+    // principal is `test-agent.<8 hex>@agents.local`.
+    let commit_output = Command::new(env!("CARGO_BIN_EXE_agent-sign"))
+        .args(["launch", "--agent", "Test Agent", "--"])
+        .arg(agent_git_bin)
         // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
         .env_remove("CLAUDECODE")
         .env_remove("GEMINI_CLI")
         .env_remove("CODEX_THREAD_ID")
         .env_remove("CODEX_SESSION_ID")
-        // The agent says who it is: since the identity review (28 Oct 2026)
-        // an unmarked commit with no terminal is left to git, unsigned.
-        .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
         .args(["commit", "-m", "feat: first agent commit"])
         .current_dir(&test_repo)
         .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -164,11 +185,21 @@ fn scenario_agent_git_commit_and_verification(bins: &Bins) {
     let log_str = String::from_utf8_lossy(&log_output.stdout);
     println!("Commit Log: {}", log_str);
 
-    // Attribution verified: the agent (named "Test Agent", with no session
-    // id) is both author and committer, never the person.
-    assert_eq!(
-        log_str.trim(),
-        "Test Agent <test-agent.nosession@agents.local> | Test Agent <test-agent.nosession@agents.local>"
+    // Attribution verified: the agent (named "Test Agent", in the launched
+    // session the service made) is both author and committer, never the
+    // person.
+    let (author, committer) = log_str
+        .trim()
+        .split_once(" | ")
+        .expect("author | committer");
+    assert_eq!(author, committer);
+    let session = author
+        .strip_prefix("Test Agent <test-agent.")
+        .and_then(|rest| rest.strip_suffix("@agents.local>"))
+        .unwrap_or("");
+    assert!(
+        session.len() == 8 && session.bytes().all(|b| b.is_ascii_hexdigit()),
+        "not a launched Test Agent session's identity: {log_str}"
     );
     assert!(!log_str.contains("Human Developer <dev@example.com>"));
 
@@ -264,15 +295,16 @@ fn scenario_multi_commit_headless_session_flow(bins: &Bins) {
                 .success()
         );
 
-        let commit_out = Command::new(agent_git_bin)
+        // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+        // launched (a new session for each commit, as each is a new run).
+        let commit_out = Command::new(env!("CARGO_BIN_EXE_agent-sign"))
+            .args(["launch", "--agent", "Test Agent", "--"])
+            .arg(agent_git_bin)
             // No agent marks from whatever runs the tests (see KNOWN_AGENTS).
             .env_remove("CLAUDECODE")
             .env_remove("GEMINI_CLI")
             .env_remove("CODEX_THREAD_ID")
             .env_remove("CODEX_SESSION_ID")
-            // The agent says who it is: since the identity review (28 Oct 2026)
-            // an unmarked commit with no terminal is left to git, unsigned.
-            .env("AGENT_SIGN_AGENT_NAME", "Test Agent")
             .args(["commit", "-m", &format!("feat: agent commit number {}", i)])
             .current_dir(&test_repo)
             .env(bins.env("SOCKET"), &daemon.socket_path)
@@ -340,9 +372,12 @@ fn scenario_allow_main_branch_when_configured(bins: &Bins) {
     fs::create_dir_all(&keys_dir).unwrap();
 
     let daemon_bin = &bins.daemon;
+    fs::create_dir_all(dir.path().join(".agent-sign")).unwrap();
+    fs::write(dir.path().join(".agent-sign/config.toml"), ALLOW_TEST_AGENT).unwrap();
 
     // Spawn daemon with --allow-main and --auto-approve
     let mut child = Command::new(daemon_bin)
+        .die_with_parent()
         .arg("--socket")
         .arg(&socket_path)
         .arg("--allow-main") // Explicitly permit main branch commits
@@ -498,7 +533,7 @@ fn scenario_branch_switching_in_active_session(bins: &Bins) {
     // 2. Switch to feat/step-2 (verifying branch switching does not deadlock!)
     assert!(
         Command::new("git")
-            .args(["checkout", "-b", "feat/step-2"])
+            .args(["checkout", "-q", "-b", "feat/step-2"])
             .current_dir(&test_repo)
             .status()
             .unwrap()
@@ -589,7 +624,7 @@ fn scenario_trailers_mode_attribution(bins: &Bins) {
     fs::create_dir_all(&state_dir).unwrap();
     fs::write(
         state_dir.join("config.toml"),
-        "[attribution]\nmode = \"trailers\"\n",
+        format!("[attribution]\nmode = \"trailers\"\n\n{ALLOW_TEST_AGENT}"),
     )
     .unwrap();
 

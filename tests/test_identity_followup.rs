@@ -33,6 +33,16 @@
 //! touches the real home, services or processes. Every run is bounded in
 //! time.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+
+#[path = "support/memory_keys.rs"]
+mod memory_keys;
+
+#[path = "support/no_plain_keys.rs"]
+mod no_plain_keys;
+use die_with_parent::DieWithParent;
+
 use std::ffi::OsString;
 use std::fs;
 use std::io::Write;
@@ -41,7 +51,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
 use std::time::{Duration, Instant};
 
-use sha2::{Digest, Sha256};
 use tempfile::{TempDir, tempdir};
 
 const USER_NAME: &str = "Human Developer";
@@ -64,12 +73,24 @@ const TRUST_PREFIX: &str = "*@agents.local cert-authority,namespaces=\"git\" ";
 /// be signed.
 const UNSIGNED_NOTE: &str = "agent-sign: no terminal and no agent mark, so this commit was made unsigned (an editor's commit button? commit in a terminal to sign it as yourself)";
 
-fn claude_principal() -> String {
-    let session8: String = Sha256::digest(SESSION.as_bytes())[..4]
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    format!("claude-code.{session8}@agents.local")
+/// The principal of the launched Claude Code session that made `rev` (its
+/// committer email), checked to be `claude-code.<8 hex>@agents.local`.
+///
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. The principal was computed from the session id the test set
+/// in the agent's marks (`claude_principal()`); the service now makes the
+/// session's id, so the tests read the principal back from the commit.
+fn principal_of(w: &World, repo: &Path, rev: &str) -> String {
+    let email = w.git_ok(repo, &["log", "-1", "--format=%ce", rev]);
+    let session = email
+        .strip_prefix("claude-code.")
+        .and_then(|rest| rest.strip_suffix("@agents.local"))
+        .unwrap_or("");
+    assert!(
+        session.len() == 8 && session.bytes().all(|b| b.is_ascii_hexdigit()),
+        "{rev}'s committer {email:?} isn't a launched claude-code session's principal"
+    );
+    email
 }
 
 fn manifest_dir() -> PathBuf {
@@ -156,6 +177,11 @@ struct World {
 impl Drop for World {
     fn drop(&mut self) {
         self.stop_service();
+        // The runtime half of the no-unprotected-test-keys guard: nothing a
+        // test did may leave an unencrypted private key under its home.
+        if !std::thread::panicking() {
+            no_plain_keys::assert_no_plain_private_keys(&self.home);
+        }
     }
 }
 
@@ -217,14 +243,11 @@ impl World {
     }
 
     fn write_user_setup(&self, config: &str) {
+        // Only the public half is ever needed (git's `user.signingkey` names the
+        // `.pub` file; the signer is the fake below). The key is made in memory and
+        // never written, so no private key exists on disk.
         let key = self.home.join("user_key");
-        let out = self
-            .cmd(&self.ssh_keygen)
-            .args(["-q", "-t", "ed25519", "-N", "", "-C", "user", "-f"])
-            .arg(&key)
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "ssh-keygen: {}", text(&out));
+        memory_keys::write_public_only(&key, "user");
         let fake = self.fake_signer();
         fs::write(
             &fake,
@@ -280,6 +303,7 @@ impl World {
             .open(self.home.join("service.log"))
             .unwrap();
         let mut cmd = self.cmd(Path::new(env!("CARGO_BIN_EXE_agent-signd")));
+        cmd.die_with_parent();
         cmd.arg("--socket")
             .arg(&self.socket)
             .env("AGENT_SIGN_TEST_AUTH", "fail")
@@ -388,7 +412,14 @@ impl World {
 
     fn agent_commit(&self, repo: &Path, file: &str) -> String {
         self.stage(repo, file);
-        let out = self.wrapper(repo, CLAUDE, &["commit", "-q", "-m", file]);
+        // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+        // launched (`agent-sign launch --agent claude-code`).
+        let mut cmd = self.cmd(Path::new(env!("CARGO_BIN_EXE_agent-sign")));
+        cmd.args(["launch", "--agent", "claude-code", "--"])
+            .arg(env!("CARGO_BIN_EXE_agent-git"))
+            .args(["commit", "-q", "-m", file])
+            .current_dir(repo);
+        let out = run_within(cmd, &format!("launched commit of {file}"), None);
         assert!(
             out.status.success(),
             "agent commit {file}: {}\nservice log:\n{}",
@@ -396,6 +427,16 @@ impl World {
             self.service_log()
         );
         self.git_ok(repo, &["rev-parse", "HEAD"])
+    }
+
+    /// DELIBERATE EVAL CHANGE (D2, 31 Oct 2026): `agent-sign trust install`,
+    /// the only thing that writes trust now that a service's start doesn't
+    /// (the installer runs it once the service is up). Its exit status isn't
+    /// checked here: the tests' own assertions say what trust must result.
+    fn trust_install(&self) -> Output {
+        let mut cmd = self.cmd(Path::new(env!("CARGO_BIN_EXE_agent-sign")));
+        cmd.args(["trust", "install"]);
+        run_within(cmd, "agent-sign trust install", None)
     }
 
     /// `agent-sign trust-line`'s output.
@@ -497,10 +538,16 @@ fn a_no_file_under_the_state_dir_holds_private_key_material_after_start() {
 fn a_a_commit_certified_before_a_restart_still_verifies_after_it() {
     let mut w = World::new("");
     w.start_service();
+    // DELIBERATE EVAL CHANGE (D2, 31 Oct 2026): a service's start no longer
+    // writes trust; `agent-sign trust install` does. Setup only.
+    w.trust_install();
     let repo = w.repo();
     let first = w.agent_commit(&repo, "before.txt");
     let ca_before = fs::read_to_string(w.keys().join("agents_ca_ed25519.pub")).unwrap();
     w.start_service(); // stops the first, starts a new one
+    // DELIBERATE EVAL CHANGE (D2, 31 Oct 2026): a service's start no longer
+    // writes trust; `agent-sign trust install` does. Setup only.
+    w.trust_install();
     let second = w.agent_commit(&repo, "after.txt");
     let ca_after = fs::read_to_string(w.keys().join("agents_ca_ed25519.pub")).unwrap();
     assert_ne!(
@@ -528,7 +575,7 @@ fn a_a_commit_certified_before_a_restart_still_verifies_after_it() {
     for rev in [&first, &second] {
         assert_eq!(
             w.signature_under(&repo, rev, &allowed),
-            ("G".to_string(), claude_principal()),
+            ("G".to_string(), principal_of(&w, &repo, rev)),
             "commit {rev} under trust-line's output"
         );
     }
@@ -557,6 +604,9 @@ fn a_the_service_rewrites_only_the_managed_trust_block() {
     fs::write(&unmarked, &unmarked_content).unwrap();
 
     w.start_service();
+    // DELIBERATE EVAL CHANGE (D2, 31 Oct 2026): a service's start no longer
+    // writes trust; `agent-sign trust install` does. Setup only.
+    w.trust_install();
     let trust = w.trust_line_output();
     assert!(trust.status.success(), "trust-line: {}", text(&trust));
     let content = fs::read_to_string(&allowed).unwrap();
@@ -580,7 +630,7 @@ fn a_the_service_rewrites_only_the_managed_trust_block() {
     let rev = w.agent_commit(&repo, "a.txt");
     assert_eq!(
         w.signature_under(&repo, &rev, &content),
-        ("G".to_string(), claude_principal())
+        ("G".to_string(), principal_of(&w, &repo, &rev))
     );
 
     // A file with no markers: untouched, byte for byte.
@@ -590,6 +640,9 @@ fn a_the_service_rewrites_only_the_managed_trust_block() {
         &unmarked.display().to_string(),
     );
     w.start_service();
+    // DELIBERATE EVAL CHANGE (D2, 31 Oct 2026): a service's start no longer
+    // writes trust; `agent-sign trust install` does. Setup only.
+    w.trust_install();
     assert_eq!(fs::read_to_string(&unmarked).unwrap(), unmarked_content);
 }
 
@@ -990,10 +1043,8 @@ fn b_g_the_summary_names_the_routing_and_the_deletion_before_asking() {
     let w = World::new("");
     fs::create_dir_all(w.keys()).unwrap();
     let legacy = w.keys().join("agent_ed25519");
-    // Assembled at run time, so the repository's own history scan for
-    // private key blocks never matches this stand-in.
-    let header = format!("-----BEGIN OPENSSH {} KEY-----", "PRIVATE");
-    fs::write(&legacy, format!("{header}\nx\n")).unwrap();
+    // The installer deletes this file by its path; what it holds is not a key.
+    fs::write(&legacy, memory_keys::LEGACY_PRIVATE_HALF_STAND_IN).unwrap();
     let inst = installer(&w);
     let out = inst.install_answering(&w, "n\n");
     let shown = all_output(&out);
@@ -1027,7 +1078,12 @@ fn a_the_installer_deletes_the_authority_key_and_writes_the_managed_block() {
     // its bare trust line.
     fs::create_dir_all(w.keys()).unwrap();
     let old_ca = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOldDevBuildAuthority";
-    fs::write(w.keys().join("agents_ca_ed25519"), [5u8; 32]).unwrap();
+    // A text stand-in, not a key: the installer deletes this file by its path.
+    fs::write(
+        w.keys().join("agents_ca_ed25519"),
+        "stand-in for the old private half, not a key\n",
+    )
+    .unwrap();
     fs::write(
         w.keys().join("agents_ca_ed25519.pub"),
         format!("{old_ca}\n"),
@@ -1061,6 +1117,9 @@ fn a_the_installer_deletes_the_authority_key_and_writes_the_managed_block() {
 
     // The service, started now, adds its new authority to the block.
     w.start_service();
+    // DELIBERATE EVAL CHANGE (D2, 31 Oct 2026): a service's start no longer
+    // writes trust; `agent-sign trust install` does. Setup only.
+    w.trust_install();
     let trust = stdout(&w.trust_line_output());
     let content = fs::read_to_string(&allowed).unwrap();
     assert_eq!(trust.lines().count(), 1, "{trust}");
@@ -1082,15 +1141,13 @@ fn world_with_old_key(still_trusted: bool) -> (World, String) {
     let w = World::new("");
     fs::remove_dir_all(w.state()).unwrap();
     fs::create_dir_all(w.keys()).unwrap();
+    // The old shared key's public half is a real key's, made in memory (its
+    // private half is never written anywhere). The installer deletes the
+    // private half by its path, whatever it holds, so a stand-in that is not a
+    // key sits at that path: this test needs the file, not a key.
     let key = w.keys().join("agent_ed25519");
-    let out = w
-        .cmd(&w.ssh_keygen)
-        .args(["-q", "-t", "ed25519", "-N", "", "-C", "old-agent", "-f"])
-        .arg(&key)
-        .output()
-        .unwrap();
-    assert!(out.status.success(), "ssh-keygen: {}", text(&out));
-    let pub_line = fs::read_to_string(w.keys().join("agent_ed25519.pub")).unwrap();
+    let pub_line = memory_keys::write_public_only(&key, "old-agent");
+    fs::write(&key, memory_keys::LEGACY_PRIVATE_HALF_STAND_IN).unwrap();
     let data = pub_line.split_whitespace().nth(1).unwrap().to_string();
     let allowed = w.home.join("allowed_signers");
     let mut content = format!("{USER_EMAIL} ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIUser\n");

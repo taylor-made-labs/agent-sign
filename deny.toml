@@ -3,6 +3,10 @@
 # Licenses: permissive only, so agent-sign stays usable under
 # MIT OR Apache-2.0 with nothing new for an organization to review. A
 # dependency offered under several licenses passes if one of them is here.
+# ISC (added 1 Nov 2026, with the OpenBao issuer) is MIT-equivalent: a short
+# permissive licence that only asks for the notice to be kept. It is allowed
+# because every maintained Rust TLS stack includes ISC code: ring and
+# rustls-webpki, which the HTTPS client for OpenBao needs, are under it.
 # Advisories: no dependency with a known vulnerability (RustSec).
 # Sources: crates.io only.
 
@@ -10,7 +14,7 @@
 all-features = true
 
 [licenses]
-allow = ["MIT", "Apache-2.0", "BSD-3-Clause", "Unicode-3.0"]
+allow = ["MIT", "Apache-2.0", "BSD-3-Clause", "ISC", "Unicode-3.0"]
 confidence-threshold = 0.9
 
 [advisories]

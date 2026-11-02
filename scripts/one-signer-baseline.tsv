@@ -1,0 +1,44 @@
+# Baseline for scripts/check-one-signer.sh: the signing, checking and encoding code outside agent-sign, as of step 0.
+# Tab-separated. Directives start with @. Rows: repo, path, class, piece, note.
+# Classes: piece (a core file: the piece counts while it exists on main and still matches), part (goes with a piece, moves with it,
+#   not counted), test-support (test code that lives in src), not-signing (matched a pattern, checked, is not signing code).
+# A file that matches and is not here is NEW and fails the run. Rows are only added by a deliberate, reviewed change.
+# Piece numbers 1-12 are the rows of the plan's table (signing-consolidation.md); 13 was added to main after the plan.
+@expect	13
+@repo	unharness
+@repo	ntaild
+@repo	agentic-credentials
+@repo	work-loop
+@webauthn-libs	@simplewebauthn/server
+@piece	1	ids: canonical JSON + ES256 sign/check	plan		unharness/src/ids.ts
+@piece	2	ActVerifier: passkey + browser-key check	plan	webauthn-library-ok	Taylor's own signature check; allowed only on a standard WebAuthn library
+@piece	3	person-keys: first key per party wins	plan		
+@piece	4	publisher: Ed25519 stream-event signature	plan		
+@piece	5	team-lead signed records	plan		
+@piece	6	ntaild acts: Ed25519 + registry	plan		
+@piece	7	ntaild canonical JSON	plan		
+@piece	8	ntaild reviewer's signing	plan		
+@piece	9	agentic-credentials entitlement acts	plan		
+@piece	10	agentic-credentials approval relay	plan		
+@piece	11	agentic-credentials admin warrant signing	plan		
+@piece	12	work-loop log canonical JSON + hash chain	plan		
+@piece	13	model-layer record signing (stand-in)	post-plan		added to unharness main on 31 Oct 2026 (c197285, turn 13 step 2b) after the plan's 29 Oct read; an in-memory stand-in for agent-sign's record signing with its own canonical JSON, certificates and checks
+unharness	src/ids.ts	piece	1	canonical(), sign/verify ES256 over {id, conversation, data}
+unharness	src/acts.ts	piece	2	ActVerifier: hand-rolled CBOR, authenticator data, ECDSA check; no WebAuthn library
+unharness	src/node.ts	part	2	actVerifierFor: reads pinned-passkeys.json, starts the commitments checker
+unharness	src/person-keys.ts	piece	3	KeyRing: first key per party wins
+unharness	src/publisher.ts	piece	4	publisher signature (NATS key, Ed25519), signing input v1/v2, registry by time period
+unharness	src/server-config.ts	part	4	writes the publisher key registry and key history
+unharness	listeners/src/team-lead/signed.ts	piece	5	signed commitments and review verdicts
+unharness	listeners/src/team-lead/team-lead.ts	part	5	loads trust.taylor and trust.reviewers lists from the deployment
+ntaild	src/ntaild/acts.py	piece	6	act signature, registry (first key counts), signing payload
+ntaild	src/ntaild/canonical.py	piece	7	canonical JSON bytes and digest
+ntaild	src/ntaild/review.py	piece	8	Reviewer: signs the reviewer's acts with a key held in memory
+agentic-credentials	src/entitlement/acts.ts	piece	9	TypeScript port of ntaild's act encoding and signing
+agentic-credentials	src/approvals/relay.ts	piece	10	approval answers checked against one configured device key
+agentic-credentials	src/admin/acts.ts	piece	11	signs warrants with a key piped in from a password manager; also decodes NATS public keys
+work-loop	src/log/canonical.ts	piece	12	canonical JSON for the log's hash chain
+unharness	listeners/src/model-layer/signing.ts	piece	13	record signing port, in-memory stand-in, certificates, canonicalJson, run configuration check
+agentic-credentials	src/conformance/suite.ts	test-support	0	conformance suite code in src; signs with test keys only
+ntaild	src/ntaild/routing.py	not-signing	0	mentions the person's first key in a docstring; calls acts.Registry, holds no rule
+unharness	dev/library-trial/trial.ts	not-signing	0	a model-library trial harness that imports test support; no signing

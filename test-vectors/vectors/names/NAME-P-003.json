@@ -1,0 +1,22 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-003",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [],
+  "about": "the browser x-0123456789abcdef0123456789abcdef has this one name",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local/browser/x-0123456789abcdef0123456789abcdef"
+  },
+  "expected": {
+    "result": "accepted",
+    "kind": "browser",
+    "id": "x-0123456789abcdef0123456789abcdef"
+  },
+  "today": {
+    "result": "accepted",
+    "agreesWithExpected": true
+  }
+}

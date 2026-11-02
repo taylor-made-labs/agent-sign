@@ -1,0 +1,61 @@
+# The launcher, in its own account. It owns the slots: it picks a free one,
+# registers the session with the service, and starts and stops that slot's
+# session units (polkit rule 50-agent-launch allows it those and nothing
+# else). It never runs git.
+[Unit]
+Description=agent-sign launcher: starts and ends sessions in slot accounts
+After=agent-signd.service
+Wants=agent-signd.service
+Requires=agent-launchd.socket
+
+[Service]
+Type=simple
+User=agent-launch
+Group=agent-launch
+Sockets=agent-launchd.socket
+ExecStart=/opt/agent-sign/current/bin/agent-launchd
+Restart=on-failure
+RestartSec=2
+UMask=0077
+LimitCORE=0
+ProtectSystem=strict
+# agent-launch-io: it opens the spec and output files the sitting made there (it
+# can't make, rename or remove an entry: the folders are root's).
+ReadWritePaths=/var/lib/agent-launch /var/lib/agent-launch-io /var/lib/agent-slots
+ProtectHome=yes
+InaccessiblePaths=-/var/lib/agent-sign
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+# Memory (review round 2, L2). The launcher reads a request into memory before it
+# acts. The largest request it accepts is 512 MiB (MAX_REQUEST_BYTES), and only
+# a verified caller may send more than 64 KiB (SMALL_REQUEST_BYTES). At most 3
+# such requests are read at once (MAX_BULK_READING: 2 verified relayers' and 1
+# for the people's accounts, so that a relayer can never keep a person out); a
+# bulk read's worst case is about three times the request (the growing buffer
+# plus a copy: 1.5 GiB for a 512 MiB request), so 3 x 512 MiB x 3 = 4.5 GiB.
+# Up to 4 other requests (MAX_OTHERS_READING) are read at once, each at most
+# 64 KiB: 4 x 64 KiB = 256 KiB. That is 4.5 GiB + 256 KiB, and 1 GiB of
+# headroom for the process itself, its session loops and copies makes the floor
+# 5.5 GiB + 256 KiB. 5G would fall short, so MemoryMax is 6 GiB: about 0.5 GiB
+# above the floor, which already holds the 1 GiB of headroom (about 1.5 GiB over
+# the reads alone). A test reads these constants and keeps this cap at or above
+# the floor.
+MemoryMax=6G
+
+[Install]
+WantedBy=multi-user.target

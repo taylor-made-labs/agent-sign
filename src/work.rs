@@ -15,6 +15,16 @@
 //! finished here; the idle backstop and revoking still end it. Only local
 //! refs are read: a merge made on GitHub counts once it's fetched. The
 //! service never fetches.
+//!
+//! **Cost.** The service runs this check on an agent commit's path (for the
+//! lease in use only) and for every lease when they are listed or swept, so
+//! each git run counts: on a Mac under launchd each one costs about 0.14 s.
+//! The usual check is one git run, a `for-each-ref --contains` that reads the
+//! branch's tip and which merge targets hold it at once; only a branch that
+//! can't be read costs a second run, to tell "deleted" from "unreadable".
+//! Every run goes through [`crate::paths::real_git`], never `git` by name:
+//! on a machine with agent-sign installed, `git` on `PATH` can be the
+//! wrapper, and on a Mac it is the slow `xcrun` shim (backlog d37fd952).
 
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -38,8 +48,10 @@ const MERGE_TARGETS: [&str; 4] = [
     "refs/remotes/origin/master",
 ];
 
+/// The real git (see [`crate::paths::real_git`]) in `repo`, reading nothing
+/// from stdin and printing nothing to the service's log.
 fn git(repo: &Path) -> Command {
-    let mut cmd = Command::new("git");
+    let mut cmd = Command::new(crate::paths::real_git());
     cmd.arg("-C")
         .arg(repo)
         .stdin(Stdio::null())
@@ -70,18 +82,46 @@ pub fn branch_tip(repo: &Path, branch: &str) -> Option<String> {
     resolve(repo, &format!("refs/heads/{branch}"))
 }
 
-/// Whether `commit` is part of `target`'s history.
-fn is_ancestor(repo: &Path, commit: &str, target: &str) -> bool {
-    git(repo)
-        .args(["merge-base", "--is-ancestor", commit, target])
-        .stdout(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+/// The branch's tip and whether any merge target holds it, from one git
+/// run: `for-each-ref --contains refs/heads/<branch>` over the branch itself
+/// and the merge targets. A branch always contains its own tip, so its line
+/// gives the tip; each target listed holds it. Lines are matched by exact
+/// ref name, since a `for-each-ref` pattern also matches refs below it.
+/// `None` when the branch doesn't resolve or git fails.
+fn tip_and_merged(repo: &Path, branch: &str) -> Option<(String, bool)> {
+    let branch_ref = format!("refs/heads/{branch}");
+    let out = git(repo)
+        .args([
+            "for-each-ref",
+            "--format=%(objectname) %(refname)",
+            "--contains",
+        ])
+        .arg(&branch_ref)
+        .arg(&branch_ref)
+        .args(MERGE_TARGETS)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let listed = String::from_utf8_lossy(&out.stdout);
+    let mut tip = None;
+    let mut merged = false;
+    for line in listed.lines() {
+        let Some((sha, name)) = line.trim().split_once(' ') else {
+            continue;
+        };
+        if name == branch_ref {
+            tip = Some(sha.to_string());
+        } else if MERGE_TARGETS.contains(&name) {
+            merged = true;
+        }
+    }
+    tip.filter(|t| !t.is_empty()).map(|t| (t, merged))
 }
 
 /// The state of the work on `branch` in `repo`, approved when the branch's
-/// tip was `base`.
+/// tip was `base`. Usually one git run (see the module's notes on cost).
 pub fn work_state(repo: &Path, branch: &str, base: &str) -> WorkState {
     if branch == "HEAD" || branch.is_empty() {
         return WorkState::Ongoing;
@@ -89,7 +129,7 @@ pub fn work_state(repo: &Path, branch: &str, base: &str) -> WorkState {
     if !repo.is_dir() {
         return WorkState::Deleted;
     }
-    let Some(tip) = branch_tip(repo, branch) else {
+    let Some((tip, merged)) = tip_and_merged(repo, branch) else {
         // Tell "the branch is gone" from "git can't read this repository".
         return if resolve(repo, "HEAD").is_some() {
             WorkState::Deleted
@@ -97,16 +137,11 @@ pub fn work_state(repo: &Path, branch: &str, base: &str) -> WorkState {
             WorkState::Ongoing
         };
     };
-    if tip == base {
-        return WorkState::Ongoing;
-    }
-    let merged = MERGE_TARGETS
-        .iter()
-        .filter(|target| resolve(repo, target).is_some())
-        .any(|target| is_ancestor(repo, &tip, target));
-    if merged {
-        WorkState::Merged
-    } else {
+    // A branch with no commits since the approval isn't "merged" just
+    // because it still sits where it started, on a target's tip.
+    if tip == base || !merged {
         WorkState::Ongoing
+    } else {
+        WorkState::Merged
     }
 }

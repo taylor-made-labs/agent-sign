@@ -21,6 +21,12 @@ own editor, and leaves its commits to git: unsigned, under your own git name.
   `Aider <aider.nosession@agents.local>` (set `AGENT_SIGN_SESSION_ID` too to
   tell sessions apart), and authored and committed by it, never by you.
   Nothing asks you anything, unless you set `approval = "device-owner"`.
+  Aider is one of the agent names allowed by default, so `aider` needs no
+  setting; a name of your own choosing would have to be listed in
+  `[identity] allowed_agents` first
+  ([Allowed agent names](../../README.md#allowed-agent-names)). On a
+  [named machine](../../README.md#naming-the-machine) the principal ends in
+  `@<machine>.agents.local`.
 - `git log --show-signature` shows a Good signature for Aider's principal
   once the agents' trust line is in your allowed-signers file (the installer
   adds it). GitHub shows these commits as Unverified: it doesn't check SSH

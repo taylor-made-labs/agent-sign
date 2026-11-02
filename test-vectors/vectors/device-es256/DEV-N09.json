@@ -1,0 +1,45 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "DEV-N09",
+  "family": "device-es256",
+  "legacy": "L01 L03",
+  "kind": "negative",
+  "tags": [],
+  "about": "a signature that names another algorithm",
+  "input": {
+    "registrations": [
+      {
+        "party": "person:me",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "PQ6z9MZMlIf-PTIiVJfoNtS8dQGuo1UErTlG6hj9tJM",
+          "y": "lLwrTOyWftQNuzvY-9gpfhrUYfjmEdh8u1LEE4-PHjs"
+        },
+        "device": "test-browser"
+      }
+    ],
+    "party": "person:me",
+    "id": "e-1",
+    "conversation": "c-1",
+    "data": {
+      "act": "message",
+      "content": "hello there",
+      "party": "person:me",
+      "signature": {
+        "alg": "ES384",
+        "keyId": "x-f4de32da9aa20f78ecc5225df454e6c6",
+        "value": "a9tVnEU853reQvxogOkSppBUAj3tWHbFjsNabO2hO3fVM_Rk-c1vpZ_LRKOpcaJSa1HZfqZ_iL5piLDycCgszg"
+      }
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "unsupported-algorithm"
+  },
+  "today": {
+    "ring": "invalid",
+    "agreesWithExpected": true
+  }
+}

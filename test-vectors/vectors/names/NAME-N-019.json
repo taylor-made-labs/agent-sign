@@ -1,0 +1,23 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-N-019",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "negative",
+  "tags": [
+    "P8"
+  ],
+  "about": "look-alike name for Taylor: uppercase scheme",
+  "input": {
+    "op": "parse",
+    "name": "SPIFFE://suite.local/person/me"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "look-alike-name"
+  },
+  "today": {
+    "result": "refused",
+    "agreesWithExpected": true
+  }
+}

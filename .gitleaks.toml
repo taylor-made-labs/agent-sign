@@ -1,0 +1,58 @@
+# gitleaks configuration for agent-sign.
+#
+# Everything gitleaks finds by default still applies, plus two rules of our own (below) that look for the secrets a
+# signing project handles: NATS user seeds, and a private-key-looking value in a field named for one, and a JSON web key's private d.
+#
+# One narrow allowance. The shared test examples (test-vectors/vectors, test-vectors/captured, the manifest) hold
+# PUBLIC keys and public records, and gitleaks' generic-api-key rule reads three shapes of them as keys:
+#   - a NATS user PUBLIC key         U + 55 base32 characters (a seed starts SU and is caught by nats-seed)
+#   - an Ed25519 public key in SPKI form  MCowBQYDK2VwAyEA + 43 base64 characters + "="
+#                                    (a PKCS#8 private key starts MC4CAQAw and is not allowed)
+#   - a WebAuthn authenticatorData field (rpIdHash, flags, counter: public), allowed by field name
+# Each allowance needs BOTH the path and the shape, and is for generic-api-key only. test-vectors/tools/ and
+# everything else stay fully scanned. SHA-256 digests are not flagged by gitleaks at all; agent-sign's own history
+# scan (scripts/release/scan-history-secrets.py) reads the hex-64 ones and allows them file by file by blob hash.
+#
+# What this cannot do: tell a raw base64 Ed25519 SEED from a raw base64 public key (both are 44 characters) by shape.
+# A seed is caught by the field it sits in (json-private-key-field) or by being under tools/ or anywhere outside the
+# example folders; a seed placed in a field that holds public keys (rawB64, key) is caught only by review, and
+# by generic-api-key where the value is not one of the shapes above.
+[extend]
+useDefault = true
+
+[[rules]]
+id = "nats-seed"
+description = "A NATS user, account, operator, cluster, server or curve seed (the private half of an NKey)"
+regex = '''\bS[ACNOPUX][A-Z2-7]{56}\b'''
+keywords = ["su", "sa", "sn", "so", "sp", "sx", "sc"]
+
+[[rules]]
+id = "json-private-key-field"
+description = "A value that looks like private key material (base64, base64url or hex, 43 to 88 characters) in a field named seed, sk, privateKey or secret"
+regex = '''(?i)"(seed|sk|private_?key\w*|secret\w*)"\s*:\s*"[A-Za-z0-9+/_=-]{43,88}"'''
+keywords = ["seed", "private", "secret", "sk"]
+
+[[rules]]
+id = "json-jwk-private-d"
+description = "The private scalar or seed of a JSON web key (field d, 43 or 86 base64url characters) next to its key type"
+regex = '''(?is)"kty"\s*:\s*"(EC|OKP)".{0,200}?"d"\s*:\s*"[A-Za-z0-9_-]{43,86}"|"d"\s*:\s*"[A-Za-z0-9_-]{43,86}".{0,200}?"kty"\s*:\s*"(EC|OKP)"'''
+keywords = ["kty"]
+
+[[allowlists]]
+description = "Public keys in the shared test examples, for generic-api-key only"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^test-vectors/(vectors/|captured/|manifest\.json$)''']
+regexTarget = "secret"
+regexes = [
+  '''^U[A-Z2-7]{55}$''',
+  '''^MCowBQYDK2VwAyEA[A-Za-z0-9+/]{43}=$''',
+]
+
+[[allowlists]]
+description = "WebAuthn authenticatorData (public) in the shared test examples, for generic-api-key only"
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = ['''^test-vectors/vectors/''']
+regexTarget = "match"
+regexes = ['''authenticatorData"\s*:\s*"''']

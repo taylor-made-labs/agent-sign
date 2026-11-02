@@ -1,6 +1,6 @@
 //! `agent-sign`: the command line for agent-sign.
 //!
-//! `agent-sign leases`, `status`, `revoke`, `trust-line`, `doctor`, `--version`, `--help`. Any other
+//! `agent-sign leases`, `status`, `revoke`, `trust-line`, `trust install`, `verify`, `launch`, `doctor`, `--version`, `--help`. Any other
 //! arguments are treated as git calling it as `gpg.ssh.program`, exactly as
 //! `agent-sign` did, so `agent-sign` can be a link to this program. New setups
 //! point git at `agent-ssh-sign` instead.
@@ -39,6 +39,21 @@ fn main() -> ExitCode {
         }
         if first_arg == "trust-line" {
             return run_trust_line();
+        }
+        if first_arg == "trust" {
+            return run_trust(&args[2..]);
+        }
+        if first_arg == "verify" {
+            return run_verify(&args[2..]);
+        }
+        if first_arg == "launch" {
+            return run_launch(&env::args_os().skip(2).collect::<Vec<_>>());
+        }
+        if first_arg == "session-exec" && args.len() == 2 {
+            return run_session_step(true);
+        }
+        if first_arg == "session-end" && args.len() == 2 {
+            return run_session_step(false);
         }
         if first_arg == "--version" || first_arg == "-v" || first_arg == "-V" {
             println!("agent-sign {}", env!("CARGO_PKG_VERSION"));
@@ -81,6 +96,18 @@ fn print_help() {
         "  agent-sign trust-line                    (Print the allowed-signers line that trusts agents' signatures)"
     );
     println!(
+        "  agent-sign trust install                 (Trust the running service's authority: record it, update agent-sign's block)"
+    );
+    println!(
+        "  agent-sign verify [--format json] <rev>  (Check a commit's signature, then say how its signer's name was established)"
+    );
+    println!(
+        "  agent-sign launch --agent <name> -- <program> [args...]  (Run an agent as a launched session: its own name, sandbox and channel; Linux)"
+    );
+    println!(
+        "  agent-sign launch --collect <session>    (System mode: fetch the bundles of a session whose caller had gone)"
+    );
+    println!(
         "  agent-sign doctor                        (Run full system diagnostics and check health)"
     );
     println!("  agent-sign --version                     (Show version)");
@@ -88,19 +115,56 @@ fn print_help() {
     println!();
 }
 
+/// The agents' domain the user's config names (`[identity] machine`), and
+/// the state folder's keys folder.
+fn trust_setting() -> Result<(PathBuf, PathBuf, String), String> {
+    let state = agent_sign::paths::state_dir();
+    let keys = agent_sign::agents_ca::keys_dir_in(&state);
+    let settings = agent_sign::config::IdentityConfig::load_user()?;
+    Ok((state, keys, settings.domain()))
+}
+
+/// The allowed-signers lines for the authorities `agent-sign trust install`
+/// recorded, oldest first, then the running service's live authority if it
+/// isn't one of them, each scoped to `domain`. The live line comes only
+/// from a service that holds the state lock and wrote it this run
+/// (`agent_sign::state_lock::live_authority`), never from a key file left
+/// on disk.
+fn trust_lines_with_live(state: &Path, keys: &Path, domain: &str) -> Vec<String> {
+    let mut lines = agent_sign::agents_ca::trust_lines_in(keys, domain);
+    if let Some(live) = agent_sign::state_lock::live_authority(state) {
+        let line = agent_sign::agents_ca::trust_line_in(domain, &live);
+        if !lines.contains(&line) {
+            lines.push(line);
+        }
+    }
+    lines
+}
+
 /// Prints the allowed-signers lines that trust the agents' certificate
-/// authorities for `*@agents.local`, one per authority the service has
-/// started with (it makes a new one, in memory, at each start), oldest
-/// first: added to the file git's `gpg.ssh.allowedSignersFile` names, they
-/// make every agent commit show as a Good signature for that agent's own
-/// principal, including commits certified before a restart.
+/// authorities for `*@agents.local` (or `*@<machine>.agents.local` when the
+/// user's config sets `[identity] machine`, as agent-sign's managed block
+/// does): one per authority `agent-sign trust install` recorded, oldest
+/// first, so commits certified before a restart still verify, then the
+/// running service's live authority while it runs. Added to the file git's
+/// `gpg.ssh.allowedSignersFile` names, they make every agent commit show as
+/// a Good signature for that agent's own principal. Printing them changes
+/// no trust; `agent-sign trust install` writes it.
 fn run_trust_line() -> ExitCode {
-    let keys = agent_sign::agents_ca::keys_dir_in(&agent_sign::paths::state_dir());
-    let lines = agent_sign::agents_ca::trust_lines(&keys);
+    let (state, keys, domain) = match trust_setting() {
+        Ok(found) => found,
+        Err(e) => {
+            eprintln!("agent-sign: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let lines = trust_lines_with_live(&state, &keys, &domain);
     if lines.is_empty() {
         eprintln!(
-            "agent-sign: no agents' certificate authority in {} yet. One is made each time the \
-             service starts: start it (`agent-signd`), then run this again.",
+            "agent-sign: no agents' certificate authority yet: no service is running for {}, \
+             and `agent-sign trust install` has recorded none in {}. Start the service \
+             (`agent-signd`), then run this again.",
+            state.display(),
             keys.display()
         );
         return ExitCode::from(1);
@@ -109,6 +173,330 @@ fn run_trust_line() -> ExitCode {
         println!("{line}");
     }
     ExitCode::SUCCESS
+}
+
+/// `agent-sign trust <install>`.
+fn run_trust(args: &[String]) -> ExitCode {
+    match args {
+        [cmd] if cmd == "install" => run_trust_install(),
+        _ => {
+            eprintln!("usage: agent-sign trust install");
+            ExitCode::from(2)
+        }
+    }
+}
+
+/// `agent-sign trust install`: the only thing that writes trust (decision
+/// D2, the suite PM, 31 Oct 2026). It records the running service's live
+/// authority in the authority history (`keys/agents_cas.pub`, append-only,
+/// once per key), and rewrites agent-sign's managed block in the file git's
+/// global `gpg.ssh.allowedSignersFile` names with every recorded authority,
+/// scoped to this machine's agents' domain, leaving the rest of the file as
+/// it was. The installer runs it once the service is up; run it again after
+/// the service restarts. A service's start never does this, so starting
+/// another service changes nothing a verifier trusts (P3).
+///
+/// Exits 1, saying why, when no service is running (nothing live to trust;
+/// the block still gets the recorded authorities), or when there is no
+/// managed block to write.
+fn run_trust_install() -> ExitCode {
+    use agent_sign::agents_ca::BlockUpdate;
+    let (state, keys, domain) = match trust_setting() {
+        Ok(found) => found,
+        Err(e) => {
+            eprintln!("agent-sign trust install: {e}");
+            return ExitCode::from(1);
+        }
+    };
+    let mut failed = false;
+    let live = agent_sign::state_lock::live_authority(&state);
+    let lines = match &live {
+        Some(line) => match agent_sign::agents_ca::record_authority(
+            &keys,
+            line,
+            agent_sign::agents_ca::now_secs(),
+            &domain,
+        ) {
+            Ok(lines) => {
+                println!(
+                    "Recorded the running service's certificate authority in {}",
+                    keys.join(agent_sign::agents_ca::CAS_HISTORY_FILE).display()
+                );
+                lines
+            }
+            Err(e) => {
+                eprintln!(
+                    "agent-sign trust install: the running service's authority can't be \
+                     recorded in {} ({e}), so nothing was trusted",
+                    keys.display()
+                );
+                return ExitCode::from(1);
+            }
+        },
+        None => {
+            eprintln!(
+                "agent-sign trust install: no agent-signd is running for {}, so there is no \
+                 live authority to trust. Start the service, then run this again.",
+                state.display()
+            );
+            failed = true;
+            agent_sign::agents_ca::trust_lines_in(&keys, &domain)
+        }
+    };
+    match agent_sign::agents_ca::global_allowed_signers_file() {
+        Some(file) => match agent_sign::agents_ca::update_allowed_signers(&file, &lines) {
+            Ok(BlockUpdate::Rewritten) => println!(
+                "Updated agent-sign's block in {}: it trusts {} authorities for *@{domain}",
+                file.display(),
+                lines.len()
+            ),
+            Ok(BlockUpdate::Unchanged) => println!(
+                "agent-sign's block in {} already trusts these {} authorities for *@{domain}",
+                file.display(),
+                lines.len()
+            ),
+            Ok(BlockUpdate::NoBlock) => {
+                eprintln!(
+                    "agent-sign trust install: {} has no agent-sign block, so nothing in it \
+                     was changed. Run the installer again, which adds the block, or add the \
+                     lines `agent-sign trust-line` prints yourself.",
+                    file.display()
+                );
+                failed = true;
+            }
+            Err(e) => {
+                eprintln!(
+                    "agent-sign trust install: agent-sign's block in {} can't be updated ({e})",
+                    file.display()
+                );
+                failed = true;
+            }
+        },
+        None => {
+            eprintln!(
+                "agent-sign trust install: git's global config names no \
+                 gpg.ssh.allowedSignersFile, so no verifier here reads the trust. Run the \
+                 installer again, which sets one up with agent-sign's block, then run this again."
+            );
+            failed = true;
+        }
+    }
+    if failed {
+        ExitCode::from(1)
+    } else {
+        ExitCode::SUCCESS
+    }
+}
+
+/// `agent-sign verify [--format json] [--allowed-signers <absolute file>] <rev>`, in a
+/// repository: checks the commit's signature against the trust file the
+/// verifier chooses (`--allowed-signers`, else the system-mode file, else
+/// git's system and global config; never the repository's own, see
+/// `agent_sign::verify::trust_file`), with ssh-keygen, and only when it
+/// verifies prints how the signer's identity was established
+/// (`attestation: ...`). Otherwise it prints "not verified: <why>", and no
+/// attestation, and exits 1. A relative `--allowed-signers` path is refused
+/// (exit 2): it would be read from the current folder, often the checkout
+/// being verified, which the session under check can write.
+///
+/// With `--format json` it prints exactly one JSON object on stdout (the
+/// interface a merge step calls, README "Merge gates"). Both forms exit the
+/// same way (F3, the second whole-branch review): 0 only when the commit is
+/// verified and attested, 2 when the check can't run, else 1. Both come from
+/// the one `agent_sign::verify::verdict_with`, and the human form prints
+/// nothing a commit controls (the committer's email, a certified name) with
+/// its control characters raw.
+fn run_verify(args: &[String]) -> ExitCode {
+    let usage = || {
+        eprintln!(
+            "usage: agent-sign verify [--format json] [--allowed-signers <absolute file>] <rev>\n\
+             (--allowed-signers takes an absolute path outside the checkout being verified)"
+        );
+        ExitCode::from(2)
+    };
+    let mut json = false;
+    let mut rev: Option<&String> = None;
+    let mut allowed: Option<std::path::PathBuf> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = &args[i];
+        let file = if arg == "--allowed-signers" {
+            i += 1;
+            match args.get(i) {
+                Some(f) => Some(f.as_str()),
+                None => return usage(),
+            }
+        } else {
+            arg.strip_prefix("--allowed-signers=")
+        };
+        if let Some(file) = file {
+            if allowed.is_some() || file.is_empty() {
+                return usage();
+            }
+            allowed = Some(std::path::PathBuf::from(file));
+            i += 1;
+            continue;
+        }
+        let format = if arg == "--format" {
+            i += 1;
+            match args.get(i) {
+                Some(f) => Some(f.as_str()),
+                None => return usage(),
+            }
+        } else {
+            arg.strip_prefix("--format=")
+        };
+        match format {
+            Some("json") => json = true,
+            Some("human") => json = false,
+            Some(_) => return usage(),
+            None if rev.is_none() => rev = Some(arg),
+            None => return usage(),
+        }
+        i += 1;
+    }
+    let Some(rev) = rev else {
+        return usage();
+    };
+    let verdict = match env::current_dir() {
+        // A relative path would be read from the current folder, often the
+        // checkout being verified, which the session under check can write
+        // (V1): refuse it rather than trust a file that session made.
+        Ok(_) if allowed.as_deref().is_some_and(|p| !p.is_absolute()) => {
+            agent_sign::verify::Verdict::cant_run(format!(
+                "--allowed-signers {} is a relative path, which would be read from the \
+                 current folder (often the checkout being verified); pass an absolute path \
+                 to a file outside the checkout",
+                agent_sign::verify::plain_text(&allowed.as_deref().unwrap().display().to_string())
+            ))
+        }
+        Ok(dir) => agent_sign::verify::verdict_with(&dir, rev, allowed.as_deref()),
+        Err(e) => agent_sign::verify::Verdict::cant_run(format!("no current folder ({e})")),
+    };
+    if json {
+        println!("{}", verdict.to_json());
+        return ExitCode::from(verdict.json_exit_code());
+    }
+    use agent_sign::verify::plain_text;
+    if verdict.verified {
+        println!(
+            "verified: Good signature for {}",
+            plain_text(verdict.signer.as_deref().unwrap_or_default())
+        );
+        println!(
+            "attestation: {}",
+            plain_text(verdict.attestation_words.as_deref().unwrap_or_default())
+        );
+        // The author is the commit's to write, so it is filtered as the
+        // committer is (R3). It says whether it is the signer: the signature
+        // vouches for the committer, and a gate that needs the author too
+        // reads `author_matches_signer` in the JSON form.
+        match verdict.author.as_deref() {
+            Some(author) => println!(
+                "author: {} ({})",
+                plain_text(author),
+                if verdict.author_matches_signer() {
+                    "the signer"
+                } else {
+                    "not the signer"
+                }
+            ),
+            None => println!("author: none (no single author with an email)"),
+        }
+        if !verdict.attested {
+            println!("note: {}", agent_sign::verify::MERGE_NOTE);
+        }
+    } else {
+        eprintln!(
+            "agent-sign verify: not verified: {}",
+            plain_text(&verdict.detail)
+        );
+    }
+    ExitCode::from(verdict.json_exit_code())
+}
+
+/// `agent-sign session-exec` / `session-end`: a launched session's own
+/// steps in system mode, run by systemd as a slot's account (see
+/// `agent_sign::session_runner`). They take no arguments.
+#[cfg(target_os = "linux")]
+fn run_session_step(exec: bool) -> ExitCode {
+    if exec {
+        agent_sign::session_runner::exec()
+    } else {
+        agent_sign::session_runner::end()
+    }
+}
+
+/// Sessions in slot accounts exist only on Linux.
+#[cfg(not(target_os = "linux"))]
+fn run_session_step(_exec: bool) -> ExitCode {
+    eprintln!("agent-sign: launched sessions in slot accounts exist only on Linux");
+    ExitCode::from(1)
+}
+
+/// `agent-sign launch --agent <name> -- <program> [args...]`: runs the
+/// program as a new launched session (see `agent_sign::launch`).
+/// `agent-sign launch --collect <session>` (system mode): fetches the
+/// bundles of a session whose caller had gone before it ended.
+fn run_launch(args: &[std::ffi::OsString]) -> ExitCode {
+    let usage = || {
+        eprintln!(
+            "usage: agent-sign launch --agent <name> -- <program> [args...]\n       agent-sign launch --collect <session>"
+        );
+        ExitCode::from(2)
+    };
+    if args.first().is_some_and(|a| a == "--collect") {
+        let (Some(session), 2) = (args.get(1), args.len()) else {
+            return usage();
+        };
+        return collect(&session.to_string_lossy());
+    }
+    let mut agent: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        let arg = args[i].to_string_lossy();
+        if arg == "--" {
+            i += 1;
+            break;
+        } else if arg == "--agent" {
+            let Some(value) = args.get(i + 1) else {
+                return usage();
+            };
+            agent = Some(value.to_string_lossy().into_owned());
+            i += 2;
+        } else if let Some(value) = arg.strip_prefix("--agent=") {
+            agent = Some(value.to_string());
+            i += 1;
+        } else {
+            return usage();
+        }
+    }
+    let (Some(agent), Some(program)) = (agent, args.get(i)) else {
+        return usage();
+    };
+    agent_sign::launch::run(&agent, program, &args[i + 1..])
+}
+
+/// `agent-sign launch --collect <session>`: only in system mode, where the
+/// launcher keeps a gone caller's bundles.
+#[cfg(target_os = "linux")]
+fn collect(session: &str) -> ExitCode {
+    match agent_sign::launch::system_config() {
+        Some(path) => agent_sign::launch_client::collect(&path, session),
+        None => {
+            eprintln!(
+                "agent-sign launch --collect: this machine isn't in system mode, so no launcher \
+                 keeps sessions' bundles"
+            );
+            ExitCode::from(1)
+        }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn collect(_session: &str) -> ExitCode {
+    eprintln!("agent-sign launch --collect: launched sessions exist only on Linux");
+    ExitCode::from(1)
 }
 
 fn run_leases() -> ExitCode {
@@ -471,6 +859,50 @@ fn truncate_str(s: &str, max_len: usize) -> String {
     }
 }
 
+/// Doctor's line for a running service whose authority no trust file
+/// holds yet (decision D2): said plainly, with the command that fixes it.
+fn say_live_authority_not_trusted_yet() {
+    println!(
+        "  \x1b[33m⚠\x1b[0m The running service's certificate authority isn't trusted yet: \
+         agents' commits it signs show as unverified until you run `agent-sign trust install`"
+    );
+}
+
+/// System mode only (`None` on a laptop): whether the certificate authority
+/// OpenBao reports is the one line of `[service] trust_file`, the same
+/// comparison the service's issuer makes before it signs anything
+/// (`agent_sign::issuer_openbao`). It reads OpenBao's public key endpoint,
+/// which needs no login, and only reads the trust file. `Ok` names the trust
+/// file; `Err` says what is wrong.
+fn system_authority_check() -> Option<Result<String, String>> {
+    let active = match agent_sign::system_config::active() {
+        Ok(Some(active)) => active,
+        Ok(None) => return None,
+        Err(e) => return Some(Err(e)),
+    };
+    let config = &active.config;
+    let openbao = match config.openbao(&active.path) {
+        Ok(openbao) => openbao,
+        Err(e) => return Some(Err(e)),
+    };
+    let settings = agent_sign::issuer_openbao::Settings {
+        address: openbao.address,
+        resolve: openbao.resolve.unwrap_or_default(),
+        ca_cert: PathBuf::from(openbao.ca_cert),
+        mount: openbao.mount,
+        role: openbao.role,
+        machine: config.machine.clone(),
+        trust_file: config.service.trust_file.clone(),
+        // Not used: the comparison needs no login.
+        credentials_dir: PathBuf::new(),
+    };
+    Some(
+        agent_sign::issuer_openbao::OpenBaoIssuer::new(&settings)
+            .and_then(|issuer| issuer.ready())
+            .map(|()| config.service.trust_file.display().to_string()),
+    )
+}
+
 fn run_doctor() -> ExitCode {
     println!("\x1b[1m══════════════════════════════════════════════════\x1b[0m");
     println!("\x1b[1m            agent-sign Diagnostic Health Check          \x1b[0m");
@@ -572,25 +1004,41 @@ fn run_doctor() -> ExitCode {
         warnings += 1;
     }
 
-    // 3. Check the agents' certificate authorities
-    let keys_dir = agent_sign::agents_ca::keys_dir_in(&agent_sign::paths::state_dir());
-    let trust = agent_sign::agents_ca::trust_lines(&keys_dir);
-    if !trust.is_empty() {
+    // 3. Check the agents' certificate authorities: the ones `agent-sign
+    // trust install` recorded, and the running service's live one, scoped
+    // to this machine's agents' domain as the managed block is.
+    let state_dir = agent_sign::paths::state_dir();
+    let keys_dir = agent_sign::agents_ca::keys_dir_in(&state_dir);
+    let domain = agent_sign::config::IdentityConfig::load_user()
+        .map(|s| s.domain())
+        .unwrap_or_else(|_| agent_sign::attribution::AGENTS_DOMAIN.to_string());
+    let recorded = agent_sign::agents_ca::trust_lines_in(&keys_dir, &domain);
+    let live = agent_sign::state_lock::live_authority(&state_dir)
+        .map(|l| agent_sign::agents_ca::trust_line_in(&domain, &l));
+    let trust = trust_lines_with_live(&state_dir, &keys_dir, &domain);
+    if !recorded.is_empty() {
         println!(
-            "  \x1b[32m✓\x1b[0m Agents' certificate authorities recorded: {} in {}",
-            trust.len(),
+            "  \x1b[32m✓\x1b[0m Agents' certificate authorities recorded by `agent-sign trust install`: {} in {}",
+            recorded.len(),
             keys_dir
                 .join(agent_sign::agents_ca::CAS_HISTORY_FILE)
                 .display()
         );
         passes += 1;
-    } else {
+    }
+    if live.is_some() {
         println!(
-            "  \x1b[31m✗\x1b[0m No agents' certificate authority recorded in {}",
+            "  \x1b[32m✓\x1b[0m The running service's certificate authority is live (made in its memory at start)"
+        );
+        passes += 1;
+    }
+    if trust.is_empty() {
+        println!(
+            "  \x1b[31m✗\x1b[0m No agents' certificate authority: no service is running, and none is recorded in {}",
             keys_dir.display()
         );
         println!(
-            "    Hint: Start the service (`agent-signd`): it makes one in memory at each start"
+            "    Hint: Start the service (`agent-signd`), then run `agent-sign trust install`"
         );
         failures += 1;
     }
@@ -614,6 +1062,16 @@ fn run_doctor() -> ExitCode {
         warnings += 1;
     }
 
+    // 3b. What an agent's signature means, said plainly so a passing health
+    // check isn't read as more (security review fix round, 31 Oct 2026;
+    // reworded at the switch, S8 / P7 / D1, 1 Nov 2026). Not a warning:
+    // nothing here can fix it in one account.
+    println!(
+        "  \x1b[36mi\x1b[0m Only an agent a launcher started (`agent-sign launch --agent <name> -- <program>`) or an approval named is signed. \
+         Any other agent's commit is unsigned, under its own names, because no launcher started it. \
+         In one account a launcher keeps sessions apart from each other, not from other processes of this account"
+    );
+
     // 4. Check Allowed Signers
     let allowed_file_out = Command::new("git")
         .args(["config", "--global", "gpg.ssh.allowedSignersFile"])
@@ -632,10 +1090,9 @@ fn run_doctor() -> ExitCode {
             );
             passes += 1;
             let content = fs::read_to_string(&allowed_path).unwrap_or_default();
-            let missing = trust
-                .iter()
-                .filter(|line| !content.lines().any(|l| l.trim() == line.as_str()))
-                .count();
+            let has = |line: &String| content.lines().any(|l| l.trim() == line.as_str());
+            let missing = trust.iter().filter(|line| !has(line)).count();
+            let live_missing = live.as_ref().is_some_and(|l| !has(l));
             let has_block = content
                 .lines()
                 .any(|l| l == agent_sign::agents_ca::BLOCK_BEGIN);
@@ -646,24 +1103,30 @@ fn run_doctor() -> ExitCode {
                     "  \x1b[32m✓\x1b[0m It trusts agents' signatures ({} authorities{})",
                     trust.len(),
                     if has_block {
-                        ", in agent-sign's block, which the service keeps current"
+                        ", in agent-sign's block, which `agent-sign trust install` keeps current"
                     } else {
                         ""
                     }
                 );
                 passes += 1;
             } else {
-                println!(
-                    "  \x1b[33m⚠\x1b[0m It doesn't trust {missing} of the agents' {} authorities: their commits show as unverified",
-                    trust.len()
-                );
+                if live_missing {
+                    say_live_authority_not_trusted_yet();
+                }
+                let older = missing - usize::from(live_missing);
+                if older > 0 {
+                    println!(
+                        "  \x1b[33m⚠\x1b[0m It doesn't trust {older} of the {} recorded agents' authorities: commits they certified show as unverified",
+                        recorded.len()
+                    );
+                }
                 if has_block {
                     println!(
-                        "    Hint: Restart the service: it rewrites agent-sign's block at start"
+                        "    Hint: Run `agent-sign trust install`: it rewrites agent-sign's block"
                     );
                 } else {
                     println!(
-                        "    Hint: Run the installer again: it adds a block the service keeps current"
+                        "    Hint: Run the installer again: it adds a block that `agent-sign trust install` keeps current"
                     );
                 }
                 warnings += 1;
@@ -677,7 +1140,48 @@ fn run_doctor() -> ExitCode {
         }
     } else {
         println!("  \x1b[33m⚠\x1b[0m gpg.ssh.allowedSignersFile is not configured in git");
+        if live.is_some() {
+            say_live_authority_not_trusted_yet();
+            println!(
+                "    Hint: Run the installer again: it sets one up with agent-sign's block, which `agent-sign trust install` keeps current"
+            );
+        }
         warnings += 1;
+    }
+
+    // 4b. Whether git here reads an SSH certificate's times correctly. git
+    // gives ssh-keygen the commit's date as local time with no zone, which
+    // OpenSSH 10.0p2 misreads whenever the clock zone isn't UTC; `agent-sign
+    // verify` gives it UTC with a Z and is unaffected. A warning, never a
+    // refusal: signing isn't affected.
+    match agent_sign::cert_times::check() {
+        agent_sign::cert_times::Reading::Correct => {
+            println!(
+                "  \x1b[32m✓\x1b[0m Git here reads certificate times correctly (checked with this machine's ssh-keygen, in this clock zone)"
+            );
+            passes += 1;
+        }
+        agent_sign::cert_times::Reading::Misread => {
+            println!(
+                "  \x1b[33m⚠\x1b[0m Git here misreads certificate times in this clock zone: this machine's ssh-keygen takes the local time git gives it as UTC, so git's own check of an agent's signature is shifted by the zone's offset (%G?, `git verify-commit`)"
+            );
+            println!(
+                "    `agent-sign verify` is unaffected: it gives ssh-keygen the UTC time, so anything that decides (a merge gate, a server-side check, a hook) must use it, never git's verdict"
+            );
+            println!(
+                "    Hint: Run git with TZ=UTC, or install a newer OpenSSH (10.2p1 reads it correctly)"
+            );
+            warnings += 1;
+        }
+        agent_sign::cert_times::Reading::Unknown(why) => {
+            println!(
+                "  \x1b[33m⚠\x1b[0m Couldn't check whether git here reads certificate times correctly: {why}"
+            );
+            println!(
+                "    Hint: Make sure ssh-keygen (OpenSSH) is on PATH; `agent-sign verify` needs it too"
+            );
+            warnings += 1;
+        }
     }
 
     // 5. Check Daemon Connection
@@ -686,8 +1190,9 @@ fn run_doctor() -> ExitCode {
     let ping_req = Request::Ping;
     match send_request(&socket_path, &ping_req) {
         Ok(Response::Pong) => {
+            // `ping: ok` is a contract: the sitting waits for these words.
             println!(
-                "  \x1b[32m✓\x1b[0m Daemon socket active and responsive: {}",
+                "  \x1b[32m✓\x1b[0m ping: ok (the service at {} answers)",
                 socket_path.display()
             );
             passes += 1;
@@ -702,6 +1207,24 @@ fn run_doctor() -> ExitCode {
         Err(e) => {
             println!("  \x1b[31m✗\x1b[0m Daemon connection failed: {}", e);
             println!("    Hint: Start the service with `agent-signd`");
+            failures += 1;
+        }
+    }
+
+    // 5b. System mode: whether OpenBao's certificate authority is the one
+    // the root-owned trust file holds (docs/system-mode.md, section 5). The
+    // line `authority: OpenBao CA matches the trust file` is a contract the
+    // sitting waits for, printed only after the comparison succeeds.
+    match system_authority_check() {
+        None => {}
+        Some(Ok(trust_file)) => {
+            println!(
+                "  \x1b[32m✓\x1b[0m authority: OpenBao CA matches the trust file ({trust_file})"
+            );
+            passes += 1;
+        }
+        Some(Err(why)) => {
+            println!("  \x1b[31m✗\x1b[0m authority: {why}");
             failures += 1;
         }
     }

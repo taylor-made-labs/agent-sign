@@ -1,0 +1,33 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "DEV-N06",
+  "family": "device-es256",
+  "legacy": "L01 L03",
+  "kind": "negative",
+  "tags": [],
+  "about": "a key whose id is not the hash of its public key is not registered",
+  "input": {
+    "registrations": [
+      {
+        "party": "person:me",
+        "keyId": "x-00000000000000000000000000000000",
+        "publicKey": {
+          "kty": "EC",
+          "crv": "P-256",
+          "x": "RcWntzstc_JoR2HL8HtnaSiZktKhHyGTMFjqiPioSPk",
+          "y": "Id98fm31Y0Mio0tNLo1gxUoX5dcOr6369TiRLuijChQ"
+        },
+        "device": "test-browser"
+      }
+    ],
+    "party": "person:me"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "key-id-is-not-the-key-hash"
+  },
+  "today": {
+    "registered": false,
+    "agreesWithExpected": true
+  }
+}

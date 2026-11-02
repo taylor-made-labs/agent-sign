@@ -1,0 +1,51 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "APP-P01",
+  "family": "approval-v2",
+  "legacy": "L10",
+  "kind": "positive",
+  "tags": [],
+  "about": "an approve answer for this exact question, signed by the configured device key",
+  "input": {
+    "question": {
+      "id": "q-1",
+      "accessor": "acc-1",
+      "content": {
+        "accessor": "acc-1",
+        "path": "secret/data/svc/mac/key",
+        "operation": "read",
+        "requester": "agent:a1",
+        "requestHash": "3342c78c4afeedaa7b844b9f35868c1a39e295a79ae837f2f01cadd857beab2b"
+      },
+      "contentHash": "3230928a479cafd5a3b1ba4bc0e964633d953312d972338740c5729295891d76",
+      "choices": [
+        "approve",
+        "deny"
+      ],
+      "expiresAt": 1800000300
+    },
+    "answer": {
+      "questionId": "q-1",
+      "accessor": "acc-1",
+      "requestPath": "secret/data/svc/mac/key",
+      "operation": "read",
+      "requestHash": "3342c78c4afeedaa7b844b9f35868c1a39e295a79ae837f2f01cadd857beab2b",
+      "contentHash": "3230928a479cafd5a3b1ba4bc0e964633d953312d972338740c5729295891d76",
+      "choice": "approve",
+      "expiresAt": 1800000300,
+      "signature": "lx/N+CbYJLUoChc/eq1YbUD4v1HceI11wAHglHCD/4Pe6iY4M0Tpx2OBoO9qwttJRDkROUe47qPVK0i+ZHheBQ=="
+    },
+    "deviceKeySpkiB64": "MCowBQYDK2VwAyEAPKNdSSghv4QVyNTLvry96MCaWO2Bnrfa5C4k8j/QV8o=",
+    "now": 1800000000
+  },
+  "expected": {
+    "result": "accepted",
+    "signer": "device:person-device",
+    "onBehalfOf": "person:me",
+    "strength": "device"
+  },
+  "today": {
+    "outcome": "approved",
+    "agreesWithExpected": true
+  }
+}

@@ -1,0 +1,5572 @@
+{
+ "about": "Index of real stream records: where each is and its hash, never its content.",
+ "tool": "capture-stream.mjs",
+ "store": "the local NATS server's JetStream file store (path recorded relative to its store directory)",
+ "summary": {
+  "EV_CHAT_APP": {
+   "records": 29,
+   "byType": {
+    "suite.chat-app.device-key-registered": 2,
+    "suite.chat-app.expression": 25,
+    "suite.chat-app.delegation-granted": 1,
+    "suite.chat-app.device-enrolled": 1
+   },
+   "publisherSignatureValid": 29,
+   "publisherSignatureInvalid": 0,
+   "unsigned": 0,
+   "personSigned": 18,
+   "personSignatureValid": 0,
+   "personSignatureInvalid": 18,
+   "personValidIfAnyRegisteredKeyCounts": 18,
+   "personSignatureNotChecked": 0
+  },
+  "SUITE": {
+   "records": 50,
+   "byType": {
+    "suite.chat-app.expression": 6,
+    "suite.unharness.turn-step-requested": 4,
+    "suite.cas.context-assembled": 4,
+    "suite.unharness.expression": 4,
+    "suite.unharness.model-call-completed": 4,
+    "suite.unharness.turn-ended": 4,
+    "suite.mig.expression-read": 10,
+    "suite.mig.outcome": 10,
+    "suite.mig.flag": 3,
+    "suite.chat-app.device-key-registered": 1
+   },
+   "publisherSignatureValid": 0,
+   "publisherSignatureInvalid": 0,
+   "unsigned": 50,
+   "personSigned": 2,
+   "personSignatureValid": 2,
+   "personSignatureInvalid": 0,
+   "personValidIfAnyRegisteredKeyCounts": 2,
+   "personSignatureNotChecked": 0
+  },
+  "EV_MIG": {
+   "records": 203,
+   "byType": {
+    "suite.mig.expression-read": 86,
+    "suite.mig.outcome": 86,
+    "suite.mig.flag": 13,
+    "suite.mig.entitlement-decided": 18
+   },
+   "publisherSignatureValid": 203,
+   "publisherSignatureInvalid": 0,
+   "unsigned": 0,
+   "personSigned": 0,
+   "personSignatureValid": 0,
+   "personSignatureInvalid": 0,
+   "personValidIfAnyRegisteredKeyCounts": 0,
+   "personSignatureNotChecked": 0
+  },
+  "EV_UNHARNESS": {
+   "records": 600,
+   "byType": {
+    "suite.unharness.run-requested": 9,
+    "suite.unharness.resource-measured": 37,
+    "suite.unharness.entitlement-requested": 18,
+    "suite.unharness.run-ended": 9,
+    "suite.unharness.turn-ended": 9,
+    "suite.unharness.model-selected": 6,
+    "suite.unharness.resource-reserved": 6,
+    "suite.unharness.run-started": 6,
+    "suite.unharness.run-output": 421,
+    "suite.unharness.resource-spent": 4,
+    "suite.unharness.resource-released": 6,
+    "suite.unharness.run-claimed-done": 3,
+    "suite.unharness.run-verdict": 3,
+    "suite.unharness.expression": 61,
+    "suite.unharness.needs-human": 2
+   },
+   "publisherSignatureValid": 600,
+   "publisherSignatureInvalid": 0,
+   "unsigned": 0,
+   "personSigned": 0,
+   "personSignatureValid": 0,
+   "personSignatureInvalid": 0,
+   "personValidIfAnyRegisteredKeyCounts": 0,
+   "personSignatureNotChecked": 0
+  },
+  "EV_CAS": {
+   "records": 0,
+   "byType": {},
+   "publisherSignatureValid": 0,
+   "publisherSignatureInvalid": 0,
+   "unsigned": 0,
+   "personSigned": 0,
+   "personSignatureValid": 0,
+   "personSignatureInvalid": 0,
+   "personValidIfAnyRegisteredKeyCounts": 0,
+   "personSignatureNotChecked": 0
+  },
+  "EV_CLAUDE_CODE": {
+   "records": 0,
+   "byType": {},
+   "publisherSignatureValid": 0,
+   "publisherSignatureInvalid": 0,
+   "unsigned": 0,
+   "personSigned": 0,
+   "personSignatureValid": 0,
+   "personSignatureInvalid": 0,
+   "personValidIfAnyRegisteredKeyCounts": 0,
+   "personSignatureNotChecked": 0
+  }
+ },
+ "sampleSize": 199,
+ "sample": [
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 1,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 0,
+   "length": 921,
+   "sha256": "6da817786e625604791eafa2195bb6e6231c8608f4daef43a5f4cd3b23eee5f5",
+   "type": "suite.chat-app.device-key-registered",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "device-key-registered",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 264,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 2,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 921,
+   "length": 1046,
+   "sha256": "4156edeedd75750228ccb851ed13515b3f67faf8ecf0ba9dbea81c5c802dc749",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 3,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 1967,
+   "length": 1046,
+   "sha256": "c0045182c6767750863403a61f429953d5499b647f95d7cacaee7ddd8021322d",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 4,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 3013,
+   "length": 1046,
+   "sha256": "bda883209edcd30183a36b15d83921170b944132b7ebf4846bcb860572e2c9fa",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 5,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 4059,
+   "length": 917,
+   "sha256": "88b8f8fb07d81a12522867411e0717657ce3769c53f6ffe0ffe8b93cc6e17a81",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 198,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 6,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 4976,
+   "length": 1046,
+   "sha256": "00a1c777f1d335d00be253ff5ddae0a9c1da9641f222366ff617c9446c750a4f",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 7,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 6022,
+   "length": 1249,
+   "sha256": "a2da958a4f3dc800d7aad82f2c36fe0e51dc5b2b6e16f8657d6d09936c3fbc1b",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 525,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 8,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 7271,
+   "length": 1041,
+   "sha256": "9b9df6a74dcc19034aec692b0ec005a8d4217335785816ba213b0cb484326408",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 369,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 9,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 8312,
+   "length": 1046,
+   "sha256": "d32aeec3c0da72a03e9f54c1ceaf2d0430baa88b2e0f73e018abb7d3dd4b17a2",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 10,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 9358,
+   "length": 1046,
+   "sha256": "df9d2d1c51561ca1ee3d0783cf462b29c9ee435441d245b69f56823c72ebe305",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 11,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 10404,
+   "length": 1046,
+   "sha256": "d16f23dc91dcf5cbfbab196c6cbe30f239f82a28dbcfbd63a09ace1c3a5f017b",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 12,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 11450,
+   "length": 1046,
+   "sha256": "ebe7b3032500620b9952414eb6ceec9fd3bc6804e0a6212d6a6742d1605f0f3c",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 13,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 12496,
+   "length": 1046,
+   "sha256": "386795ab78d2f7d7175b8c780b364c921c5fb6ebe163f5c11901fe00544e2e73",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 14,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 13542,
+   "length": 1046,
+   "sha256": "1becaa27ebaa04e9c132e496d5528b7aa535fff56576b15e75ab7dfbc384e6cf",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 374,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 17,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 16440,
+   "length": 1133,
+   "sha256": "75419465d789f13aec2a999835101aabf8752582ed99366def29c85a77b6b4c5",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 409,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 18,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 17573,
+   "length": 1249,
+   "sha256": "fdb81d4a0521e81dcf948486dc94ec1203e570d9b13e682114fad48c3ddc0bd3",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 525,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 22,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 21691,
+   "length": 1211,
+   "sha256": "0fa42c9585ed6849179c69393c5e95cad333c06c372b72aaaf94524f05783e07",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 487,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 25,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 25116,
+   "length": 1532,
+   "sha256": "ebf9de8e48419d9cbf17dd6f903dd8ff7fc72274d1cd40bff4c67b63e4e70c76",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 813,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 26,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 26648,
+   "length": 1041,
+   "sha256": "b2c6dbb6af0bd3b4a3f1c043d47efe120b294940142cf70d547f569fda67d907",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 369,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 27,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 27689,
+   "length": 1074,
+   "sha256": "620b1d14204e2c9c49eb19eb9275fd93e91636e6ab7b03c6b615724830bed2ec",
+   "type": "suite.chat-app.delegation-granted",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "delegation-granted",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 441,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 28,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 28763,
+   "length": 1003,
+   "sha256": "6115ae5e3b4fecc3f03b7baf32f84ac608bf7054b62e9ae1b6ee9103f7113300",
+   "type": "suite.chat-app.device-enrolled",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "device-enrolled",
+    "browser-69d9c974"
+   ],
+   "bodyBytes": 376,
+   "publisher": {
+    "key": "UCS4Y63WQRQZQVKP75J4UN7R5FJVLA2DQQO7VORRHXNY6XPEYNDYHQC6",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "invalid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_CHAT_APP",
+   "seq": 29,
+   "path": "jetstream/streams/streams/EV_CHAT_APP/msgs/1.blk",
+   "offset": 29766,
+   "length": 921,
+   "sha256": "169ba7b54b70c7055bc05b3ee758030902cf763f9ed2180b61d0aa70ad24ffa0",
+   "type": "suite.chat-app.device-key-registered",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "device-key-registered",
+    "browser-5cc63a4f"
+   ],
+   "bodyBytes": 264,
+   "publisher": {
+    "key": "UAUY7XH66UCPM7OX7X4LQ6BY2HCURVKITA2RMOOVERGJUE4FZ7DVLV47",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 1,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 0,
+   "length": 567,
+   "sha256": "7e663ec64301e0a957ab35133c430cbd2a93d486430cc5224faf524ad7cf718f",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-18357837"
+   ],
+   "bodyBytes": 108,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 2,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 567,
+   "length": 711,
+   "sha256": "9daf9876c9ad32dbf6e9b3ad552e87f8c57a06da1459f2e48d83c24964b7c4f6",
+   "type": "suite.unharness.turn-step-requested",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "turn-step-requested",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 129,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 3,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 1278,
+   "length": 851,
+   "sha256": "fa87c95688cb1911448aba59bab380c3fcbe1c5db253a10bd5af315fb82f86f8",
+   "type": "suite.cas.context-assembled",
+   "subjectParts": [
+    "ev",
+    "cas",
+    "context-assembled",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 317,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 4,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 2129,
+   "length": 920,
+   "sha256": "5191e0c6d9d8aca8f3f316dfdcf23863a7f20fe20e5ff6ffd3edce957059e279",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 346,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 5,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 3049,
+   "length": 954,
+   "sha256": "15dd6c55ccc5b9e8ebb858f8af3c94d4ae900331da0802e87a6e7246991023b7",
+   "type": "suite.unharness.model-call-completed",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "model-call-completed",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 300,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 6,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 4003,
+   "length": 600,
+   "sha256": "25b4a3f82d2e02bfc714ee160b96d1109adb3e46d637c3e9d254c5be1436a8df",
+   "type": "suite.unharness.turn-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "turn-ended",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 30,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 7,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 4603,
+   "length": 860,
+   "sha256": "fe8657fd80ff4d87a76154ab3138b7d6d285278144f0b7da711b16260b9c20f5",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 352,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 8,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 5463,
+   "length": 697,
+   "sha256": "e059004afe6ffa821e4f9a46a382e834a5a9eb7947a8186e0bfc46aa8e7d4586",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 207,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 11,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 7458,
+   "length": 1425,
+   "sha256": "bc580581cdc415f0ad1b535e1296ba3dc92be209dd6e6cc68f81f1ec7c2d0303",
+   "type": "suite.cas.context-assembled",
+   "subjectParts": [
+    "ev",
+    "cas",
+    "context-assembled",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 891,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 13,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 9919,
+   "length": 998,
+   "sha256": "109aa5d0716dbbfaa443f76ac013a3e5cc680b2863617f901294d594320b3bc1",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 424,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 19,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 15209,
+   "length": 1097,
+   "sha256": "d82dc7830318250438750aec885936810ed0fdf17c8157a655aa2250bf749357",
+   "type": "suite.mig.flag",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "flag",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 613,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 20,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 16306,
+   "length": 921,
+   "sha256": "bb005127f19faac6ca629308162b8da81816debaa442aaca26961dbc3ba28ddf",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-18357837"
+   ],
+   "bodyBytes": 457,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "valid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 21,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 17227,
+   "length": 1435,
+   "sha256": "1f7ebcb7538a55fe4da18e404a8f09db3ef33cb4a2b87a38ea63851dea49c377",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 899,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 25,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 21052,
+   "length": 661,
+   "sha256": "9487f35b46a20057ed7f5f1a964e2c9abf5a10afc4b9f1981065120ec563edef",
+   "type": "suite.chat-app.device-key-registered",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "device-key-registered",
+    "browser-18357837"
+   ],
+   "bodyBytes": 264,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 28,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 22993,
+   "length": 2243,
+   "sha256": "d222586001785f8d7ce4cda33b8237fd92e0ad3143063428d15f801a3f782ce2",
+   "type": "suite.cas.context-assembled",
+   "subjectParts": [
+    "ev",
+    "cas",
+    "context-assembled",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 1709,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 29,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 25236,
+   "length": 1047,
+   "sha256": "f663e8a766fbac58f653712d7c6155802d9fd1fe6f4df610639e47b5dd38fd58",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 473,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 34,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 29547,
+   "length": 1164,
+   "sha256": "e56f0f3474892b04003e3d9924c052261ae7f31525eb2497d2117644d1c09b16",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 628,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 37,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 31992,
+   "length": 2929,
+   "sha256": "54c11b6948fb83621465d23350412d9029f6f0926d30af2164070b22d466980f",
+   "type": "suite.cas.context-assembled",
+   "subjectParts": [
+    "ev",
+    "cas",
+    "context-assembled",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 2395,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 39,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 36068,
+   "length": 959,
+   "sha256": "c8105b774d0668de47fce53c70c59c3a8e78df829bb2c1efe4c8e252f7bf752a",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 385,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 46,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 42570,
+   "length": 921,
+   "sha256": "d3b9b8be57933135a2672f9f2d6b1ae1f05333d8de484b80c73b0c1eb09daccc",
+   "type": "suite.chat-app.expression",
+   "subjectParts": [
+    "ev",
+    "chat-app",
+    "expression",
+    "browser-18357837"
+   ],
+   "bodyBytes": 457,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": {
+    "alg": "ES256",
+    "firstKeyWinsRing": "valid",
+    "anyRegisteredKey": "valid"
+   },
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 47,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 43491,
+   "length": 960,
+   "sha256": "7ded84900cbf89b6f6fa6711b53b9b07da78229dd1864aeb947adae11a34b61a",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 470,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 48,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 44451,
+   "length": 1340,
+   "sha256": "4aff571e4510d8ada7d74a5f7bb651aa42f4e455d268b3cf0e88ce43eeb150d0",
+   "type": "suite.mig.flag",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "flag",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 856,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 49,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 45791,
+   "length": 775,
+   "sha256": "5559de79f4df2b2c52a06a0a91fc41e3e9cbdc33962185138c2dd4bca880dcda",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 314,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "SUITE",
+   "seq": 50,
+   "path": "jetstream/streams/streams/SUITE/msgs/1.blk",
+   "offset": 46566,
+   "length": 690,
+   "sha256": "1609d0f9e60ecdea8b0fe15519c17436d494862737c22a7f707bf54ba41b8e0c",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 247,
+   "publisher": {
+    "key": null,
+    "signature": "unsigned",
+    "version": null
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 1,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 0,
+   "length": 935,
+   "sha256": "7c0d1fd3a5e9416138944a9b8ddcffb52580d8d27874120dedcd6377e40195d4",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 219,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 2,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 935,
+   "length": 924,
+   "sha256": "1a3fcf6ebb493dab656cd6dc6c4f397b298cc71d866d1fa3bda8a039a2f282d8",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 226,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 3,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 1859,
+   "length": 935,
+   "sha256": "7af67a131f43376037d83150b6329b17504672b3b875464d010099b8db2094d4",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 219,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 4,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 2794,
+   "length": 924,
+   "sha256": "a7bce98b267c323424463ab3d54311b90e107be96948e01a1cba0ec4a697781a",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 226,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 5,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 3718,
+   "length": 935,
+   "sha256": "acf878538139d14c96cfef298d7c71641cdc457f7804765ea48269ae61e493b5",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 219,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 7,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 5577,
+   "length": 2475,
+   "sha256": "48e1635748c9ff5940dc2a7c25adf394a977fba1b3874aea6e14dfc42c3c6d20",
+   "type": "suite.mig.flag",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "flag",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 1663,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 8,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 8052,
+   "length": 2021,
+   "sha256": "df571e2ca064f81edfb81a838a796b1fd48c8f7944bc5bf125bd221920c2738c",
+   "type": "suite.mig.entitlement-decided",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "entitlement-decided",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 993,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 64,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 82620,
+   "length": 1287,
+   "sha256": "db144a72cf030f7c93424022a1062829841d3007ea61628d011e29e88161fdee",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 500,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 77,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 102112,
+   "length": 1285,
+   "sha256": "f588259947f92558ef439d83d6d66854b317203cf262f925fae0a86c48fc8b65",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 499,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 83,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 110311,
+   "length": 1289,
+   "sha256": "de74777d56c77c709509fa285c6f22ab5c9c77fb868f7b5cd32b3140b5031605",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 502,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 85,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 112824,
+   "length": 1712,
+   "sha256": "f4700693fdb759676c3a6850aee3bb69d7784fa67db7d52a7a6404c92d419dae",
+   "type": "suite.mig.flag",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "flag",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 973,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 89,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 118352,
+   "length": 1287,
+   "sha256": "48de5d54996298ca5a86611723ee625fa60289b7e864506874e104c6f8562f82",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 500,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 93,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 124154,
+   "length": 1287,
+   "sha256": "40db45fb7c6d5c21ff5936fe11ec50e69fc16666d2f09622eee77e75025f699f",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 500,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 107,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 142972,
+   "length": 1295,
+   "sha256": "7b8fc349877c8da1d4c0f72144af2f4ce4e3bae15a27ffff0ab323f61e5463a8",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 508,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 113,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 150583,
+   "length": 1297,
+   "sha256": "a666714effbbbd51a28266cd3513ffa961744c87373765e0070150195a85d67a",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 510,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 115,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 153835,
+   "length": 1670,
+   "sha256": "dfa3d2755fc0c26f01d798a5be2ab451ef264e99a4e57b06edf1f2e00b7e8c56",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 883,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 122,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 164425,
+   "length": 1291,
+   "sha256": "4368ac33c6f8a9a0126f8b84e98382df5b93b36b6c81af332b0809fc797db862",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 503,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 124,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 166947,
+   "length": 1673,
+   "sha256": "3c4cd1d59b4041c514531c80338c7a8219fdd9b0bc793f7f955cf0f804e87421",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 885,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 126,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 169844,
+   "length": 1673,
+   "sha256": "9d0d7d1ff04609951cab0c3221db82f3839849568f9c2505f6770386e29a9e02",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 885,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 128,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 172715,
+   "length": 1673,
+   "sha256": "837f0736b375a35c7a0c9912e876c236254f518a2f49790897f600dde0f7d988",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 885,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 130,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 175636,
+   "length": 1673,
+   "sha256": "78bb98c5105c5afea7459de7ef911f42958d5daf6559bf2895c1bc97a15a16a1",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 885,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 132,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 178724,
+   "length": 1673,
+   "sha256": "5a4242f4e58e282122f9a278ac9e9375ea8990ba10e72a9e228c2f73e8f69e46",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 885,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 134,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 181997,
+   "length": 1289,
+   "sha256": "a079158e7d00751325d4d3f96e83546e712fdda969711e6ed03ed0a0885b7efd",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 501,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 136,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 184464,
+   "length": 1462,
+   "sha256": "738d5843e3e87accbb76d81b55df4b0313c5131586cd3444c0daa85c7952e4b8",
+   "type": "suite.mig.flag",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "flag",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 723,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 141,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 192939,
+   "length": 1669,
+   "sha256": "6ac953d45be6aa52446cb4268cf94e3f8729ea4e000a4f8c6c36dfa276ff2238",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 883,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 149,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 208806,
+   "length": 1289,
+   "sha256": "9118648e2d22f718652ff1825bdd8d4cfa38075695bf4f15db0a551c6b8d2556",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 502,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 157,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 223597,
+   "length": 1289,
+   "sha256": "2b87cdafa4888160b80529505d155714913c4037dfd43f71627e62e9ac04051d",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 502,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 159,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 228049,
+   "length": 1296,
+   "sha256": "33836107d5e107f815136ab90a9b2ec44ee274742ef5d062ff804a3c57a29637",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 509,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 177,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 252605,
+   "length": 1289,
+   "sha256": "92afe013b829fcb558922dc85622dbb3b027f59a51747615cd88351cb52131c1",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 501,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 187,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 267541,
+   "length": 1291,
+   "sha256": "e63f55e14e981871a9d664d2fb0b165897676dbdbe334a0d7221944a977ac2ae",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 503,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 189,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 270366,
+   "length": 1492,
+   "sha256": "6ec138741c062dc90fd9208be9134efd87d51669dc3d177d7b9a2c30a02d61ec",
+   "type": "suite.mig.flag",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "flag",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 753,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 190,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 271858,
+   "length": 1291,
+   "sha256": "353c144f4817f0664faabbe66f7c4e50b4a5eb52ed053538239dfb1c3e616026",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 503,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 199,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 284229,
+   "length": 1275,
+   "sha256": "5ba7de6be1a449b8a2ef20d05bdb6acc3f30ab69d07dcd14c079bdb80df3e698",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 530,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 200,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 285504,
+   "length": 1266,
+   "sha256": "4f4a5ffcab7225bc38b5109a76ab051509d3aea19c091d0a86adeee9b6a68730",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 478,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 201,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 286770,
+   "length": 1388,
+   "sha256": "49b4f9f6e44d7b20510bbe171f40d650c40bf03b2b033e395593c2bbf93c67ad",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 643,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 202,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 288158,
+   "length": 935,
+   "sha256": "3c47f9452d94dc2ee6eeb2bf90044e6861815cae0b0f60b3a5e5a41d9d60d50f",
+   "type": "suite.mig.expression-read",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "expression-read",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 219,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_MIG",
+   "seq": 203,
+   "path": "jetstream/streams/streams/EV_MIG/msgs/1.blk",
+   "offset": 289093,
+   "length": 924,
+   "sha256": "a4a8b04bf8f0ad5df1b9bf60af339c491c44c359ad0176a45c9a144cf927d28a",
+   "type": "suite.mig.outcome",
+   "subjectParts": [
+    "ev",
+    "mig",
+    "outcome",
+    "account1-mbp-local"
+   ],
+   "bodyBytes": 226,
+   "publisher": {
+    "key": "UB4SCTFWWSFR534H3W4EWPXACJS5MQZNM7P4ZOGGGCQDKJDFFH5CJ6DF",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 1,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 0,
+   "length": 1369,
+   "sha256": "30e8a7cc511dab0653df5a8146526b3c783de8e5180dc8068e0a18a25966dc08",
+   "type": "suite.unharness.run-requested",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-requested",
+    "local"
+   ],
+   "bodyBytes": 570,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 2,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1369,
+   "length": 843,
+   "sha256": "e2227a765f60f41d7b894f919d3665e86bc494e54c32e529dcb50d0682cb1795",
+   "type": "suite.unharness.resource-measured",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-measured",
+    "local"
+   ],
+   "bodyBytes": 230,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 3,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 2212,
+   "length": 842,
+   "sha256": "0c13a06600911843c860628c9549e0e68b57bbf6cd6b2218e87a38ebffaf0664",
+   "type": "suite.unharness.resource-measured",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-measured",
+    "local"
+   ],
+   "bodyBytes": 229,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 4,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 3054,
+   "length": 777,
+   "sha256": "a5b67de87c6124d5c92f9c2e73a60ad1fdff3311e9e7e38a93c57548b103e999",
+   "type": "suite.unharness.resource-measured",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-measured",
+    "local"
+   ],
+   "bodyBytes": 164,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 5,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 3831,
+   "length": 788,
+   "sha256": "cf9b1c3e254071a64155a427193a0218b6b5d85ddf6053f52c0eae419032bc45",
+   "type": "suite.unharness.resource-measured",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-measured",
+    "local"
+   ],
+   "bodyBytes": 175,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 7,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 5379,
+   "length": 1064,
+   "sha256": "c6d5a6c1288cce80ce909209172f6544fd94b0d02ef52c2241a38ec4cf4c74af",
+   "type": "suite.unharness.entitlement-requested",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "entitlement-requested",
+    "local"
+   ],
+   "bodyBytes": 126,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 9,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 7505,
+   "length": 1800,
+   "sha256": "62b41006596e6bad2badb1fe83b428baf2099f209a46ff9ae2454dca466a8d89",
+   "type": "suite.unharness.run-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-ended",
+    "local"
+   ],
+   "bodyBytes": 998,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 10,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 9305,
+   "length": 1259,
+   "sha256": "c401b69d09afb3aa24497701fd33af2b4b270b3d9b65a284440e9a99e4c6a68f",
+   "type": "suite.unharness.turn-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "turn-ended",
+    "local"
+   ],
+   "bodyBytes": 462,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 37,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 37872,
+   "length": 1944,
+   "sha256": "77b070842663369ff540ae5daf06526873a1b701022acc7648f70785ce75453e",
+   "type": "suite.unharness.model-selected",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "model-selected",
+    "local"
+   ],
+   "bodyBytes": 1122,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 38,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 39816,
+   "length": 873,
+   "sha256": "5b87401f0cf81465d15dbeaa2bbfe17be4cc20a45054bfe31c1dba0ae27a8c1b",
+   "type": "suite.unharness.resource-reserved",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-reserved",
+    "local"
+   ],
+   "bodyBytes": 214,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 39,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 40689,
+   "length": 1052,
+   "sha256": "982a17aa3c511d27d4fee28bb6fcab21187fc87bdf11897e12ad62888f9f720e",
+   "type": "suite.unharness.run-started",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-started",
+    "local"
+   ],
+   "bodyBytes": 241,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 40,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 41741,
+   "length": 1021,
+   "sha256": "e81985154a98b25e0ff43f8f6062dbb0e06247e9b317b8539f092c4cc3808c9e",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 213,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 56,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 62156,
+   "length": 1940,
+   "sha256": "b1aebc05f61dc3444862c2ca90e058266ccfaf9a1c0413cf5aec1a3c972d1db8",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 1130,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 57,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 64096,
+   "length": 2213,
+   "sha256": "4bb4a66c78db0c753df27a2247f3569800a5fa098bd0d298998350cae8e86bb7",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 1403,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 58,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 66309,
+   "length": 851,
+   "sha256": "3f1989a2589a8eab003ea5de09c80a17f5b307865426416b703803df3df5076e",
+   "type": "suite.unharness.resource-spent",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-spent",
+    "local"
+   ],
+   "bodyBytes": 204,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 59,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 67160,
+   "length": 904,
+   "sha256": "1dda6412792df3829acd1c6b40ba5617d1f9475764d6ff130db45cb8dbee30b2",
+   "type": "suite.unharness.resource-released",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-released",
+    "local"
+   ],
+   "bodyBytes": 245,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 80,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 92493,
+   "length": 1316,
+   "sha256": "45d79c8488ee2f7faaf00f10f4a45b0694a70e1008c57dd1f11c7dd4858f763d",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 508,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 81,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 93809,
+   "length": 2817,
+   "sha256": "b0add52e8dff30a4422039e8b80e8ef5cf7e6076c8514412205fd2250cd7cc72",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 2009,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 82,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 96626,
+   "length": 1268,
+   "sha256": "4677c052424e1f63a8549de2953d940befd7c3b8a8b4cdbac1c04e8c8756c781",
+   "type": "suite.unharness.run-claimed-done",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-claimed-done",
+    "local"
+   ],
+   "bodyBytes": 440,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 83,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 97894,
+   "length": 1117,
+   "sha256": "883439743e223e26daaa63bb37d3ec5c46c80b74489e92ecca46bb03418c443f",
+   "type": "suite.unharness.run-verdict",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-verdict",
+    "local"
+   ],
+   "bodyBytes": 304,
+   "publisher": {
+    "key": "UDIZEAJTAFW2VSG7LTRGCAFDWJJNMHNY62ZA626QGSN57ZKRBHT6YDKZ",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 86,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 100761,
+   "length": 1211,
+   "sha256": "60f3c500412b1be9522b91ce947e33acb4f87b61cef1aa8718f7181549e5cbf8",
+   "type": "suite.unharness.run-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-ended",
+    "local"
+   ],
+   "bodyBytes": 411,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 87,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 101972,
+   "length": 1224,
+   "sha256": "650b1a68e42c3dddd10eec4980e060ac67a09ce8544384c788b361c1b64a63b3",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 437,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 105,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 124708,
+   "length": 980,
+   "sha256": "05704bd9ef47e17e874f8f549e97b9eda2b03a5a21317523b4c400f3a1e3f314",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 179,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 106,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 125688,
+   "length": 9057,
+   "sha256": "84e4a154a66331e27e34d1bf70cd5e1932b4355b15f879b0227caeab92de8a8a",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 8249,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 108,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 136706,
+   "length": 999,
+   "sha256": "1856cc09cfa9f8def9b3c898464bb980e34f546551b4857210889d54130128aa",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 198,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 111,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 152920,
+   "length": 1024,
+   "sha256": "339b485b179561aa04f4342e434cd92ee8b44083ec37ec94f5b43fcc8a103ba1",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 112,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 153944,
+   "length": 1319,
+   "sha256": "cfa8e08d465ec04cf156313ebe145bde235b4844bc4d424353b621df2f99af2a",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 509,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 118,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 163675,
+   "length": 994,
+   "sha256": "cb68d3f2d1e031ebb06aed26ec03a2069369d47ea55d5e3fa03112a0614d720f",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 191,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 119,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 164669,
+   "length": 1319,
+   "sha256": "8e5a195909f5c189740d46fa1d7f9d7b63833a3bfc07f333279657230dbc1213",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 509,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 121,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 179656,
+   "length": 4087,
+   "sha256": "c7367bee0b965de94c5e88e3730691616fe71f8cc2f0845cf5c15fc9cdeb60ee",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 3277,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 122,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 183743,
+   "length": 4891,
+   "sha256": "8d3f6a2f3553aa3d24fd109e0ef837dbed6204d1eb48af5667e03c73b31572ee",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 4081,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 123,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 188634,
+   "length": 2966,
+   "sha256": "5e16c7e1a49b50932cdf05c0afd59c39fc3bf7de896476eb30d33078b2446d1b",
+   "type": "suite.unharness.run-claimed-done",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-claimed-done",
+    "local"
+   ],
+   "bodyBytes": 2138,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 127,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 194467,
+   "length": 1212,
+   "sha256": "1f1f2d417f574183409bd3deda234af140279f355d9a45c3188315d2d740506a",
+   "type": "suite.unharness.run-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-ended",
+    "local"
+   ],
+   "bodyBytes": 412,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 128,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 195679,
+   "length": 3286,
+   "sha256": "175e80bfcf945676d5ea72f4987bfbdde3efff81d397f00ff142fbccb051cbab",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 2499,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 149,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 226150,
+   "length": 1022,
+   "sha256": "3602bf3e4b67c663c6f4e73d399c41980f67b96146e4857b9d154aab221f4e68",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 151,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 229027,
+   "length": 971,
+   "sha256": "9fd3e0fc02d8ed52b1b85ff8a928a9dc3ea48736a515653f738339ce558863a9",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 168,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 152,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 229998,
+   "length": 1319,
+   "sha256": "59d8605c51a466dc79437a54169bcc2d1dff98fb92a1e7c88258399e36f236e7",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 509,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 158,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 241919,
+   "length": 979,
+   "sha256": "fae6ce56d7a2e8d356a11e50ba532f8e29257e4ce236ea0e1441afac23ae1063",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 176,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 164,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 259661,
+   "length": 1024,
+   "sha256": "c95f10b9956aeef82edc62ea59e6732c6fdc4feceee886be503dff30176e1907",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 166,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 262541,
+   "length": 972,
+   "sha256": "e9aa28a2eb94c801f6f0e7aca7e03512dacee87fb0bb087ac81151bb26aa520c",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 169,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 173,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 305888,
+   "length": 1024,
+   "sha256": "1ef3401eca6c3755d3c5efdb96aaea78e0bc372a5aa9d7ba7999c240b37a4d1b",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 176,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 310724,
+   "length": 982,
+   "sha256": "4144e29e1f6fe0eb845323186d98307f9660b2a3cbc2aab3e66028bec326b5a6",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 179,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 179,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 330521,
+   "length": 1024,
+   "sha256": "e90a1eb9b2060d2fd242e28154b2301362302ff9efb4ac888e89c27ee0e3256f",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 206,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 366940,
+   "length": 3668,
+   "sha256": "4dd6d6f986d857caf112a930b6283e71fa1ee27990a54b9782927bd52e860afa",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 2858,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 208,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 372584,
+   "length": 1024,
+   "sha256": "ab6b10918a52b96e72e836ec670181565052213a3723efd4c7ea0feda8c9690b",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 210,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 375514,
+   "length": 982,
+   "sha256": "bb02b3753acf5b26c2ac70ab2542dc38e1462766a2a79af1c88befac82b214d9",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 179,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 214,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 398993,
+   "length": 982,
+   "sha256": "fdfdc362ba4184a9e678d369095c21ffc13d983f39605391a8f8c47d96574081",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 179,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 215,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 399975,
+   "length": 17442,
+   "sha256": "2228fec707efdbf6381723de6c772fd990dc981e724fd16e6e016a3347c773f8",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16632,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 217,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 419308,
+   "length": 982,
+   "sha256": "dfe57664de518dae7e183af759c99035dc89f459c69ef4db1df637f8b3d1658c",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 179,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 220,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 427888,
+   "length": 982,
+   "sha256": "26e756df6faed5baa3d075986086296b78a5e47218dd655d6c90447e3d4476ce",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 179,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 227,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 444663,
+   "length": 1024,
+   "sha256": "3543762d47c652ee9d4a70fa66bd8ffafe1853fd28a71c301f0b306063698442",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 229,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 447722,
+   "length": 952,
+   "sha256": "c76702fe5cd462fdacf27f7f92068da5426f49da7f8df61602df291f189e943a",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 149,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 231,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 450541,
+   "length": 971,
+   "sha256": "ce1dea4fe07dc12ea3059cbbd544aa2e21a0349b1ef6a7cd388774b42916f284",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 168,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 234,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 475918,
+   "length": 17419,
+   "sha256": "2eaa2b61f15425fa7b55c4b3524a152383214532df6dbb878a012cd7b4cfef0d",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16609,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 240,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 502121,
+   "length": 1026,
+   "sha256": "dbab7af43a6c385e27445ba4f612695b75f84a699825b9a17a2bfcf2c8ea8d4f",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 223,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 248,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 520186,
+   "length": 1024,
+   "sha256": "ff6b58b659abbead4eb6aaaeed34c8ee044674539382d2d001d8df1c2476f709",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 250,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 523090,
+   "length": 996,
+   "sha256": "bb9def211ab2170adf4bdc9ed85be248c0e841e7e9d209477fa0128d26c691cb",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 193,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 261,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 573280,
+   "length": 1026,
+   "sha256": "0bea0a6674c1ab160784b317ff6d8ed48f048baae36da11b014c63d70c2c7134",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 263,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 576277,
+   "length": 1026,
+   "sha256": "bbbeb7b9b4bc770fa256523ee63da7b7b0f1add501883c2fcf6fd66d0e4225ab",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 281,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 598908,
+   "length": 3274,
+   "sha256": "2e470de6c562be37ffa2bfc6a41d1fef20f526fd6970f92a16a1a5ab883bc861",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 2462,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 283,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 604572,
+   "length": 1026,
+   "sha256": "f98e5b175e4ec0c09178384263860480a70faa90b395447350c1b766faee9d6f",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 284,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 605598,
+   "length": 17291,
+   "sha256": "5d862371cc4ce81709e06d95bb981e84bad7ca438c68c837fcaa3c951a855649",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16479,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 289,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 630132,
+   "length": 1026,
+   "sha256": "37dcc48b9ee8f999840839131a946b25f85edf715b35f61dc7987631f646d5de",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 292,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 646706,
+   "length": 1026,
+   "sha256": "608b5c02448b0c52e7d48e529d8f1622d1195707a4b5d3ee3b50fa3e57a3ba6a",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 298,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 657236,
+   "length": 1026,
+   "sha256": "69d4686aa41b83c7131e135e8da26079b9d1309627577094fc1f95979af17a14",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 299,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 658262,
+   "length": 17618,
+   "sha256": "0a43fde723c531b70d7a4b80cf307162e6eff520606a5f3a8c8fc0f8c63d97b6",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16806,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 334,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 715072,
+   "length": 3660,
+   "sha256": "45991d7ad18937ca52fac5b2dc40a073a13d3b88fddb22cb887312e05d144064",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 2848,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 336,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 720941,
+   "length": 1026,
+   "sha256": "9b88e81cc7813933306f8653fe776daf11df04426c7efacb44565fede42d4c8e",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 338,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 723997,
+   "length": 1026,
+   "sha256": "804c9918918a510088cb2a6d865df4e41c1a314f2a29c345323614d774b5f8c1",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 339,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 725023,
+   "length": 945,
+   "sha256": "a0b7149a7420a1babb59a6a70f845256c8eef4a1e87a81861ff2d26b604de444",
+   "type": "suite.unharness.needs-human",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "needs-human",
+    "local"
+   ],
+   "bodyBytes": 125,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 364,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 757145,
+   "length": 1022,
+   "sha256": "2f38b922a9f4f583efc8470c60fc2d77d4ac55aa9b715af6596d566bb6e25cf2",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 365,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 758167,
+   "length": 1319,
+   "sha256": "1304d448e11ac4219492bec87b55e0e022530e2cd120466c2fab90a8ae06c22c",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 509,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 374,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 781689,
+   "length": 4852,
+   "sha256": "46a2b34df33e4ab3bf982ab01f264b7b3cf4987feed523c800cdb5578175ab2c",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 4042,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 375,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 786541,
+   "length": 2958,
+   "sha256": "28beacb6c769e33a7337c53cac15d588ba50e9ad62e212aa2d0a52679478cbb7",
+   "type": "suite.unharness.run-claimed-done",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-claimed-done",
+    "local"
+   ],
+   "bodyBytes": 2130,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 379,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 792366,
+   "length": 1212,
+   "sha256": "e218ae0fde0271c1eb381f52f1310a66f3799eb5539c3efd41c7f65951703207",
+   "type": "suite.unharness.run-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-ended",
+    "local"
+   ],
+   "bodyBytes": 412,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 404,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 829604,
+   "length": 1024,
+   "sha256": "57b328913a1b0eacb93aded3af85a1935fc8b5cfc75de86ee9f8b41fe4819898",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 405,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 830628,
+   "length": 1319,
+   "sha256": "5fe3f60c82707c62782f6b299dc342f4d977a18f419a85e737f2466098d0834b",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 509,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": true,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 461,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 921138,
+   "length": 1024,
+   "sha256": "55946dc2463cd2df44f44fc2a2e6963f8cfa697c15d2627d33a085ec7a7eacdd",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 467,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 932508,
+   "length": 1026,
+   "sha256": "d0515cdee85f9283e2df8558bfb54a68ccedcf07750d89f41cdc64724f61d09b",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 223,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 477,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 956842,
+   "length": 1024,
+   "sha256": "99fd656b4801c9c9acbde3af32dc35b03b08ea66193626f2a1f7c99ee14d0d81",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 488,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 985329,
+   "length": 1024,
+   "sha256": "d85acc0c8b0bb5b7e554e32334bb5ae099c925434084c7eb651b896cca0a65c5",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 495,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1009044,
+   "length": 1024,
+   "sha256": "82968eda404f852655cb1f3a35d228cb75a21a2ea21a4abaeaddd3e2e1d22aa8",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 519,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1042295,
+   "length": 995,
+   "sha256": "c2686afeb0953340feea2a97bc95d434a6ec889b4c1af961f2959d3fb0b17db2",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 521,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1045412,
+   "length": 995,
+   "sha256": "cf1f92f77dac6a9fb7a01e4d0080f402989a070a6b3a69056d55a4293f232b66",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 523,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1048437,
+   "length": 993,
+   "sha256": "99e3b332cddccc197bffc997fce26fbd527dc328cc5beca9c94e96ed2d4125c0",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 188,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 526,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1080258,
+   "length": 9051,
+   "sha256": "51141ef59da6cc453cef7b19278dca12366b0d142b0081c88180f3e2c9758bff",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 8239,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 528,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1091475,
+   "length": 996,
+   "sha256": "4b02b516eea009e174cb38caf13f5f9745f2d1f7720e4dd2cebd498640a1d16a",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 191,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 531,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1103808,
+   "length": 995,
+   "sha256": "4aedc56765d87358c8e85665e6207735b6f08fb0f3d4747eda9b1b82f7c971a1",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 532,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1104803,
+   "length": 17576,
+   "sha256": "8372c6f8964facab3b5aad812853fac47da912b7bd2f8a50c49beb7e37388781",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16764,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 534,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1124450,
+   "length": 995,
+   "sha256": "2a1e737a583befee7991d4ec8e8cb9e52afc7f94028e4a3f876b3557f7e0dcb2",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 535,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1125445,
+   "length": 17574,
+   "sha256": "e4ea723e05b62861674eb075db163751ca5c6719e338bb9f29c64749db9d1d58",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16762,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 537,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1144923,
+   "length": 995,
+   "sha256": "160b3a94cbdb3c7a23e9554cdc2db6a1820d48da0950d09fa9d53a8e3a711fc1",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 540,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1150022,
+   "length": 995,
+   "sha256": "9bb747ecbba612d7f407218bab8a60604f6187b5cd6e53230077f05c25ec71a9",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 547,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1162782,
+   "length": 1026,
+   "sha256": "cb00a01e46f76ca331c2572c9c962313582f0da11b659bd57fa48d22197ad706",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 550,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1167911,
+   "length": 995,
+   "sha256": "f5a7dbed970be70ed14a718eee5b07d5a562ff80908fbbc21e49405193acdabd",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 551,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1168906,
+   "length": 17572,
+   "sha256": "43c6ae364a16270d6ee3f1fe71c607e47bb8b8224db3dd2ebbdb1cd4c4db743f",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16760,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 553,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1189495,
+   "length": 995,
+   "sha256": "f739440ae543353c5b7e956fad88371a61f2e8e7e2ce55fa0c411aa80f08e143",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 554,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1190490,
+   "length": 17553,
+   "sha256": "1cf8e7772590bab23ebfceaa7a5f522b59bb8f7f73295d86797c9d1dac1fe937",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16741,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 556,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1210417,
+   "length": 995,
+   "sha256": "5fd13ca2d6576b9c9669022f9f851e2ef28b15f2bc945746fe4cd4f46099d136",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 557,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1211412,
+   "length": 17571,
+   "sha256": "c66ef42f437fdcec9a42ac56b639c77137bf1a97c775282cef5168b6aba15cd1",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16759,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 562,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1236463,
+   "length": 1026,
+   "sha256": "aec69c4cfa04f050f4a687cab994f58021afc7f43dfa3ddb4d0790ee290ca2f1",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 569,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1249685,
+   "length": 1026,
+   "sha256": "42f649bb951ce027e154b1852f174ed0a27ab8d6e1035764ad5c9364edbcafcc",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 577,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1271211,
+   "length": 1026,
+   "sha256": "c2af15afc6e2bf8dd427ed99ee36a30fdf630ee2ff3956e082065af0a0ebdba5",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 221,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 578,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1272237,
+   "length": 9158,
+   "sha256": "ba892955ff6bf29bfd9a205e1f58fa5de120e00d2ad5a3a41d7285c643fc64ec",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 8346,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 583,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1289590,
+   "length": 997,
+   "sha256": "0d9d151040b9912362bd382ff935f61a27954e5a692500a23fb130f6b63ad9be",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 192,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 584,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1290587,
+   "length": 16157,
+   "sha256": "65287adad361227e048aa2862df22fda545135ebf18fc57be74357c51810f6e8",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 15345,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 586,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1308649,
+   "length": 995,
+   "sha256": "b4f25335aee166f6474f59c76c2189476575679fc7f6793341595650d2af0e60",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 589,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1315119,
+   "length": 995,
+   "sha256": "ece01f2e1fe3142a39065e1c48fbbb6a6399635a82bfae9f87ac9d03916a67f8",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 592,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1320963,
+   "length": 995,
+   "sha256": "da4d149e7644e28d84c7ba83ed84ac37c699390f79685469a93f86f49630ce6d",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 593,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1321958,
+   "length": 17551,
+   "sha256": "c305cac085d15bf5c86074499cf55abb6a9d06c06bde8a85325b75fac1023329",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16739,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 595,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1341594,
+   "length": 995,
+   "sha256": "a34985420d05f33bc3a6647d80436f41f9d0837629465481a13c0fd63f2345b6",
+   "type": "suite.unharness.expression",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "expression",
+    "local"
+   ],
+   "bodyBytes": 190,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 596,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1342589,
+   "length": 17567,
+   "sha256": "eafeecd583ce428d6c912d7943b21c0357feeca4ba09bc6a4d3fce42170fc04a",
+   "type": "suite.unharness.run-output",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-output",
+    "local"
+   ],
+   "bodyBytes": 16755,
+   "publisher": {
+    "key": "UDVNJKKCUCDIASCBPCMVV5GZCYJBUM3E5WXIUJH7SHHZW52DNH2Z7YV4",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": true,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 597,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1360156,
+   "length": 945,
+   "sha256": "da16c1c5de96ce4a6a27aedc3ab7cfde6b86253bf7847379caed64e3f2a64406",
+   "type": "suite.unharness.needs-human",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "needs-human",
+    "local"
+   ],
+   "bodyBytes": 125,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 598,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1361101,
+   "length": 904,
+   "sha256": "9640928d3ce12d9b52766da40de8a704ad1ebbabb57349d3ff487cabf38b10a6",
+   "type": "suite.unharness.resource-released",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "resource-released",
+    "local"
+   ],
+   "bodyBytes": 245,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 599,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1362005,
+   "length": 1080,
+   "sha256": "fc52fdb34e2864596a61c4ecea89ebd631f396c470a5d72957bce38df13f96c8",
+   "type": "suite.unharness.run-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "run-ended",
+    "local"
+   ],
+   "bodyBytes": 280,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  },
+  {
+   "stream": "EV_UNHARNESS",
+   "seq": 600,
+   "path": "jetstream/streams/streams/EV_UNHARNESS/msgs/1.blk",
+   "offset": 1363085,
+   "length": 884,
+   "sha256": "69d84e670ce98c6d352a3d80c823e7bc9134c913f6010c67daf7cdf8ee7f9dce",
+   "type": "suite.unharness.turn-ended",
+   "subjectParts": [
+    "ev",
+    "unharness",
+    "turn-ended",
+    "local"
+   ],
+   "bodyBytes": 87,
+   "publisher": {
+    "key": "UBNQ4ZJMTX63BG4XKDIC3R4TXGEOQRYFRZQHVOFYLC2V4EJICSPVVFAM",
+    "signature": "valid",
+    "version": 2
+   },
+   "person": null,
+   "flags": {
+    "hasFloat": false,
+    "hasNonAscii": false,
+    "bigInteger": false
+   }
+  }
+ ]
+}

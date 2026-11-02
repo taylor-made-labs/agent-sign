@@ -1,0 +1,69 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ACT-N07",
+  "family": "act-v1",
+  "legacy": "L06 L09",
+  "kind": "negative",
+  "tags": [
+    "divergence:float"
+  ],
+  "about": "a fraction inside a claim: neither side can sign it",
+  "input": {
+    "act": {
+      "id": "a1",
+      "kind": "assert",
+      "party": "person:me",
+      "domain": "suite:test",
+      "seq": 1,
+      "claims": [
+        [
+          "_:self",
+          "ex:weight",
+          {
+            "lit": 1.5
+          }
+        ]
+      ]
+    },
+    "registry": {
+      "parties": {
+        "person:me": {
+          "person": true,
+          "keys": [
+            {
+              "id": "k-me#1",
+              "ed25519": "jqzHQeB0+6Wxef3qiXReaWOUqkbeSsD64FIx+3z7iAc="
+            }
+          ]
+        },
+        "agent:a1": {
+          "person": false,
+          "keys": [
+            {
+              "id": "k-a1#1",
+              "ed25519": "MmZLGOR7MLMctn3NzZYLd+rb0x4JEaauVYU0rcFxI/0="
+            }
+          ]
+        },
+        "agent:a2": {
+          "person": false,
+          "keys": [
+            {
+              "id": "k-a2#1",
+              "ed25519": "n7wjIS28znoCTlGROrnmfj8qhFXOH7wUpab/zydi+7s="
+            }
+          ]
+        }
+      }
+    }
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "non-integer-number"
+  },
+  "today": {
+    "python": "refuses to sign",
+    "typescriptPort": "refuses",
+    "agreesWithExpected": true
+  }
+}

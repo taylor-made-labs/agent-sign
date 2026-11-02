@@ -8,6 +8,10 @@
 //! service cancelled one that was still open, so a test can tell whether the
 //! service closed it.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+
 use std::fs;
 use std::io::Write;
 use std::os::unix::net::UnixStream;
@@ -54,6 +58,7 @@ fn start() -> Service {
 
     let socket = home.join("s.sock");
     let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
+        .die_with_parent()
         .arg("--socket")
         .arg(&socket)
         .env("HOME", &home)
@@ -112,7 +117,14 @@ impl Service {
     }
 
     fn answer(&self, answer: &str) {
-        fs::write(self.home.join("answer"), answer).unwrap();
+        // DELIBERATE EVAL CHANGE (deflake, same property, 1 Nov 2026): the answer
+        // goes in under a temporary name and is renamed into place, so the
+        // stand-in prompt, which waits for the file to exist and then reads it,
+        // can never read it between its creation and its contents (it read ""
+        // and denied: once in a full run on a loaded Pi, and 1 of 40 reruns).
+        let part = self.home.join("answer.part");
+        fs::write(&part, answer).unwrap();
+        fs::rename(&part, self.home.join("answer")).unwrap();
     }
 
     fn pending(&self) -> Vec<agent_sign::protocol::PendingInfo> {

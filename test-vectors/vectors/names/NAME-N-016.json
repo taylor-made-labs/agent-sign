@@ -1,0 +1,23 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-N-016",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "negative",
+  "tags": [
+    "P8"
+  ],
+  "about": "look-alike name for Taylor: trailing newline",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local/person/me\n"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "look-alike-name"
+  },
+  "today": {
+    "result": "refused",
+    "agreesWithExpected": true
+  }
+}

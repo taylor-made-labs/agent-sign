@@ -1,0 +1,57 @@
+# agent-sign's service, in its own account (system mode). Installed by
+# agent-sign's sitting. It is started by its sockets, and the sitting starts it
+# once so it can check it.
+[Unit]
+Description=agent-sign service: signs commits for launched agent sessions
+After=network-online.target
+Wants=network-online.target
+Requires=agent-signd.socket agent-signd-launcher.socket
+
+[Service]
+Type=simple
+User=agent-sign
+Group=agent-sign
+# Both sockets feed this one service, so both are named: a socket whose name
+# differs from the service's is not passed otherwise.
+Sockets=agent-signd.socket agent-signd-launcher.socket
+ExecStart=/opt/agent-sign/current/bin/agent-signd
+Environment=HOME=/var/lib/agent-sign
+StateDirectory=agent-sign
+StateDirectoryMode=0700
+# The OpenBao login, encrypted for this machine and readable only by this unit.
+LoadCredentialEncrypted=role-id:/etc/credstore.encrypted/agent-sign.role-id
+LoadCredentialEncrypted=secret-id:/etc/credstore.encrypted/agent-sign.secret-id
+Restart=on-failure
+RestartSec=2
+UMask=0077
+LimitCORE=0
+# What the service can see and do. It must not see any caller's repository
+# (system mode never runs git in callers' repositories), so /home and the
+# slots' folders are hidden. ProtectProc and PrivateUsers are NOT set: it reads
+# /proc/<pid>/cgroup of its callers, who are other accounts.
+ProtectSystem=strict
+ProtectHome=yes
+InaccessiblePaths=-/var/lib/agent-slots -/var/lib/agent-launch -/var/lib/agent-launch-io
+PrivateTmp=yes
+PrivateDevices=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+SystemCallArchitectures=native
+# OpenBao is reached over the tailnet (100.64.0.0/10) or this machine itself.
+IPAddressDeny=any
+IPAddressAllow=localhost 100.64.0.0/10
+
+[Install]
+WantedBy=multi-user.target

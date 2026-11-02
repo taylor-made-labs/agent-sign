@@ -17,7 +17,9 @@ set -euo pipefail
 # question below). The installer also routes your own SSH signing through
 # agent-sign (git's gpg.ssh.program), keeping your signer as its
 # fallback_program, and keeps a marked block in your allowed_signers file
-# that trusts agents' signatures. The service runs
+# that trusts agents' signatures: once the service is up it runs
+# `agent-sign trust install`, the only thing that writes that trust (a
+# service's start never does). The service runs
 # as the LaunchAgent com.agentsign.agent-signd (macOS) or the systemd
 # user unit agent-signd (Linux). On macOS it runs from a copy inside a small
 # app bundle, ~/.agent-sign/agent-sign.app, so that the system's Touch ID
@@ -30,7 +32,143 @@ set -euo pipefail
 #   ./scripts/install.sh                         from a source checkout or a release archive
 #   install.sh --from-homebrew <prefix>          after `brew install agent-sign`
 #   --yes                                        don't stop to ask before changing things
+#   --machine <name>                             this machine's name, such as "hetzner": agents'
+#                                                names become <agent>.<session>@<name>.agents.local
+#                                                ([identity] machine in config.toml, written before
+#                                                the service starts)
+#   --person <name>                              a person's name, such as "Taylor" (repeatable): no
+#                                                agent is ever certified under it or any word of it
+#                                                ([identity] people in config.toml). The people with
+#                                                accounts on the machine are refused without it
+#   --launcher-unit <unit>                       Linux: a systemd user service that starts agents
+#                                                (repeatable). A drop-in puts ~/.agent-sign/bin
+#                                                first on its PATH. The installer never restarts
+#                                                it: it prints the command for you to run
 # =============================================================================
+
+# ─── Helpers that change nothing ────────────────────────────────────────────
+# Defined first, so tests can load just these (AGENT_SIGN_INSTALL_FUNCTIONS_ONLY=1,
+# with `source`) and check them without installing anything.
+
+# A machine name, by the same rule as the service (check_machine_label in
+# src/attribution.rs): 1 to 63 lowercase letters and digits, in words joined
+# by single '-'. The rule is strict because the name goes into a trust line
+# (*@<name>.agents.local), where OpenSSH's '*' would match across '@' and '.'.
+is_valid_machine_label() {
+    [ "${#1}" -ge 1 ] && [ "${#1}" -le 63 ] && [[ "$1" =~ ^[a-z0-9]+(-[a-z0-9]+)*$ ]]
+}
+
+# A person's name for --person, by the same rule as the service
+# (check_person_name in src/config.rs): 1 to 64 characters (counted as bytes
+# outside a UTF-8 locale, so a long non-ASCII name may be refused here
+# though the service would take it), at least one letter a-z or digit, and
+# no quotes, backslashes or control characters, so it goes into config.toml
+# as it is. The service also counts letters that Unicode NFKC turns into
+# a-z (fullwidth letters); this check doesn't normalise, so it refuses
+# such a name, which can still be written into config.toml by hand.
+is_valid_person_name() {
+    local name="$1"
+    [ -n "${name//[[:space:]]/}" ] && [ "${#name}" -le 64 ] || return 1
+    [[ "$name" =~ [A-Za-z0-9] ]] || return 1
+    case "$name" in *'"'* | *'\'*) return 1 ;; esac
+    ! [[ "$name" =~ [[:cntrl:]] ]]
+}
+
+# A systemd user service name given to --launcher-unit ("foo" means
+# "foo.service"), printed in full, or nothing (status 1) if it isn't one: no
+# '/', no leading '.' or '-', only the characters systemd allows in a name.
+launcher_unit_name() {
+    local unit="$1"
+    case "$unit" in *.service) ;; *) unit="$unit.service" ;; esac
+    [ "${#unit}" -le 255 ] && [[ "$unit" =~ ^[A-Za-z0-9_][A-Za-z0-9:_.@-]*\.service$ ]] || return 1
+    printf '%s\n' "$unit"
+}
+
+# PATH with every directory inside ~/.agent-sign left out (the same rule as
+# the service's is_agent_sign_bin_dir: any path component named .agent-sign).
+path_without_agent_sign() {
+    local dir out="" rest="$1"
+    while [ -n "$rest" ]; do
+        case "$rest" in
+            *:*) dir="${rest%%:*}"; rest="${rest#*:}" ;;
+            *) dir="$rest"; rest="" ;;
+        esac
+        [ -n "$dir" ] || continue
+        case "/$dir/" in */.agent-sign/*) continue ;; esac
+        out="${out:+$out:}$dir"
+    done
+    printf '%s\n' "$out"
+}
+
+# macOS: the real git for the service's AGENT_SIGN_REAL_GIT, or nothing. The
+# first git on PATH outside ~/.agent-sign, unless that is Apple's shim
+# (/usr/bin/git, which runs xcrun to find the real git on every call); then,
+# and when there's no git on PATH, `xcrun --find git`. What's printed is
+# an absolute path to an executable that answers `--version` as git does.
+# GIT_SHIM can name another shim (tests do).
+find_real_git() {
+    local shim="${GIT_SHIM:-/usr/bin/git}" candidate="" dir rest
+    rest="$(path_without_agent_sign "${PATH:-}")"
+    while [ -n "$rest" ]; do
+        case "$rest" in
+            *:*) dir="${rest%%:*}"; rest="${rest#*:}" ;;
+            *) dir="$rest"; rest="" ;;
+        esac
+        if [ -f "$dir/git" ] && [ -x "$dir/git" ]; then
+            candidate="$dir/git"
+            break
+        fi
+    done
+    if [ -z "$candidate" ] || [ "$candidate" -ef "$shim" ]; then
+        candidate="$(xcrun --find git 2>/dev/null || true)"
+    fi
+    [ -n "$candidate" ] || return 1
+    is_real_git "$candidate" || return 1
+    printf '%s\n' "$candidate"
+}
+
+# Whether $1 is a git the service can run: an absolute path on one line, to
+# an executable file (not the shim) that says "git version ...".
+is_real_git() {
+    local git="$1" shim="${GIT_SHIM:-/usr/bin/git}"
+    case "$git" in /*) ;; *) return 1 ;; esac
+    case "$git" in *$'\n'*|*$'\r'*) return 1 ;; esac
+    [ -f "$git" ] && [ -x "$git" ] || return 1
+    [ "$git" -ef "$shim" ] && return 1
+    case "$("$git" --version 2>/dev/null)" in "git version "*) return 0 ;; esac
+    return 1
+}
+
+# The LaunchAgent: the template ($1) with AGENT_SIGN_REAL_GIT set to $2
+# (escaped for XML), or with the EnvironmentVariables entry left out when $2
+# is empty. Printed, for the installer to write.
+render_launch_agent_plist() {
+    local escaped
+    escaped="$(printf '%s' "$2" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' -e 's/"/\&quot;/g' -e "s/'/\&apos;/g")"
+    REAL_GIT="$escaped" awk '
+        BEGIN { git = ENVIRON["REAL_GIT"] }
+        git == "" && /<key>EnvironmentVariables<\/key>/ { skipping = 1; next }
+        skipping { if ($0 ~ /<\/dict>/) skipping = 0; next }
+        {
+            i = index($0, "@AGENT_SIGN_REAL_GIT@")
+            if (i) $0 = substr($0, 1, i - 1) git substr($0, i + length("@AGENT_SIGN_REAL_GIT@"))
+            print
+        }
+    ' "$1"
+}
+
+# Sourced with AGENT_SIGN_INSTALL_FUNCTIONS_ONLY=1 (by a test): stop here,
+# quietly, with the helpers above defined. Executed with it, the variable is
+# a mistake, and exiting 0 would let an automated deploy take a run that
+# installed nothing for an install (security review fix round, 31 Oct 2026,
+# L4): say so and fail.
+if [ "${AGENT_SIGN_INSTALL_FUNCTIONS_ONLY:-}" = 1 ]; then
+    if (return 0 2>/dev/null); then
+        return 0
+    fi
+    echo "install.sh: AGENT_SIGN_INSTALL_FUNCTIONS_ONLY=1 is only for sourcing the installer's helper functions (in tests), so nothing was installed. Run the installer without it to install." >&2
+    exit 2
+fi
 
 STATE_DIR="$HOME/.agent-sign"
 INSTALL_DIR="$STATE_DIR/bin"
@@ -52,11 +190,14 @@ LEGACY_KEY_FILE="$KEYS_DIR/agent_ed25519"
 LEGACY_PUB_KEY_FILE="$KEYS_DIR/agent_ed25519.pub"
 # Where an earlier build of this change moved that private half: deleted too.
 RETIRED_DIR="$KEYS_DIR/retired"
-# The managed block in your allowed_signers file: the service rewrites the
-# lines between these two at each start, and nothing outside them.
+# The managed block in your allowed_signers file: `agent-sign trust install`
+# rewrites the lines between these two, and nothing outside them.
 TRUST_BLOCK_BEGIN="# agent-sign: agents' certificate authorities, managed; do not edit"
 TRUST_BLOCK_END="# agent-sign: end of agents' certificate authorities"
-TRUST_PREFIX='*@agents.local cert-authority,namespaces="git" '
+# A bare trust line an earlier version added (before the managed block): one
+# for plain *@agents.local, or for a machine's *@<machine>.agents.local (the
+# [identity] machine setting), as an awk regular expression.
+TRUST_LINE_PATTERN='^[*]@([a-z0-9-]+[.])?agents[.]local cert-authority,namespaces="git" '
 # git's signing program for your own SSH signatures, once routed.
 AGENT_SSH_SIGN="$INSTALL_DIR/agent-ssh-sign"
 SERVICE_LABEL="com.agentsign.agent-signd"
@@ -73,8 +214,57 @@ HOMEBREW_PREFIX_ARG=""
 RELEASE_ARCHIVE=""
 EXPECTED_SHA256=""
 ASSUME_YES=false
+MACHINE=""
+PEOPLE=()
+LAUNCHER_UNITS=()
 while [ $# -gt 0 ]; do
     case "$1" in
+        --person)
+            # Checked here, before anything changes.
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "--person needs a person's name, such as --person Taylor or --person \"Dana Example\". Nothing was changed." >&2
+                exit 2
+            fi
+            if ! is_valid_person_name "$2"; then
+                printf '%s\n' "--person \"$2\" isn't a person's name agent-sign can use: 1 to 64 characters, with at least one letter a-z or digit, and no quotes, backslashes or control characters. Nothing was changed." >&2
+                exit 2
+            fi
+            SEEN=false
+            for person in ${PEOPLE[@]+"${PEOPLE[@]}"}; do
+                if [ "$person" = "$2" ]; then SEEN=true; fi
+            done
+            [ "$SEEN" = true ] || PEOPLE+=("$2")
+            shift 2
+            ;;
+        --machine)
+            # Checked here, before anything changes.
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "--machine needs this machine's name, such as --machine hetzner: 1 to 63 lowercase letters and digits, in words joined by single '-'. Nothing was changed." >&2
+                exit 2
+            fi
+            if ! is_valid_machine_label "$2"; then
+                printf '%s\n' "--machine \"$2\" isn't a valid machine name: use 1 to 63 lowercase letters and digits, in words joined by single '-' (such as \"hetzner\" or \"my-box-2\"). Nothing was changed." >&2
+                exit 2
+            fi
+            MACHINE="$2"
+            shift 2
+            ;;
+        --launcher-unit)
+            if [ $# -lt 2 ] || [ -z "$2" ]; then
+                echo "--launcher-unit needs the name of a systemd user service that starts agents, such as --launcher-unit my-agents.service. Nothing was changed." >&2
+                exit 2
+            fi
+            if [ "$(uname -s)" != "Linux" ]; then
+                printf '%s\n' "--launcher-unit $2: launcher units are systemd user services, so this is for Linux only. Nothing was changed." >&2
+                exit 2
+            fi
+            if ! UNIT="$(launcher_unit_name "$2")"; then
+                printf '%s\n' "--launcher-unit \"$2\" isn't a systemd user service name (such as my-agents.service). Nothing was changed." >&2
+                exit 2
+            fi
+            case " ${LAUNCHER_UNITS[*]-} " in *" $UNIT "*) ;; *) LAUNCHER_UNITS+=("$UNIT") ;; esac
+            shift 2
+            ;;
         --yes|-y)
             ASSUME_YES=true
             shift
@@ -100,6 +290,33 @@ while [ $# -gt 0 ]; do
             ;;
     esac
 done
+
+# Linux: a non-interactive ssh session (as on a Raspberry Pi) has no
+# XDG_RUNTIME_DIR, so `systemctl --user` can't find the user's service
+# manager. Its usual place is /run/user/<uid>; set it before any systemctl.
+if [ "$(uname -s)" = "Linux" ] && [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/$(id -u)" ] && [ -O "/run/user/$(id -u)" ]; then
+    export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+fi
+
+# The `machine` in config.toml's [identity] section, if there is one.
+machine_in_config() {
+    [ -f "$1" ] || return 0
+    awk '
+        /^[[:space:]]*\[/ { inside = ($0 ~ /^[[:space:]]*\[identity\][[:space:]]*(#.*)?$/); next }
+        inside && /^[[:space:]]*machine[[:space:]]*=/ {
+            sub(/^[^=]*=[[:space:]]*"/, ""); sub(/".*$/, ""); print; exit
+        }
+    ' "$1"
+}
+
+# Which agents' names the allowed_signers block trusts, in words.
+if [ -n "$MACHINE" ]; then
+    TRUSTED_NAMES="*@$MACHINE.agents.local (this machine's agents)"
+elif [ -n "$(machine_in_config "$HOME/.agent-sign/config.toml")" ]; then
+    TRUSTED_NAMES="*@$(machine_in_config "$HOME/.agent-sign/config.toml").agents.local (this machine's agents)"
+else
+    TRUSTED_NAMES="*@agents.local (or *@<machine>.agents.local once a machine name is set)"
+fi
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -182,7 +399,20 @@ if [ -t 0 ] && [ "$ASSUME_YES" = false ]; then
     echo "  • put agent-sign's programs and its config in ~/.agent-sign (the agents' certificate"
     echo "    authority lives only in the service's memory; no private key is stored)"
     echo "  • keep a marked block in git's allowed_signers file that trusts agents' signatures"
-    echo "    for *@agents.local only (the service updates it each time it starts)"
+    echo "    for $TRUSTED_NAMES only (\`agent-sign trust install\` updates it; run it after the service restarts)"
+    if [ -n "$MACHINE" ]; then
+        echo "  • name this machine \"$MACHINE\" ([identity] machine in ~/.agent-sign/config.toml):"
+        echo "    agents' names become <agent>.<session>@$MACHINE.agents.local"
+    fi
+    for person in ${PEOPLE[@]+"${PEOPLE[@]}"}; do
+        echo "  • never certify an agent under the name \"$person\" or any word of it"
+        echo "    ([identity] people in ~/.agent-sign/config.toml)"
+    done
+    for unit in ${LAUNCHER_UNITS[@]+"${LAUNCHER_UNITS[@]}"}; do
+        echo "  • put ~/.agent-sign/bin first on PATH for $unit, the agents it starts, with a"
+        echo "    drop-in (~/.config/systemd/user/$unit.d/agent-sign.conf); it takes effect when"
+        echo "    you restart $unit, which the installer never does"
+    done
     if [ "$ALREADY_ROUTED" = true ]; then
         echo "  • keep your own SSH signing going through agent-sign (git's gpg.ssh.program is"
         echo "    already agent-ssh-sign)"
@@ -346,6 +576,92 @@ set_fallback_program() {
     rm -f "$CONFIG_FILE.new"
 }
 
+# Sets [identity] machine in config.toml to $1 (already checked by
+# is_valid_machine_label, so it needs no escaping): replaces the line in
+# [identity] if there is one, adds it right under the [identity] header if
+# not (keeping allowed_agents and anything else there), or adds the section
+# at the end. A file that already says so is left exactly as it is.
+set_machine() {
+    MACHINE_LINE="machine = \"$1\"" awk '
+        BEGIN { line = ENVIRON["MACHINE_LINE"]; done = 0 }
+        /^[[:space:]]*\[/ {
+            inside = ($0 ~ /^[[:space:]]*\[identity\][[:space:]]*(#.*)?$/)
+            print
+            if (inside && !done) { print line; done = 1 }
+            next
+        }
+        inside && /^[[:space:]]*machine[[:space:]]*=/ { next }
+        { print }
+        END { if (!done) { print ""; print "[identity]"; print line } }
+    ' "$CONFIG_FILE" > "$CONFIG_FILE.new"
+    if cmp -s "$CONFIG_FILE.new" "$CONFIG_FILE"; then
+        rm -f "$CONFIG_FILE.new"
+        return 0
+    fi
+    cat "$CONFIG_FILE.new" > "$CONFIG_FILE"
+    rm -f "$CONFIG_FILE.new"
+}
+
+# The `people = [...]` line in config.toml's [identity] section, if there is
+# one.
+people_line_in_config() {
+    [ -f "$1" ] || return 0
+    awk '
+        /^[[:space:]]*\[/ { inside = ($0 ~ /^[[:space:]]*\[identity\][[:space:]]*(#.*)?$/); next }
+        inside && /^[[:space:]]*people[[:space:]]*=/ { print; exit }
+    ' "$1"
+}
+
+# Adds each name in PEOPLE (already checked by is_valid_person_name, so it
+# needs no escaping) to [identity] people in config.toml, once: a name
+# already listed is left as it is, and a file that already lists them all
+# isn't touched. The list is kept on one line, people = ["A", "B"]; one
+# written over several lines by hand is left alone, with a message, since
+# rewriting it could lose what's in it.
+set_people() {
+    local line inner person
+    line="$(people_line_in_config "$CONFIG_FILE")"
+    inner=""
+    if [ -n "$line" ]; then
+        if ! [[ "$line" =~ ^[[:space:]]*people[[:space:]]*=[[:space:]]*\[(.*)\][[:space:]]*$ ]]; then
+            err "[identity] people in $CONFIG_FILE isn't written on one line as people = [\"...\"] with nothing after it, so the installer left it alone: add ${PEOPLE[*]} to it yourself"
+            exit 1
+        fi
+        inner="${BASH_REMATCH[1]}"
+    fi
+    local added=0
+    for person in "${PEOPLE[@]}"; do
+        case "$inner" in
+            *"\"$person\""*)
+                ok "\"$person\" is already in [identity] people: no agent is certified under that name"
+                continue
+                ;;
+        esac
+        ok "No agent will be certified under the name \"$person\" or any word of it ([identity] people)"
+        if [ -n "${inner//[[:space:]]/}" ]; then
+            inner="$inner, \"$person\""
+        else
+            inner="\"$person\""
+        fi
+        added=$((added + 1))
+    done
+    [ "$added" -gt 0 ] || return 0
+    PEOPLE_LINE="people = [$inner]" awk '
+        BEGIN { line = ENVIRON["PEOPLE_LINE"]; done = 0 }
+        /^[[:space:]]*\[/ {
+            inside = ($0 ~ /^[[:space:]]*\[identity\][[:space:]]*(#.*)?$/)
+            print
+            if (inside && !done) { print line; done = 1 }
+            next
+        }
+        inside && /^[[:space:]]*people[[:space:]]*=/ { next }
+        { print }
+        END { if (!done) { print ""; print "[identity]"; print line } }
+    ' "$CONFIG_FILE" > "$CONFIG_FILE.new"
+    cat "$CONFIG_FILE.new" > "$CONFIG_FILE"
+    rm -f "$CONFIG_FILE.new"
+}
+
 # ─── Step 5: Generate config ────────────────────────────────────────────────
 step "Generating configuration"
 
@@ -431,7 +747,12 @@ name = "Agent"
 email = "agent@local.internal"
 
 [human]
-# Auto-detected from your git config. Override here if needed.
+# Your name and email. No agent is ever certified under your name, any word
+# of it, or your email's local part. Left unset, they're taken from git's
+# user.name and user.email, which on a machine whose agents set user.name
+# themselves name no person. Either way, the names listed as people in the
+# identity section (install.sh --person), the people's accounts on this
+# machine, and root, admin and administrator are never agents' names.
 # name = "$HUMAN_NAME"
 # email = "$HUMAN_EMAIL"
 
@@ -457,6 +778,26 @@ else
         rm -f "$CONFIG_FILE.bak"
         ok "Attribution changed from \"split\" (the old default) to \"agent\": agent commits are authored and committed by the agent"
     fi
+fi
+
+# This machine's name (--machine), in place before the service starts below,
+# so no agent ever gets a name in the domain without it.
+if [ -n "$MACHINE" ]; then
+    PREVIOUS_MACHINE="$(machine_in_config "$CONFIG_FILE")"
+    set_machine "$MACHINE"
+    if [ "$PREVIOUS_MACHINE" = "$MACHINE" ]; then
+        ok "This machine's name is already \"$MACHINE\": agents sign as <agent>.<session>@$MACHINE.agents.local"
+    elif [ -n "$PREVIOUS_MACHINE" ]; then
+        warn "This machine's name changed from \"$PREVIOUS_MACHINE\" to \"$MACHINE\": new agents sign as <agent>.<session>@$MACHINE.agents.local"
+    else
+        ok "This machine is named \"$MACHINE\": agents sign as <agent>.<session>@$MACHINE.agents.local"
+    fi
+fi
+
+# People's names (--person), in place before the service starts below, so
+# no agent ever gets one.
+if [ ${#PEOPLE[@]} -gt 0 ]; then
+    set_people
 fi
 
 # ─── Step 5b: Route your own signing through agent-sign ─────────────────────
@@ -493,18 +834,17 @@ fi
 ALLOWED_SIGNERS_FILE="${ALLOWED_SIGNERS_FILE/#\~/$HOME}"
 
 # The managed block: the lines `agent-sign trust-line` prints (one per
-# authority the service has started with), between two marker lines. The
-# service rewrites the block at each start, so a new authority is trusted
-# with no step of yours; nothing outside the markers is changed. Making the
-# block for the first time moves a bare trust line an earlier version added
-# into it. Before the service's first start there may be no line yet: it
-# adds its own when it starts.
+# authority `agent-sign trust install` recorded), between two marker lines;
+# nothing outside the markers is changed. Making the block for the first
+# time moves a bare trust line an earlier version added into it. A service's
+# start never writes trust: once the service below is up, the installer runs
+# `agent-sign trust install`, which adds its authority to this block.
 TRUST_LINES=$("$INSTALL_DIR/agent-sign" trust-line 2>/dev/null || true)
 write_trust_block() {
     local file="$1"
     [ -f "$file" ] || : > "$file"
-    BEGIN="$TRUST_BLOCK_BEGIN" END="$TRUST_BLOCK_END" LINES="$TRUST_LINES" PREFIX="$TRUST_PREFIX" awk '
-        BEGIN { b = ENVIRON["BEGIN"]; e = ENVIRON["END"]; lines = ENVIRON["LINES"]; prefix = ENVIRON["PREFIX"] }
+    BEGIN="$TRUST_BLOCK_BEGIN" END="$TRUST_BLOCK_END" LINES="$TRUST_LINES" PATTERN="$TRUST_LINE_PATTERN" awk '
+        BEGIN { b = ENVIRON["BEGIN"]; e = ENVIRON["END"]; lines = ENVIRON["LINES"]; pattern = ENVIRON["PATTERN"] }
         { all[NR] = $0 }
         $0 == b && !opened { opened = NR }
         $0 == e && opened && !closed { closed = NR }
@@ -516,7 +856,7 @@ write_trust_block() {
                     if (i == opened && lines != "") print lines
                 }
             } else {
-                for (i = 1; i <= NR; i++) if (index(all[i], prefix) != 1) print all[i]
+                for (i = 1; i <= NR; i++) if (all[i] !~ pattern) print all[i]
                 print b
                 if (lines != "") print lines
                 print e
@@ -530,7 +870,7 @@ write_trust_block() {
 }
 mkdir -p "$(dirname "$ALLOWED_SIGNERS_FILE")"
 write_trust_block "$ALLOWED_SIGNERS_FILE"
-ok "agent-sign's block in $ALLOWED_SIGNERS_FILE trusts agents' signatures for *@agents.local only; the service keeps it current"
+ok "agent-sign's block in $ALLOWED_SIGNERS_FILE trusts agents' signatures for $TRUSTED_NAMES only; \`agent-sign trust install\` keeps it current"
 
 # ─── The old shared agent key ───────────────────────────────────────────────
 # Versions before per-agent identities signed every agent commit with one
@@ -619,6 +959,90 @@ make_service_bundle() {
     ok "Service app bundle ready: $APP_DIR (the Touch ID prompt should say \"agent-sign\")"
 }
 
+# Linux: the background launchers (--launcher-unit), the systemd user
+# services that start agents without a shell, so the shell profiles below
+# never reach them. Each gets a drop-in,
+# ~/.config/systemd/user/<unit>.d/agent-sign.conf, that puts
+# ~/.agent-sign/bin first on its PATH, followed by the user service
+# manager's own PATH (what the unit has now, unless it sets PATH itself).
+# The first line marks the file as agent-sign's, which is how uninstall.sh
+# knows to remove it, and a file of that name without the mark is left
+# alone. The installer never restarts, stops or starts a launcher: that
+# would end the agents it is running. The drop-in takes effect at the
+# launcher's next restart, and the command is printed for whoever decides
+# when.
+LAUNCHER_DROP_IN_MARK="# agent-sign: written by agent-sign's installer; scripts/uninstall.sh removes it. Don't edit."
+LAUNCHER_FAILURES=0
+write_launcher_drop_ins() {
+    [ ${#LAUNCHER_UNITS[@]} -gt 0 ] || return 0
+    local manager_path path_value unit dir file own_path env_file file_path
+    manager_path="$(systemctl --user show-environment 2>/dev/null | sed -n 's/^PATH=//p' | head -1 || true)"
+    manager_path="$(path_without_agent_sign "$manager_path")"
+    if [ -z "$manager_path" ]; then
+        for unit in "${LAUNCHER_UNITS[@]}"; do
+            err "Couldn't read the user service manager's PATH (systemctl --user show-environment), so $unit got no drop-in"
+            LAUNCHER_FAILURES=$((LAUNCHER_FAILURES + 1))
+        done
+        return 0
+    fi
+    path_value="$INSTALL_DIR:$manager_path"
+    # Written as is in the unit file, where '%' would be a specifier and
+    # spaces or quotes would need quoting: refuse anything else.
+    if ! [[ "$path_value" =~ ^[A-Za-z0-9/._:+@,=-]+$ ]]; then
+        for unit in "${LAUNCHER_UNITS[@]}"; do
+            err "The PATH for $unit ($path_value) has characters a drop-in can't hold as is, so $unit got no drop-in"
+            LAUNCHER_FAILURES=$((LAUNCHER_FAILURES + 1))
+        done
+        return 0
+    fi
+    for unit in "${LAUNCHER_UNITS[@]}"; do
+        dir="$HOME/.config/systemd/user/$unit.d"
+        file="$dir/agent-sign.conf"
+        if [ -e "$file" ] && [ "$(head -1 "$file")" != "$LAUNCHER_DROP_IN_MARK" ]; then
+            err "$file exists and isn't agent-sign's (its first line isn't agent-sign's mark): left as it is, so $unit got no drop-in"
+            LAUNCHER_FAILURES=$((LAUNCHER_FAILURES + 1))
+            continue
+        fi
+        # A unit that sets its own PATH loses it to the drop-in: say so
+        # before anyone restarts it.
+        own_path="$(systemctl --user show -p Environment --value "$unit" 2>/dev/null | tr ' ' '\n' | sed -n 's/^PATH=//p' | grep -vxF "$path_value" | head -1 || true)"
+        if [ -n "$own_path" ]; then
+            warn "$unit sets its own PATH ($own_path); the drop-in replaces it with $path_value. Check that before restarting $unit."
+        fi
+        # A PATH set in one of the unit's environment files (EnvironmentFile=)
+        # is worse: systemd lets those files override every Environment=
+        # line, the drop-in's included, so the agents it starts wouldn't get
+        # agent-sign's git at all (security review fix round, 31 Oct 2026,
+        # L5). Only files this account can read are looked at.
+        while IFS= read -r env_file; do
+            env_file="${env_file% (ignore_errors=*}"
+            env_file="${env_file#-}"
+            [ -n "$env_file" ] && [ -r "$env_file" ] || continue
+            file_path="$(sed -n -E 's/^[[:space:]]*(export[[:space:]]+)?PATH[[:space:]]*=[[:space:]]*//p' "$env_file" | tail -1 | sed -E "s/^[\"']//; s/[\"'][[:space:]]*$//" || true)"
+            if [ -n "$file_path" ]; then
+                warn "$unit sets PATH in its environment file $env_file ($file_path), and systemd lets that file override the drop-in's Environment=PATH, so the agents $unit starts won't get agent-sign's git. Put $INSTALL_DIR first on PATH in $env_file (or take PATH out of it) before restarting $unit."
+            fi
+        done < <(systemctl --user show -p EnvironmentFiles --value "$unit" 2>/dev/null || true)
+        mkdir -p "$dir"
+        {
+            echo "$LAUNCHER_DROP_IN_MARK"
+            echo "# Puts agent-sign's git first on PATH for the agents $unit starts, so"
+            echo "# their commits are signed as themselves. Takes effect when $unit restarts."
+            echo "[Service]"
+            echo "Environment=PATH=$path_value"
+        } > "$file.new"
+        if cmp -s "$file.new" "$file"; then
+            rm -f "$file.new"
+            ok "$unit already has agent-sign's drop-in ($file)"
+        else
+            mv -f "$file.new" "$file"
+            ok "$unit: drop-in written ($file), putting $INSTALL_DIR first on its PATH"
+        fi
+        LAUNCHERS_TO_RESTART+=("$unit")
+    done
+}
+LAUNCHERS_TO_RESTART=()
+
 if [ "$OS" = "Darwin" ]; then
     # macOS: the app bundle, then the LaunchAgent that starts it.
     if [ -f "$SCRIPT_DIR/agent-sign.Info.plist" ]; then
@@ -631,7 +1055,16 @@ if [ "$OS" = "Darwin" ]; then
     PLIST_DST="$HOME/Library/LaunchAgents/$SERVICE_LABEL.plist"
     if [ -f "$PLIST_SRC" ]; then
         mkdir -p "$HOME/Library/LaunchAgents"
-        cp "$PLIST_SRC" "$PLIST_DST"
+        # The real git for the service (see find_real_git and the comment in
+        # agent-signd.plist): under launchd, git would be Apple's slow shim.
+        SERVICE_GIT="$(find_real_git || true)"
+        if [ -n "$SERVICE_GIT" ]; then
+            ok "The service runs git as $SERVICE_GIT (AGENT_SIGN_REAL_GIT)"
+        else
+            warn "Found no git outside ~/.agent-sign and Apple's shim: the service looks for git itself, which under launchd is the slower /usr/bin/git"
+        fi
+        render_launch_agent_plist "$PLIST_SRC" "$SERVICE_GIT" > "$PLIST_DST.new"
+        mv -f "$PLIST_DST.new" "$PLIST_DST"
         launchctl bootstrap "gui/$(id -u)" "$PLIST_DST"
         ok "Service installed and started: LaunchAgent $SERVICE_LABEL (starts at login)"
     else
@@ -645,6 +1078,7 @@ elif [ "$OS" = "Linux" ]; then
     if [ -f "$SERVICE_SRC" ] && command -v systemctl &>/dev/null; then
         mkdir -p "$HOME/.config/systemd/user"
         cp "$SERVICE_SRC" "$SERVICE_DST"
+        write_launcher_drop_ins
         systemctl --user daemon-reload
         systemctl --user enable --now agent-signd
         ok "Service installed and started: systemd user service agent-signd"
@@ -652,13 +1086,33 @@ elif [ "$OS" = "Linux" ]; then
         info "keep it running with: loginctl enable-linger \"\$USER\""
     else
         start_by_hand
+        for unit in ${LAUNCHER_UNITS[@]+"${LAUNCHER_UNITS[@]}"}; do
+            err "No systemd here (systemctl not found), so $unit got no drop-in"
+            LAUNCHER_FAILURES=$((LAUNCHER_FAILURES + 1))
+        done
     fi
 else
     start_by_hand
 fi
 
-# Give daemon a moment to start
-sleep 1
+# Trust the service's authority: wait for the service to answer (a few
+# seconds at most), then `agent-sign trust install`, the only thing that
+# writes trust. A start never does (P3, docs/caller-identity.md), so the
+# installer's own flow ends with the new service trusted, and nothing else
+# needs doing on a laptop.
+TRUST_INSTALLED=false
+for _ in $(seq 1 25); do
+    if "$INSTALL_DIR/agent-signd" status 2>/dev/null | grep 'active' >/dev/null; then
+        break
+    fi
+    sleep 0.2
+done
+if "$INSTALL_DIR/agent-sign" trust install; then
+    TRUST_INSTALLED=true
+    ok "The service's certificate authority is trusted for $TRUSTED_NAMES in $ALLOWED_SIGNERS_FILE"
+else
+    warn "The service's certificate authority isn't trusted yet: once it's running, run: agent-sign trust install"
+fi
 
 # ─── Step 9: Configure agent environments & shell PATH ──────────────────────
 step "Configuring environment & agent integrations"
@@ -770,7 +1224,7 @@ verify "agent-ssh-sign binary exists" "[ -x '$INSTALL_DIR/agent-ssh-sign' ]"
 verify "agent-git binary exists"     "[ -x '$INSTALL_DIR/agent-git' ]"
 verify "git shim exists"            "[ -x '$INSTALL_DIR/git' ]"
 verify "No agents' authority private key stored" "[ ! -e '$CA_KEY_FILE' ]"
-verify "Agents' authority public key recorded at start" "[ -s '$CAS_HISTORY_FILE' ]"
+verify "Service's authority trusted (agent-sign trust install)" "[ '$TRUST_INSTALLED' = true ] && [ -s '$CAS_HISTORY_FILE' ]"
 verify "Config file exists"         "[ -f '$CONFIG_FILE' ]"
 verify "Your own signing goes through agent-sign" "[ \"\$(git config --global --includes --get gpg.ssh.program)\" = '$AGENT_SSH_SIGN' ]"
 verify "Daemon socket exists"       "[ -S '$CONFIG_DIR/daemon.sock' ]"
@@ -779,6 +1233,9 @@ verify "Daemon socket exists"       "[ -S '$CONFIG_DIR/daemon.sock' ]"
 # failed at random.
 verify "Daemon responds to ping"    "'$INSTALL_DIR/agent-signd' status 2>&1 | grep 'active' >/dev/null"
 verify "Shell PATH configured"      "grep -q '# >>> agent-sign >>>' ~/.zshrc 2>/dev/null || grep -q '# >>> agent-sign >>>' ~/.bashrc 2>/dev/null || grep -q '# >>> agent-sign >>>' ~/.zprofile 2>/dev/null || grep -q '# >>> agent-sign >>>' ~/.bash_profile 2>/dev/null"
+if [ ${#LAUNCHER_UNITS[@]} -gt 0 ]; then
+    verify "Every launcher unit has agent-sign's drop-in" "[ '$LAUNCHER_FAILURES' -eq 0 ]"
+fi
 
 echo ""
 if [ "$FAIL" -eq 0 ]; then
@@ -815,6 +1272,15 @@ echo -e "   authored and committed as that agent, never as you. These identities
 echo -e "   claims made by programs running as your user: attribution, not a security"
 echo -e "   boundary. See the README's \"What it protects against, and what it doesn't\"."
 echo ""
+if [ ${#LAUNCHERS_TO_RESTART[@]} -gt 0 ]; then
+    echo -e "${BOLD}4. Your launchers${NC} use agent-sign's git from their next restart. The"
+    echo -e "   installer didn't restart them, since that ends the agents they're running."
+    echo -e "   When no agent is running, restart each one:"
+    for unit in "${LAUNCHERS_TO_RESTART[@]}"; do
+        echo "     systemctl --user restart $unit"
+    done
+    echo ""
+fi
 echo -e "   To uninstall: ${CYAN}./scripts/uninstall.sh${NC}"
 echo ""
 echo -e "${BOLD}╔══════════════════════════════════════════════════╗${NC}"

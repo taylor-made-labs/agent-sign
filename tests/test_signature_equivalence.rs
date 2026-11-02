@@ -19,6 +19,12 @@
 //! with the wrapper's mark beside the token (an older wrapper's token with
 //! no identity is refused). All runs use a temporary home and socket.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+#[path = "support/launch.rs"]
+mod launch;
+
 use std::fs;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -34,6 +40,31 @@ use tempfile::tempdir;
 const TEST_SEED: [u8; 32] = [7u8; 32];
 
 const BUFFER: &[u8] = b"tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor Agent <agent@local.internal> 1700000000 +0000\ncommitter Taylor <person@example.com> 1700000000 +0000\n\nfeat: golden signature buffer\n";
+
+/// [`BUFFER`] with the committer date now, for the signing programs.
+/// Requirement change (plan "next: real use on servers", check 6c, 30 Oct
+/// 2026): the service signs only a commit whose committer date lies inside
+/// the signing certificate's window, so the programs sign this; the library's
+/// golden signature is still over the unchanged [`BUFFER`].
+///
+/// DELIBERATE EVAL CHANGE (caller identity, P2, 31 Oct 2026): the service signs a token's
+/// commit only when its one committer is the token's principal, since a Good
+/// agent signature on a commit naming the person as committer reads as the
+/// person's. So the programs' buffer names the golden agent as committer (it
+/// named "Taylor <person@example.com>").
+///
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. The agent is the launched session the test started (its
+/// principal is the service's), not the fixed golden identity.
+fn program_buffer(agent: &AgentIdentity) -> Vec<u8> {
+    let now = agent_sign::agents_ca::now_secs();
+    String::from_utf8_lossy(BUFFER)
+        .replace(
+            "committer Taylor <person@example.com> 1700000000",
+            &format!("committer {} <{}> {now}", agent.name, agent.principal),
+        )
+        .into_bytes()
+}
 
 const GOLDEN_AGENT_SIGN_SIG: &str = "-----BEGIN SSH SIGNATURE-----
 U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAg6kpsY+KcUgq+9VB7Ey7F+ZVHdq
@@ -57,6 +88,7 @@ impl Drop for Service {
 /// Starts `agent-signd` on `socket`, in `home`.
 fn start_service(home: &Path, socket: &Path) -> Service {
     let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
+        .die_with_parent()
         .arg("--socket")
         .arg(socket)
         .arg("--auto-approve")
@@ -77,39 +109,38 @@ fn start_service(home: &Path, socket: &Path) -> Service {
     Service { child }
 }
 
-/// The agent the tokens sign as.
-fn golden_agent() -> AgentIdentity {
-    AgentIdentity::new("codex", "Codex", Some("golden"))
-}
-
-fn token(socket: &Path, repo: &str) -> String {
-    match send_request(
-        socket,
-        &Request::IssueIdentifiedToken {
-            repo: repo.into(),
-            branch: "feat/golden".into(),
-            identity: golden_agent(),
-        },
-    )
-    .unwrap()
-    {
+/// A token for the launched `session`, asked on its channel.
+fn token(session: &launch::Session, repo: &str) -> String {
+    match session.ask(&Request::IssueIdentifiedToken {
+        repo: repo.into(),
+        branch: "feat/golden".into(),
+        identity: session.identity.clone(),
+    }) {
         Response::TokenIssued { token } => token,
         other => panic!("no token: {other:?}"),
     }
 }
 
-/// Runs a signing program the way git does and returns the `.sig` it wrote.
+/// Runs a signing program the way git does over `file` (which the caller
+/// has written) and returns the `.sig` it wrote.
+///
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched: the program inherits the launched `session`'s channel, as a
+/// program git starts inside a session does, and asks over it.
+#[allow(clippy::too_many_arguments)] // the launched session was the eighth
 fn sign_with(
     program: &Path,
     env_prefix: &str,
     home: &Path,
     socket: &Path,
+    session: &launch::Session,
     token: &str,
     file: &Path,
     repo: &Path,
 ) -> String {
-    fs::write(file, BUFFER).unwrap();
-    let out = Command::new(program)
+    let mut cmd = Command::new(program);
+    session.pass_channel_to(&mut cmd);
+    let out = cmd
         .current_dir(repo)
         .env("AGENT_SIGN_AGENT_RUN", "1")
         .args(["-Y", "sign", "-n", "git", "-f"])
@@ -129,11 +160,18 @@ fn sign_with(
     fs::read_to_string(format!("{}.sig", file.display())).unwrap()
 }
 
-/// Runs `ssh-keygen -Y verify` on `sig` over `BUFFER` for `principal`
+/// Runs `ssh-keygen -Y verify` on `sig` over `buffer` for `principal`
 /// against `allowed`, and fails the test with its output if it refuses.
-fn assert_verifies(home: &Path, allowed: &Path, principal: &str, sig: &str, what: &str) {
+fn assert_verifies(
+    home: &Path,
+    allowed: &Path,
+    principal: &str,
+    sig: &str,
+    what: &str,
+    buffer: &[u8],
+) {
     let data = home.join("data");
-    fs::write(&data, BUFFER).unwrap();
+    fs::write(&data, buffer).unwrap();
     fs::write(home.join("data.sig"), sig).unwrap();
     let verify = Command::new("ssh-keygen")
         .args(["-Y", "verify", "-n", "git", "-I", principal, "-f"])
@@ -156,6 +194,10 @@ fn every_signing_name_signs_as_the_agent_and_the_library_signer_is_unchanged() {
     let home = tmp.path();
     let socket = home.join("s.sock");
     let _service = start_service(home, &socket);
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched: a session of Codex the test starts itself, playing the
+    // launcher; the programs sign over its channel.
+    let session = launch::start_session(&socket, "codex");
     // The service only takes a request about a real git working tree.
     let golden_dir = home.join("golden/repo");
     fs::create_dir_all(&golden_dir).unwrap();
@@ -218,23 +260,28 @@ fn every_signing_name_signs_as_the_agent_and_the_library_signer_is_unchanged() {
         ),
     )
     .unwrap();
+    let buffer = program_buffer(&session.identity);
     for (i, (program, prefix)) in programs.iter().enumerate() {
-        let tok = token(&socket, &golden);
+        let tok = token(&session, &golden);
+        let file = home.join(format!("buf{i}"));
+        fs::write(&file, &buffer).unwrap();
         let sig = sign_with(
             program,
             prefix,
             home,
             &socket,
+            &session,
             &tok,
-            &home.join(format!("buf{i}")),
+            &file,
             &golden_dir,
         );
         assert_verifies(
             home,
             &trusted,
-            &golden_agent().principal,
+            &session.principal,
             &sig,
             &program.display().to_string(),
+            &buffer,
         );
     }
 
@@ -258,6 +305,7 @@ fn every_signing_name_signs_as_the_agent_and_the_library_signer_is_unchanged() {
         "agent@local.internal",
         GOLDEN_AGENT_SIGN_SIG,
         "the golden signature",
+        BUFFER,
     );
 }
 

@@ -1,0 +1,22 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-P-002",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "positive",
+  "tags": [],
+  "about": "the device mac has this one name",
+  "input": {
+    "op": "parse",
+    "name": "spiffe://suite.local/device/mac"
+  },
+  "expected": {
+    "result": "accepted",
+    "kind": "device",
+    "id": "mac"
+  },
+  "today": {
+    "result": "accepted",
+    "agreesWithExpected": true
+  }
+}

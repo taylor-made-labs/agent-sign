@@ -22,8 +22,19 @@
 //! Only the binaries cargo built for this test are run, never the installed
 //! ones, and never the person's own service socket.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+
+#[path = "support/memory_keys.rs"]
+mod memory_keys;
+
+#[path = "support/no_plain_keys.rs"]
+mod no_plain_keys;
+use die_with_parent::DieWithParent;
+
 use std::ffi::OsString;
 use std::fs;
+use std::io::Write;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Output, Stdio};
@@ -79,6 +90,11 @@ impl Drop for World {
         if let Some(mut child) = self.service.take() {
             let _ = child.kill();
             let _ = child.wait();
+        }
+        // The runtime half of the no-unprotected-test-keys guard: nothing a
+        // test did may leave an unencrypted private key under its home.
+        if !std::thread::panicking() {
+            no_plain_keys::assert_no_plain_private_keys(&self.home);
         }
     }
 }
@@ -157,14 +173,11 @@ impl World {
     /// Writes the throwaway key, the fake signer, and the person's global git
     /// config (and for `ThroughAgentSshSign`, agent-sign's config.toml).
     fn write_person_setup(&self, signer: PersonSigner) {
+        // Only the public half is ever needed (git's `user.signingkey` names the
+        // `.pub` file; the signer is the fake below). The key is made in memory and
+        // never written, so no private key exists on disk.
         let key = self.home.join("person_key");
-        let out = self
-            .cmd(&find_on(&self.path, "ssh-keygen"))
-            .args(["-q", "-t", "ed25519", "-N", "", "-C", "person", "-f"])
-            .arg(&key)
-            .output()
-            .unwrap();
-        assert!(out.status.success(), "ssh-keygen: {}", text(&out));
+        memory_keys::write_public_only(&key, "person");
 
         let fake = self.home.join("person-signer.sh");
         fs::write(
@@ -208,6 +221,7 @@ impl World {
         let log = fs::File::create(self.home.join("service.log")).unwrap();
         let child = self
             .cmd(Path::new(env!("CARGO_BIN_EXE_agent-signd")))
+            .die_with_parent()
             .arg("--socket")
             .arg(&self.socket)
             .arg("--auto-approve")
@@ -673,11 +687,15 @@ fn agent_can_still_verify_an_agent_signed_commit() {
     let repo = w.repo();
     fs::write(repo.join("agent.txt"), "agent work\n").unwrap();
     w.git_ok(&repo, &["add", "agent.txt"]);
-    let out = w.agent(
-        &repo,
-        Mark::ClaudeCode,
-        &["commit", "-m", "feat: agent work"],
-    );
+    // DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+    // launched: the commit is made by a launched Claude Code session (a
+    // plain process with the agent's mark gets an unsigned commit).
+    let mut cmd = w.cmd(Path::new(env!("CARGO_BIN_EXE_agent-sign")));
+    cmd.args(["launch", "--agent", "claude-code", "--"])
+        .arg(env!("CARGO_BIN_EXE_agent-git"))
+        .args(["commit", "-m", "feat: agent work"])
+        .current_dir(&repo);
+    let out = cmd.output().unwrap();
     assert!(out.status.success(), "agent commit failed:\n{}", text(&out));
 
     // Agents sign as themselves since per-agent identities: trust the
@@ -848,19 +866,52 @@ fn gpg_home(w: &World) -> Option<(PathBuf, PathBuf, String)> {
     let home = w.home.join("gnupg");
     fs::create_dir_all(&home).unwrap();
     fs::set_permissions(&home, fs::Permissions::from_mode(0o700)).unwrap();
-    let out = w
-        .cmd(&gpg)
+    let find = |name: &str| {
+        std::env::split_paths(&w.path)
+            .map(|d| d.join(name))
+            .find(|p| p.is_file())
+    };
+    let preset = find("gpg-preset-passphrase").or_else(|| {
+        Some(PathBuf::from("/usr/lib/gnupg/gpg-preset-passphrase")).filter(|p| p.is_file())
+    })?;
+    // The key is protected from the moment it exists: a random passphrase,
+    // handed over on stdin (never as an argument), then cached in the
+    // throwaway agent so git can sign without a prompt.
+    fs::write(home.join("gpg-agent.conf"), "allow-preset-passphrase\n").unwrap();
+    let pass = memory_keys::random_passphrase();
+    let with_stdin = |mut cmd: Command| {
+        let mut child = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        child
+            .stdin
+            .take()
+            .unwrap()
+            .write_all(pass.as_bytes())
+            .unwrap();
+        child.wait_with_output().unwrap()
+    };
+    let mut gen_cmd = w.cmd(&gpg);
+    gen_cmd
         .env("GNUPGHOME", &home)
-        .args(["--batch", "--pinentry-mode", "loopback", "--passphrase", ""])
+        .args([
+            "--batch",
+            "--pinentry-mode",
+            "loopback",
+            "--passphrase-fd",
+            "0",
+        ])
         .args([
             "--quick-gen-key",
             "Signer <signer@example.com>",
             "ed25519",
             "sign",
             "never",
-        ])
-        .output()
-        .unwrap();
+        ]);
+    let out = with_stdin(gen_cmd);
     assert!(out.status.success(), "gpg key: {}", text(&out));
     let listing = w
         .cmd(&gpg)
@@ -873,6 +924,26 @@ fn gpg_home(w: &World) -> Option<(PathBuf, PathBuf, String)> {
         .find(|l| l.starts_with("fpr:"))
         .and_then(|l| l.split(':').nth(9).map(str::to_string))
         .expect("a fingerprint");
+    let grips = w
+        .cmd(&gpg)
+        .env("GNUPGHOME", &home)
+        .args([
+            "--batch",
+            "--with-keygrip",
+            "--with-colons",
+            "--list-secret-keys",
+        ])
+        .output()
+        .unwrap();
+    let grip = String::from_utf8_lossy(&grips.stdout)
+        .lines()
+        .find(|l| l.starts_with("grp:"))
+        .and_then(|l| l.split(':').nth(9).map(str::to_string))
+        .expect("a keygrip");
+    let mut preset_cmd = w.cmd(&preset);
+    preset_cmd.env("GNUPGHOME", &home).args(["--preset", &grip]);
+    let preset_out = with_stdin(preset_cmd);
+    assert!(preset_out.status.success(), "preset: {}", text(&preset_out));
     Some((gpg, home, fpr))
 }
 

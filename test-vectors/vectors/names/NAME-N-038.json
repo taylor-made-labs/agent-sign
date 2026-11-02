@@ -1,0 +1,24 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "NAME-N-038",
+  "family": "names",
+  "legacy": "L02",
+  "kind": "negative",
+  "tags": [
+    "P8"
+  ],
+  "about": "an id that cannot be made into a name: dot dot",
+  "input": {
+    "op": "make",
+    "kind": "person",
+    "id": ".."
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "bad-id"
+  },
+  "today": {
+    "result": "refused",
+    "agreesWithExpected": true
+  }
+}

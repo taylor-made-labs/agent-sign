@@ -22,6 +22,11 @@ AGENT_SIGN_AGENT_NAME=Antigravity antigravity
 (If its shell tool sets `GEMINI_CLI`, as Gemini CLI's does, the commits are
 named "Gemini CLI" without it. agent-sign hasn't seen Antigravity's marks yet.)
 
+Antigravity is one of the agent names allowed by default, so this needs no
+other setting. A name of your own choosing (such as "Antigravity Agent")
+would have to be listed in `[identity] allowed_agents` first: see
+[Allowed agent names](../../README.md#allowed-agent-names).
+
 ## What happens
 
 - A `git commit` from `run_command` goes to agent-sign's wrapper. It is signed

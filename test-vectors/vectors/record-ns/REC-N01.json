@@ -1,0 +1,55 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "REC-N01",
+  "family": "record-ns",
+  "legacy": "L13",
+  "kind": "negative",
+  "tags": [],
+  "about": "the data was changed after signing",
+  "input": {
+    "signature": {
+      "identity": "id:requester",
+      "namespace": "suite-record",
+      "format": "ed25519",
+      "signature": "LonJLkEqLMRQNzDyZB6q7p+y4MN8oIW3CafkqpvjdvI59+JJe6YGyqVBcT1CMhvYeVwLCCQRh65ajx3UCmujBA==",
+      "certificate": {
+        "identity": "id:requester",
+        "publicKey": "MCowBQYDK2VwAyEAzsc7tNLQph/XP8vJczqsB8/79BPEMOnfZFAchrclI1w=",
+        "notBefore": "2026-10-31T11:00:00Z",
+        "notAfter": "2026-10-31T23:00:00Z",
+        "authority": "authority-1",
+        "signature": "dNMUTp56mGy+OdBm65xjenR2Wbrs+CmWIiA8XX7mni1mp10G1p58cTxJzYHlZgEIazp6Wx9/6ApxenEEDIzxDA=="
+      }
+    },
+    "type": "tool-use-requested",
+    "payload": {
+      "id": "ev-1",
+      "envelope": {
+        "conversation": "c-1",
+        "turn": "t-1",
+        "causes": null,
+        "machine": "mac"
+      },
+      "data": {
+        "tool": "write",
+        "run": "run-1"
+      }
+    },
+    "identity": "id:requester",
+    "authorities": [
+      {
+        "id": "authority-1",
+        "publicKey": "MCowBQYDK2VwAyEAisqWuxrNF9YSeJb+YOFm800ifEEcpnRH0Us1vhfnZCw="
+      }
+    ],
+    "now": 1793448000000
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "bad-signature"
+  },
+  "today": {
+    "problem": "its signature doesn't verify",
+    "agreesWithExpected": true
+  }
+}

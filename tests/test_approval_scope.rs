@@ -11,6 +11,12 @@
 //! protected whatever the scope. The service tests use a stand-in owner that
 //! records each reason it was shown, so no real prompt can appear.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+#[path = "support/launch.rs"]
+mod launch;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -274,6 +280,7 @@ fn start_service(home: &Path, owner: &str, extra_config: &str) -> Service {
     .unwrap();
     let socket = home.join("svc.sock");
     let child = Command::new(env!("CARGO_BIN_EXE_agent-signd"))
+        .die_with_parent()
         .arg("--socket")
         .arg(&socket)
         .env("HOME", home)
@@ -312,33 +319,36 @@ fn set_head(repo: &str, branch: &str) {
 }
 
 /// What the git wrapper does for one commit: ask for a lease, then a token.
-fn commit_through_service(socket: &Path, repo: &str, branch: &str) -> Result<(), String> {
+///
+/// DELIBERATE EVAL CHANGE (P7/D1, 1 Nov 2026): agents sign only when
+/// launched. The wrapper of a launched session asks over the session's
+/// channel (a session the test starts itself, playing the launcher, with
+/// [`launch::start_session`]) and names the session's own identity. It
+/// asked on the service's socket, naming an identity of its own choosing.
+fn commit_through_service(
+    session: &launch::Session,
+    repo: &str,
+    branch: &str,
+) -> Result<(), String> {
     set_head(repo, branch);
-    let lease = send_request(
-        socket,
-        &Request::RequestLease {
-            repo: repo.to_string(),
-            branch: branch.to_string(),
-            intent: "test".to_string(),
-            duration_secs: None,
-        },
-    )
-    .map_err(|e| e.to_string())?;
+    let lease = session.ask(&Request::RequestLease {
+        repo: repo.to_string(),
+        branch: branch.to_string(),
+        intent: "test".to_string(),
+        duration_secs: None,
+    });
     if let Response::Error { message } = lease {
         return Err(message);
     }
-    match send_request(
-        socket,
+    match session.ask(
         // A wrapper that says which agent is committing: since the identity
         // review (28 Oct 2026) the service refuses one that doesn't.
         &Request::IssueIdentifiedToken {
             repo: repo.to_string(),
             branch: branch.to_string(),
-            identity: agent_sign::attribution::AgentIdentity::new("codex", "Codex", Some("t")),
+            identity: session.identity.clone(),
         },
-    )
-    .map_err(|e| e.to_string())?
-    {
+    ) {
         Response::TokenIssued { .. } => Ok(()),
         Response::Error { message } => Err(message),
         other => Err(format!("unexpected {other:?}")),
@@ -356,10 +366,11 @@ fn times_shown(home: &Path) -> usize {
 fn one_approval_then_twenty_commits_ask_nothing_more() {
     let dir = tempdir().unwrap();
     let svc = start_service(dir.path(), "allow", "");
+    let session = launch::start_session(&svc.socket, "codex");
     let app = fake_repo(&dir.path().join("w"), "dev/app");
 
     for i in 0..20 {
-        commit_through_service(&svc.socket, &app, "feat/a")
+        commit_through_service(&session, &app, "feat/a")
             .unwrap_or_else(|e| panic!("commit {i} refused: {e}"));
     }
     assert_eq!(times_shown(dir.path()), 1);
@@ -369,18 +380,19 @@ fn one_approval_then_twenty_commits_ask_nothing_more() {
 fn by_default_an_approval_covers_one_branch_of_one_repository() {
     let dir = tempdir().unwrap();
     let svc = start_service(dir.path(), "allow", "");
+    let session = launch::start_session(&svc.socket, "codex");
     let w = dir.path().join("w");
     let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
 
-    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
+    commit_through_service(&session, &app, "feat/a").unwrap();
     assert_eq!(times_shown(dir.path()), 1);
 
     // Another branch of the same repository asks again...
-    commit_through_service(&svc.socket, &app, "feat/b").unwrap();
+    commit_through_service(&session, &app, "feat/b").unwrap();
     assert_eq!(times_shown(dir.path()), 2);
     // ...and so does the same branch name in another repository, and a
     // repository in the same folder.
-    commit_through_service(&svc.socket, &other, "feat/a").unwrap();
+    commit_through_service(&session, &other, "feat/a").unwrap();
     assert_eq!(times_shown(dir.path()), 3);
 }
 
@@ -388,14 +400,15 @@ fn by_default_an_approval_covers_one_branch_of_one_repository() {
 fn with_branch_switching_on_an_approval_covers_the_repositorys_other_branches() {
     let dir = tempdir().unwrap();
     let svc = start_service(dir.path(), "allow", "allow_branch_switching = true\n");
+    let session = launch::start_session(&svc.socket, "codex");
     let w = dir.path().join("w");
     let (app, other) = (fake_repo(&w, "dev/app"), fake_repo(&w, "dev/other"));
 
-    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
-    commit_through_service(&svc.socket, &app, "feat/b").unwrap();
+    commit_through_service(&session, &app, "feat/a").unwrap();
+    commit_through_service(&session, &app, "feat/b").unwrap();
     assert_eq!(times_shown(dir.path()), 1);
     // Still only this repository.
-    commit_through_service(&svc.socket, &other, "feat/a").unwrap();
+    commit_through_service(&session, &other, "feat/a").unwrap();
     assert_eq!(times_shown(dir.path()), 2);
 }
 
@@ -403,9 +416,10 @@ fn with_branch_switching_on_an_approval_covers_the_repositorys_other_branches() 
 fn failing_authentication_refuses_and_grants_nothing() {
     let dir = tempdir().unwrap();
     let svc = start_service(dir.path(), "fail", "");
+    let session = launch::start_session(&svc.socket, "codex");
     let app = fake_repo(&dir.path().join("w"), "dev/app");
 
-    let err = commit_through_service(&svc.socket, &app, "feat/a").unwrap_err();
+    let err = commit_through_service(&session, &app, "feat/a").unwrap_err();
     assert!(err.contains("could not confirm it was you"), "{err}");
     let listed = send_request(&svc.socket, &Request::ListLeases).unwrap();
     match listed {
@@ -439,9 +453,10 @@ fn leases_shows_what_a_saved_wide_lease_covers_and_revoke_takes_the_folder_or_ev
 
     // That version's config let leases follow the agent, as this one's can.
     let svc = start_service(dir.path(), "allow", "allow_branch_switching = true\n");
+    let session = launch::start_session(&svc.socket, "codex");
     // Covered without asking, in both repositories.
-    commit_through_service(&svc.socket, &app, "feat/a").unwrap();
-    commit_through_service(&svc.socket, &other, "feat/b").unwrap();
+    commit_through_service(&session, &app, "feat/a").unwrap();
+    commit_through_service(&session, &other, "feat/b").unwrap();
     assert_eq!(times_shown(dir.path()), 0);
 
     let cli = |args: &[&str]| {
@@ -470,7 +485,7 @@ fn leases_shows_what_a_saved_wide_lease_covers_and_revoke_takes_the_folder_or_ev
 
     assert!(cli(&["revoke", &dev]).status.success());
     // After revoking, the folder asks again.
-    commit_through_service(&svc.socket, &other, "feat/a").unwrap();
+    commit_through_service(&session, &other, "feat/a").unwrap();
     assert_eq!(times_shown(dir.path()), 1);
     assert!(!cli(&["revoke", "/w/nothing-here"]).status.success());
 

@@ -1,0 +1,49 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-P01",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "positive",
+  "tags": [],
+  "about": "keys come out sorted, no spaces",
+  "input": {
+    "json_text": "{\"b\":1,\"a\":[true,null,\"x\"]}"
+  },
+  "expected": {
+    "result": "encoded",
+    "bytes": "7b2261223a5b747275652c6e756c6c2c2278225d2c2262223a317d",
+    "text": "{\"a\":[true,null,\"x\"],\"b\":1}"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b2261223a5b747275652c6e756c6c2c2278225d2c2262223a317d"
+      },
+      "L05": {
+        "bytes": "7b2261223a5b747275652c6e756c6c2c2278225d2c2262223a317d"
+      },
+      "L09": {
+        "bytes": "7b2261223a5b747275652c6e756c6c2c2278225d2c2262223a317d"
+      },
+      "L12": {
+        "bytes": "7b2261223a5b747275652c6e756c6c2c2278225d2c2262223a317d"
+      },
+      "L13": {
+        "bytes": "7b2261223a5b747275652c6e756c6c2c2278225d2c2262223a317d"
+      },
+      "L07": {
+        "bytes": "7b2261223a5b747275652c6e756c6c2c2278225d2c2262223a317d"
+      }
+    },
+    "encodersDisagree": false,
+    "matchExpected": [
+      "L01",
+      "L05",
+      "L09",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": true
+  }
+}

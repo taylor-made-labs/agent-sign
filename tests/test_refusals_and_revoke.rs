@@ -14,6 +14,10 @@
 //! Every service here runs in a temporary home with its own socket, and the
 //! owner (Touch ID) is a stand-in, so no real prompt can appear.
 
+#[path = "support/die_with_parent.rs"]
+mod die_with_parent;
+use die_with_parent::DieWithParent;
+
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -48,6 +52,7 @@ fn start_service(home: &Path, path: &str, auto_approve: bool, owner: &str) -> Se
     .unwrap();
     let socket = home.join("svc.sock");
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_agent-signd"));
+    cmd.die_with_parent();
     cmd.arg("--socket")
         .arg(&socket)
         .env("HOME", home)

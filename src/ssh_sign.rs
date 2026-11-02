@@ -17,6 +17,11 @@
 //! branch the git run is writing ([`crate::git_place`]), and refuses a
 //! signature for anywhere other than the token's.
 //!
+//! In a session `agent-sign launch` started, the request goes over the
+//! session's channel ([`crate::session`]): the service then knows which
+//! session asks from the channel itself, and the token (bound to that
+//! session) signs nowhere else.
+//!
 //! It lives in the library so that `agent-ssh-sign` and `agent-sign` (which
 //! also accepts git's signing arguments, as it always has) run exactly the
 //! same code.
@@ -30,7 +35,7 @@ use base64::Engine;
 
 use crate::config::Config;
 use crate::multiplexer::{Multiplexer, SigningAction};
-use crate::protocol::{Request, Response, client_socket_path, send_request};
+use crate::protocol::{Request, Response, ask_service, service_place};
 
 /// Environment variable carrying the single-use token from the git wrapper to
 /// the signing program.
@@ -146,13 +151,24 @@ pub fn is_signing_request(args: &[String]) -> bool {
     args.windows(2).any(|w| w[0] == "-Y" && w[1] == "sign")
 }
 
-/// The system's `ssh-keygen`, for checking signatures on an agent's behalf.
-fn plain_ssh_keygen() -> String {
+/// The system's `ssh-keygen` by absolute path, or `None`: never one found on
+/// `PATH`, which a session can put a program on. The signing program uses it
+/// for checking signatures on an agent's behalf (with [`plain_ssh_keygen`]'s
+/// fallback), and `agent-sign verify` for the check a merge gate relies on
+/// (with no fallback: a verifier that can't find the real one stops).
+pub fn system_ssh_keygen() -> Option<std::path::PathBuf> {
     ["/usr/bin/ssh-keygen", "/usr/local/bin/ssh-keygen"]
         .into_iter()
-        .find(|p| std::path::Path::new(p).exists())
-        .unwrap_or("ssh-keygen")
-        .to_string()
+        .map(std::path::PathBuf::from)
+        .find(|p| p.exists())
+}
+
+/// The system's `ssh-keygen`, for checking signatures on an agent's behalf.
+fn plain_ssh_keygen() -> String {
+    system_ssh_keygen().map_or_else(
+        || "ssh-keygen".to_string(),
+        |p| p.to_string_lossy().into_owned(),
+    )
 }
 
 fn delegate_to_system_ssh_keygen(args: &[String], fallback_program: &str) -> ExitCode {
@@ -213,7 +229,6 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
     };
 
     let buffer_b64 = base64::engine::general_purpose::STANDARD.encode(&buffer);
-    let socket_path = client_socket_path();
 
     // Where this git run is writing, asked of the real git from git's own
     // folder and environment (git runs its signing program there), so the
@@ -237,12 +252,15 @@ fn sign_with_agent_daemon(args: &[String], token: &str) -> ExitCode {
         branch,
     };
 
-    let resp = match send_request(&socket_path, &req) {
+    // In a launched session the request goes over the session's own channel,
+    // where the service knows the session without being told (see
+    // `crate::session`); otherwise to the service's socket.
+    let resp = match ask_service(&req) {
         Ok(r) => r,
         Err(e) => {
             eprintln!(
                 "[agent-ssh-sign] Failed to communicate with the agent-sign service at {}: {}",
-                socket_path.display(),
+                service_place(),
                 e
             );
             eprintln!("[agent-ssh-sign] Ensure `agent-signd` is running.");

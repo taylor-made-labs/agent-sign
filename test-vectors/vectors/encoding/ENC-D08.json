@@ -1,0 +1,50 @@
+{
+  "schema": "agent-sign-test-vector/1",
+  "id": "ENC-D08",
+  "family": "encoding",
+  "legacy": "L01 L05 L07 L09 L12 L13",
+  "kind": "negative",
+  "tags": [
+    "divergence:large-integer"
+  ],
+  "about": "2^64",
+  "input": {
+    "json_text": "{\"n\":18446744073709551616}"
+  },
+  "expected": {
+    "result": "refused",
+    "reason": "unsafe-integer"
+  },
+  "today": {
+    "encoders": {
+      "L01": {
+        "bytes": "7b226e223a31383434363734343037333730393535323030307d"
+      },
+      "L05": {
+        "bytes": "7b226e223a31383434363734343037333730393535323030307d"
+      },
+      "L09": {
+        "error": "refuses"
+      },
+      "L12": {
+        "bytes": "7b226e223a31383434363734343037333730393535323030307d"
+      },
+      "L13": {
+        "bytes": "7b226e223a31383434363734343037333730393535323030307d"
+      },
+      "L07": {
+        "bytes": "7b226e223a31383434363734343037333730393535313631367d"
+      }
+    },
+    "encodersDisagree": true,
+    "matchExpected": [],
+    "wronglyEncode": [
+      "L01",
+      "L05",
+      "L12",
+      "L13",
+      "L07"
+    ],
+    "agreesWithExpected": false
+  }
+}
