@@ -68,6 +68,11 @@ jobs:
       - name: Install bubblewrap
         if: runner.os == 'Linux'
         run: command -v bwrap >/dev/null || sudo apt-get install -y --no-install-recommends bubblewrap
+      # Ubuntu 24.04 images block unprivileged user namespaces by AppArmor ("bwrap: setting up uid map: Permission denied");
+      # this is a throwaway runner VM, so turning that off here changes nothing outside the job.
+      - name: Allow user namespaces for bubblewrap
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
       - name: Check formatting
         run: cargo fmt --check
@@ -168,6 +173,11 @@ jobs:
       # The launcher runs every agent under bubblewrap and refuses to run without it; the arm64 runner image has none.
       - name: Install bubblewrap
         run: command -v bwrap >/dev/null || sudo apt-get install -y --no-install-recommends bubblewrap
+      # Ubuntu 24.04 images block unprivileged user namespaces by AppArmor ("bwrap: setting up uid map: Permission denied");
+      # this is a throwaway runner VM, so turning that off here changes nothing outside the job.
+      - name: Allow user namespaces for bubblewrap
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
 
       - name: Fresh install, upgrade from agent-sign, linked state, uninstall
         run: scripts/release/install-test.sh
