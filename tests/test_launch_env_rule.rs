@@ -20,6 +20,9 @@
 //! Red today: `check_env` doesn't exist, so this file doesn't compile.
 //! Run on hetzner: `cargo test --locked --test test_launch_env_rule`.
 
+// The launcher (agent_sign::launcher) is built only on Linux, as in the other launcher tests.
+#![cfg(target_os = "linux")]
+
 use std::collections::BTreeMap;
 
 use agent_sign::launcher::check_env;
