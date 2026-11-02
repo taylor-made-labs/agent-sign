@@ -80,7 +80,11 @@ jobs:
       - name: Clippy (all targets, warnings are errors)
         run: cargo clippy --all-targets --locked -- -D warnings
 
+      # Not /tmp: a launched session gets a private /tmp, so the tests' repositories and homes must live elsewhere to be
+      # seen from inside it (the runner's own temp folder is under the work directory).
       - name: Tests (unit, integration, end to end)
+        env:
+          TMPDIR: ${{ runner.temp }}
         run: cargo test --locked --no-fail-fast
 
   secrets:
