@@ -9,10 +9,12 @@
 //!   as an argument); `act sign --assigner ...` is refused inside a session whatever its environment, and the
 //!   refusal does not come after touching an agent.
 //! * **F3 (medium/low)**: the launcher's key was made anew at each start under the one identity `harness:launcher`,
-//!   so no old key could be revoked alone and old lines stayed trusted. Required: each launcher key is identified
-//!   separately in the trust lines (the identity is the second word of its `assigner harness:...` line; this file
-//!   does not fix its spelling, only that two starts differ), revoking an old one leaves the current one working,
-//!   and `act trust-lines` marks the current lines (a comment containing "current" on, or directly above, each).
+//!   so no old key could be revoked alone and old lines stayed trusted. Required (PM decision, 4 Nov: the identity
+//!   stays exactly `harness:launcher`, because role-commitments' assigner policy names it): each launcher key has its
+//!   own key id, the last word of its `assigner harness:launcher ...` line, and a trust file's
+//!   `revoked-key <key id>` line revokes that key alone, so the old signature is revoked and the new one verifies
+//!   with the identity unchanged; and `act trust-lines` marks the current lines (a comment containing "current"
+//!   on, or directly above, each).
 //! * **F4 (low)**: `act verify` followed symlinks and accepted a group- or world-writable trust file. Required: a
 //!   symlink, or a group- or world-writable trust file or payload file, is refused (verify: exit 2, `verified`
 //!   false, reason `error`, with a detail that says why; sign: non-zero, nothing on stdout).
@@ -471,7 +473,7 @@ fn restart(w: &mut ActWorld) {
 }
 
 #[test]
-fn f3_01_each_launcher_key_has_its_own_identity_and_one_old_key_can_be_revoked_alone() {
+fn f3_01_each_launcher_key_has_its_own_key_id_and_one_old_key_can_be_revoked_alone() {
     let mut w = ActWorld::new(true);
     let lines1 = w.trust_lines();
     let old = member_of(&w.launcher_signs(b"x"));
@@ -484,10 +486,18 @@ fn f3_01_each_launcher_key_has_its_own_identity_and_one_old_key_can_be_revoked_a
         "no launcher lines:\n{lines1}\n--\n{lines2}"
     );
     let mut problems = Problems::default();
-    problems.check(l1[0].0 != l2[0].0, || {
+    // The identity does not change between starts (PM decision, 4 Nov); the key id, the last word of the line, does.
+    let key_id = |line: &str| line.split_whitespace().last().unwrap().to_string();
+    problems.check(l1[0].0 == "harness:launcher" && l2[0].0 == l1[0].0, || {
         format!(
-            "two starts of the service gave their launcher key the same identity {:?} (rv5)",
-            l1[0].0
+            "the launcher's identity changed between starts: {:?} then {:?}",
+            l1[0].0, l2[0].0
+        )
+    });
+    problems.check(key_id(&l1[0].1) != key_id(&l2[0].1), || {
+        format!(
+            "two starts of the service gave their launcher key the same key id {:?} (rv5)",
+            key_id(&l1[0].1)
         )
     });
     // Both starts' lines in one trust file, then only the old key's identity revoked.
@@ -498,7 +508,7 @@ fn f3_01_each_launcher_key_has_its_own_identity_and_one_old_key_can_be_revoked_a
     problems.check(code == 0 && v["verified"] == json!(true), || {
         format!("control: old signature under both start's lines: {code} {v}")
     });
-    let revoked = t(&format!("revoked {}\n", l1[0].0));
+    let revoked = t(&format!("revoked-key {}\n", key_id(&l1[0].1)));
     let (code, v) = w.verify(b"x", &old, &revoked, None);
     problems.check(code == 1 && v["reason"] == json!("revoked"), || {
         format!("the revoked old key's signature: {code} {v}")
