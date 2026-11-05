@@ -46,6 +46,9 @@ fn main() -> ExitCode {
         if first_arg == "verify" {
             return run_verify(&args[2..]);
         }
+        if first_arg == "act" {
+            return agent_sign::act_cli::run(&args[2..]);
+        }
         if first_arg == "launch" {
             return run_launch(&env::args_os().skip(2).collect::<Vec<_>>());
         }
@@ -103,6 +106,12 @@ fn print_help() {
     );
     println!(
         "  agent-sign launch --agent <name> -- <program> [args...]  (Run an agent as a launched session: its own name, sandbox and channel; Linux)"
+    );
+    println!(
+        "  agent-sign launch --agent <name> --identity agent:<id> -- <program> [args...]  (The same, and the session can sign acts as agent:<id>; needs [acts] enabled)"
+    );
+    println!(
+        "  agent-sign act sign|verify|credential|verify-credential|trust-lines  (Signed acts: see `agent-sign act`)"
     );
     println!(
         "  agent-sign launch --collect <session>    (System mode: fetch the bundles of a session whose caller had gone)"
@@ -441,7 +450,7 @@ fn run_session_step(_exec: bool) -> ExitCode {
 fn run_launch(args: &[std::ffi::OsString]) -> ExitCode {
     let usage = || {
         eprintln!(
-            "usage: agent-sign launch --agent <name> -- <program> [args...]\n       agent-sign launch --collect <session>"
+            "usage: agent-sign launch --agent <name> [--identity agent:<id>] -- <program> [args...]\n       agent-sign launch --collect <session>"
         );
         ExitCode::from(2)
     };
@@ -452,6 +461,7 @@ fn run_launch(args: &[std::ffi::OsString]) -> ExitCode {
         return collect(&session.to_string_lossy());
     }
     let mut agent: Option<String> = None;
+    let mut identity: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
         let arg = args[i].to_string_lossy();
@@ -467,6 +477,15 @@ fn run_launch(args: &[std::ffi::OsString]) -> ExitCode {
         } else if let Some(value) = arg.strip_prefix("--agent=") {
             agent = Some(value.to_string());
             i += 1;
+        } else if arg == "--identity" {
+            let Some(value) = args.get(i + 1) else {
+                return usage();
+            };
+            identity = Some(value.to_string_lossy().into_owned());
+            i += 2;
+        } else if let Some(value) = arg.strip_prefix("--identity=") {
+            identity = Some(value.to_string());
+            i += 1;
         } else {
             return usage();
         }
@@ -474,7 +493,7 @@ fn run_launch(args: &[std::ffi::OsString]) -> ExitCode {
     let (Some(agent), Some(program)) = (agent, args.get(i)) else {
         return usage();
     };
-    agent_sign::launch::run(&agent, program, &args[i + 1..])
+    agent_sign::launch::run_with_identity(&agent, identity.as_deref(), program, &args[i + 1..])
 }
 
 /// `agent-sign launch --collect <session>`: only in system mode, where the

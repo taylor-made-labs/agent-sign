@@ -596,6 +596,26 @@ impl SessionSigner {
         &self.cert_blob
     }
 
+    /// An armored SSHSIG in `namespace` over `buffer`, carrying the plain
+    /// public key: the certificate travels beside it (see [`crate::acts`]).
+    pub fn act_signature(&self, namespace: &str, buffer: &[u8]) -> String {
+        crate::crypto::sshsig_armored_in(
+            &crate::crypto::ed25519_wire(&self.key.verifying_key()),
+            &self.key,
+            namespace.as_bytes(),
+            buffer,
+        )
+    }
+
+    /// The certificate as one OpenSSH line.
+    pub fn certificate_line(&self) -> String {
+        use base64::Engine;
+        format!(
+            "ssh-ed25519-cert-v01@openssh.com {}",
+            base64::engine::general_purpose::STANDARD.encode(&self.cert_blob)
+        )
+    }
+
     /// An armored SSHSIG over `buffer` for namespace "git", with the
     /// certificate as its public key.
     pub fn sign_git_buffer(&self, buffer: &[u8]) -> String {

@@ -27,6 +27,11 @@ one. For example:
 - an agent commit on a protected branch, or past a local rule, through the
   wrapper
 - a refusal that leaves a commit signed some other way
+- a launched session that reaches an ssh-agent, or makes `agent-sign act sign` sign as a person
+  (README, "Signed acts": the session has no agent variable, no Unix-socket creation, hidden agent folders and no
+  inherited descriptors, and the refusal rests on the process, not the environment)
+- an act signed from a symbolic-linked or group- or world-writable trust or payload file, or a revoked launcher key
+  that still verifies
 
 ## Supported versions
 

@@ -629,6 +629,45 @@ signatures, so agent commits show there as Unverified; before 28 Oct 2026
 the installer registered the shared agent key on the person's account, which
 made agent commits show as Verified for the person.
 
+### 4.7 Signed acts
+
+Added with signed acts v0 (EVALS.md). The service signs, and `agent-sign act verify` checks, the exact bytes of an act
+(1 to 65536) in the SSH-signature namespace `agent-sign/act/1`; credentials use `agent-sign/credential/1`, commits `git`.
+Invariants:
+
+- **A1.** An agent signs only as the identity its launcher gave its session (`LaunchActSession`, `agent:<name>`), kept by
+  the service with the session; no request, option, variable or file names or changes it. A session launched without an
+  identity signs no acts.
+- **A2.** Only a process outside any session, of the service's own account, has the launcher sign (`SignActAsLauncher`:
+  same-uid and not-in-another-PID-namespace, the test launching uses). A session's channel takes `SignAct` only. Taylor's
+  signature is made by his own ssh-agent and checked against the key the trust file lists before it is printed.
+- **A3.** The verifier decides the signer from the trust file (an assigner's key) or from a certificate signed by a listed
+  authority whose one principal is `agent:<name>` (an agent), never from text in the signature member. A signature in
+  another namespace is `wrong_namespace`. A certificate must be for the key that signed, valid at the time checked.
+- **A4.** No private key reaches a file: agents' session keys and the launcher's key live in the service's memory (the
+  launcher key's other home, OpenBao, is not built and the service refuses to start with it); Taylor's stays in his agent.
+- **A5.** Everything about a verdict is closed: an unknown key, duplicate key, bad base64, or oversize input is refused;
+  a trust file with a mistake is refused whole (exit 2). A trust file or a payload file that is a symbolic link, or
+  writable by its group or by everyone, is refused too (verify: exit 2, reason `error`; sign: non-zero, nothing
+  printed). The final path component is opened with `O_NOFOLLOW` and the checks are made on the open descriptor.
+- **A6.** A session never reaches any ssh-agent and never signs as a person (fix round 1, F1). The launcher gives a
+  session no `SSH_AUTH_SOCK`, `SSH_AGENT_PID` or `GPG_AGENT_INFO`; hides `~/.ssh`, `~/.1password`, `~/.gnupg` and
+  `/run/user/<uid>`; runs it under a seccomp filter that refuses `socket(AF_UNIX, ...)` (and `io_uring`, which can
+  create sockets past it, and the x32 system-call range), so no Unix-socket path or abstract name can be connected to
+  and the session's own channel, already an open descriptor, is all it has; and passes on no inherited descriptor but
+  the channel. `act sign --assigner ...` is refused by process evidence, before any agent connection: a held session
+  channel (under any variable name or none), a user namespace of its own, or bubblewrap as PID 1. None of it rests on
+  an environment variable.
+- **A7.** The launcher's identity is always exactly `harness:launcher`; its key is new at each start, and each key has
+  its own id on its trust line (its `SHA256:` fingerprint, last word). `revoked-key <fingerprint>` revokes one key,
+  whoever it was listed for, and leaves the identity's other keys working (verdict `revoked`). `act trust-lines` marks
+  the current launcher line with a comment above it.
+
+Trust file words: `authority`, `assigner`, `revoked <identity>`, `revoked-key SHA256:<fingerprint>`.
+
+Protocol additions: `LaunchActSession`, `SignAct`, `SignActAsLauncher`, `ActTrustLines`; config `[acts]` (`enabled`,
+`launcher_assigner`). Code: `src/acts.rs` (identities, trust file, SSHSIG, verdicts), `src/act_cli.rs` (the command).
+
 ## 5. Threat model
 
 agent-sign's current protections assume an agent that cooperates: it runs `git`

@@ -275,6 +275,14 @@ struct DaemonState {
     /// (`run_daemon`), so a crash or restart does not leave one for the next
     /// session to inherit.
     session_leases: HashMap<String, Vec<String>>,
+    /// Signed acts (`[acts] enabled`): `None` when off, the default.
+    acts: Option<ActsService>,
+}
+
+/// What the service holds when signed acts are on (`agent_sign::acts`).
+struct ActsService {
+    /// The launcher's assigner key, in memory only, made anew at each start.
+    launcher: agent_sign::acts::LauncherKey,
 }
 
 /// A session agent-sign's launcher started (see the module documentation).
@@ -295,6 +303,14 @@ struct LiveSession {
     uid: u32,
     /// Set when the launcher's registration closed.
     ended: AtomicBool,
+    /// The identity `agent:<name>` its launcher gave it for signing acts
+    /// (`launch --identity`), or `None`: such a session signs no acts. Set
+    /// once, at launch; nothing the session says changes it.
+    act_identity: Option<String>,
+    /// The session's act signing key and its certificate for
+    /// `act_identity`: made on first use, memory only, dropped when the
+    /// session ends.
+    act_signer: Mutex<Option<SessionSigner>>,
 }
 
 /// Who is on the other end of a connection: decided by how it came in,
@@ -904,6 +920,38 @@ fn run_daemon(
             (ApprovalMode::DeviceOwner, false) => "you approve each lease",
         }
     );
+    // Signed acts: off unless the user's config turns them on. The launcher's
+    // assigner key is made here, in memory, and is the only home this
+    // version has for it.
+    let acts = if config.acts.enabled {
+        if system.is_some() {
+            eprintln!("[agent-signd] refusing to start: signed acts are not built for system mode");
+            std::process::exit(1);
+        }
+        match config.acts.launcher_home() {
+            "memory" => {
+                eprintln!(
+                    "[agent-signd] acts: on; the launcher's assigner key is made in memory at \
+                     this start and written nowhere, so `agent-sign act trust-lines` is new after \
+                     every restart"
+                );
+                Some(ActsService {
+                    launcher: agent_sign::acts::LauncherKey::generate(),
+                })
+            }
+            other => {
+                eprintln!(
+                    "[agent-signd] refusing to start: [acts] launcher_assigner = {other:?} is not \
+                     built in this version (the OpenBao home for the launcher's key comes with \
+                     the system-mode sitting); use \"memory\" or leave acts off"
+                );
+                std::process::exit(1);
+            }
+        }
+    } else {
+        eprintln!("[agent-signd] acts: off ([acts] enabled isn't true)");
+        None
+    };
     let state = Arc::new(Mutex::new(DaemonState {
         lease_engine: LeaseEngine::new_with_storage(policy, storage_path),
         ca,
@@ -940,6 +988,7 @@ fn run_daemon(
             uids
         },
         session_leases: HashMap::new(),
+        acts,
     }));
 
     // Every lease's work, checked now and then, off any commit's path. Not
@@ -1316,9 +1365,18 @@ fn handle_client(
         Request::Ping => Response::Pong,
         Request::LaunchSession { agent } => {
             // The connection stays open as the session's registration.
-            launch_session(stream, &state, &agent, slot);
+            launch_session(stream, &state, &agent, None, slot);
             return;
         }
+        Request::LaunchActSession { agent, identity } => {
+            launch_session(stream, &state, &agent, Some(&identity), slot);
+            return;
+        }
+        Request::SignAct { payload_b64, kind } => sign_act(&state, &caller, &payload_b64, kind),
+        Request::SignActAsLauncher { payload_b64 } => {
+            sign_act_as_launcher(&state, stream, &payload_b64)
+        }
+        Request::ActTrustLines => act_trust_lines(&state),
         Request::RegisterSession { .. } => Response::Error {
             message: "sessions are registered only on the launcher-only socket, by the \
                       launcher's account"
@@ -2688,7 +2746,7 @@ fn serve_launcher(mut stream: UnixStream, state: Arc<Mutex<DaemonState>>) {
         return;
     };
     let (slot, uid, unit) = (binding.slot, binding.uid, binding.unit.clone());
-    let session = match start_session(&state, &slug, &name, uid, Some(binding)) {
+    let session = match start_session(&state, &slug, &name, uid, Some(binding), None) {
         Ok((session, _)) => session,
         Err(message) => {
             refuse_registration(&mut stream, message);
@@ -2742,7 +2800,151 @@ fn allowed_from_session(request: &Request) -> bool {
             | Request::IssueIdentifiedToken { .. }
             | Request::IssueRunToken { .. }
             | Request::SignCommit { .. }
+            | Request::SignAct { .. }
     )
+}
+
+/// An error answer.
+fn error_response(message: impl Into<String>) -> Response {
+    Response::Error {
+        message: message.into(),
+    }
+}
+
+/// A launched session's act (or credential) signature, as the identity its
+/// launcher gave it: the request names no identity, and the service takes
+/// it from the session the request came in on.
+fn sign_act(
+    state: &Arc<Mutex<DaemonState>>,
+    caller: &Caller,
+    payload_b64: &str,
+    kind: agent_sign::protocol::ActKind,
+) -> Response {
+    use agent_sign::acts::{ACT_NAMESPACE, CREDENTIAL_NAMESPACE};
+    use agent_sign::protocol::ActKind;
+    let Caller::Session(session) = caller else {
+        return error_response(
+            "only a launched session signs as an agent: this request didn't come in on a session's channel",
+        );
+    };
+    let st = state.lock().unwrap();
+    if st.acts.is_none() {
+        return error_response("signed acts are off ([acts] enabled isn't true)");
+    }
+    let Some(identity) = session.act_identity.clone() else {
+        return error_response(
+            "this session was launched without --identity, so it can't sign acts",
+        );
+    };
+    let (namespace, bytes, issued_at) = match kind {
+        ActKind::Act => match agent_sign::acts::decode_payload(payload_b64) {
+            Ok(bytes) => (ACT_NAMESPACE, bytes, None),
+            Err(why) => return error_response(why),
+        },
+        ActKind::Credential => {
+            let now = agent_sign::agents_ca::now_secs();
+            (
+                CREDENTIAL_NAMESPACE,
+                agent_sign::acts::credential_bytes(now),
+                Some(now),
+            )
+        }
+    };
+    let now = agent_sign::agents_ca::now_secs();
+    let mut held = session.act_signer.lock().unwrap();
+    if held.as_ref().is_none_or(|s| !s.is_fresh(now)) {
+        match SessionSigner::attested(&*st.ca, &identity, now, &session.attestation) {
+            Ok(signer) => *held = Some(signer),
+            Err(e) => {
+                return error_response(format!(
+                    "couldn't make the session's certificate for {identity} ({e})"
+                ));
+            }
+        }
+    }
+    let signer = held.as_ref().expect("made above");
+    eprintln!(
+        "[agent-signd] session {} signed {} as {identity} ({} bytes)",
+        session.id,
+        if issued_at.is_some() {
+            "a credential"
+        } else {
+            "an act"
+        },
+        bytes.len()
+    );
+    Response::ActSigned {
+        signature: signer.act_signature(namespace, &bytes),
+        certificate: Some(signer.certificate_line()),
+        issued_at,
+    }
+}
+
+/// The launcher signs an act as an assigner. Only a process of the
+/// service's own account that is not in a launched session's sandbox may
+/// ask (the same test as for launching): a session asks neither here nor
+/// over its channel.
+fn sign_act_as_launcher(
+    state: &Arc<Mutex<DaemonState>>,
+    stream: &UnixStream,
+    payload_b64: &str,
+) -> Response {
+    if cfg!(not(target_os = "linux")) {
+        return error_response("signing as the launcher needs Linux PID namespaces");
+    }
+    // SAFETY: getuid takes no arguments and can't fail.
+    let own = unsafe { libc::getuid() };
+    match agent_sign::session::peer_uid(stream.as_raw_fd()) {
+        Ok(uid) if uid == own => {}
+        Ok(_) => {
+            return error_response("only the service's own account signs as the launcher");
+        }
+        Err(e) => return error_response(format!("couldn't tell who asked ({e})")),
+    }
+    match agent_sign::session::peer_in_other_pid_namespace(stream.as_raw_fd()) {
+        Ok(false) => {}
+        Ok(true) => {
+            return error_response(
+                "a launched session can't sign as the launcher: only a process outside any sandbox does",
+            );
+        }
+        Err(e) => {
+            return error_response(format!("couldn't tell where the request came from ({e})"));
+        }
+    }
+    let bytes = match agent_sign::acts::decode_payload(payload_b64) {
+        Ok(bytes) => bytes,
+        Err(why) => return error_response(why),
+    };
+    let st = state.lock().unwrap();
+    let Some(acts) = &st.acts else {
+        return error_response("signed acts are off ([acts] enabled isn't true)");
+    };
+    eprintln!(
+        "[agent-signd] signed an act as {} ({} bytes)",
+        agent_sign::acts::LAUNCHER_ASSIGNER,
+        bytes.len()
+    );
+    Response::ActSigned {
+        signature: acts.launcher.sign(&bytes),
+        certificate: None,
+        issued_at: None,
+    }
+}
+
+/// The `authority` and `assigner harness:launcher` lines for a trust file.
+fn act_trust_lines(state: &Arc<Mutex<DaemonState>>) -> Response {
+    let st = state.lock().unwrap();
+    let Some(acts) = &st.acts else {
+        return error_response("signed acts are off ([acts] enabled isn't true)");
+    };
+    Response::ActTrustLines {
+        lines: agent_sign::acts::trust_lines(
+            &st.identity.domain,
+            &st.ca.public_key_openssh(),
+            Some(&acts.launcher),
+        ),
+    }
 }
 
 /// Refuses a `LaunchSession` on `stream`, saying why, in the log too.
@@ -2760,6 +2962,7 @@ fn launch_session(
     stream: &mut UnixStream,
     state: &Arc<Mutex<DaemonState>>,
     agent: &str,
+    act_identity: Option<&str>,
     slot: &mut Option<ConnectionSlot>,
 ) {
     if cfg!(not(target_os = "linux")) {
@@ -2819,7 +3022,29 @@ fn launch_session(
         refuse_session(stream, "no agent name was given (--agent)".into());
         return;
     };
-    let (session, client_end) = match start_session(state, &slug, &name, own, None) {
+    // The act identity is decided here, by the launcher's request, and
+    // checked: only `agent:` names, and only when acts are on.
+    if let Some(identity) = act_identity {
+        if state.lock().unwrap().acts.is_none() {
+            refuse_session(
+                stream,
+                "--identity needs signed acts: [acts] enabled isn't true".into(),
+            );
+            return;
+        }
+        if let Err(why) = agent_sign::acts::check_agent_identity(identity) {
+            refuse_session(stream, why);
+            return;
+        }
+    }
+    let (session, client_end) = match start_session(
+        state,
+        &slug,
+        &name,
+        own,
+        None,
+        act_identity.map(str::to_string),
+    ) {
         Ok((session, Some(client_end))) => (session, client_end),
         Ok((session, None)) => {
             end_session(state, &session);
@@ -2833,8 +3058,14 @@ fn launch_session(
     };
     eprintln!(
         "[agent-signd] Launched session {} signs as {} (uid {own}, one account: isolated from \
-         other launched sessions, not from other processes of this account)",
-        session.id, session.identity.principal
+         other launched sessions, not from other processes of this account){}",
+        session.id,
+        session.identity.principal,
+        session
+            .act_identity
+            .as_deref()
+            .map(|i| format!(", and signs acts as {i}"))
+            .unwrap_or_default()
     );
     let answer = match serde_json::to_string(&Response::SessionStarted {
         principal: session.identity.principal.clone(),
@@ -2895,6 +3126,7 @@ fn start_session(
     name: &str,
     uid: u32,
     slot: Option<SlotBinding>,
+    act_identity: Option<String>,
 ) -> Result<(Arc<LiveSession>, Option<OwnedFd>), String> {
     let mut st = state.lock().unwrap();
     if let Some(binding) = &slot
@@ -2954,6 +3186,8 @@ fn start_session(
         slot,
         uid,
         ended: AtomicBool::new(false),
+        act_identity,
+        act_signer: Mutex::new(None),
     });
     st.launched.insert(session.identity.principal.clone());
     st.sessions.insert(session.id.clone(), Arc::clone(&session));
@@ -3025,6 +3259,8 @@ fn end_session(state: &Arc<Mutex<DaemonState>>, session: &LiveSession) {
     st.run_tokens
         .retain(|_, t| t.session.as_deref() != Some(session.id.as_str()));
     st.signers.forget(&session.identity.principal);
+    // An ended session signs no more acts: its key goes.
+    *session.act_signer.lock().unwrap() = None;
     // System mode: the leases the session obtained end with it (review
     // finding F4), so the next session on the same repository and branch,
     // in the same slot or another, starts with none and needs its own

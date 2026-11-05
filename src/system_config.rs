@@ -398,6 +398,8 @@ impl SystemConfig {
             approvals: ApprovalsConfig {
                 commitments_key: self.approvals.commitments_key.clone(),
             },
+            // Signed acts are not built for system mode: always off here.
+            acts: Default::default(),
         };
         config
             .validate_selected_security()
