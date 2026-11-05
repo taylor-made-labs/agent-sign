@@ -176,8 +176,8 @@ pub fn add_plain_ed25519(socket: &Path, key: &PrivateKey) {
         out.extend_from_slice(bytes);
     }
     let pair = key.key_data().ed25519().expect("an ed25519 key");
-    let mut secret = Zeroizing::new(pair.to_bytes().to_vec());
-    secret.extend_from_slice(pair.public.as_ref());
+    // `Ed25519Keypair::to_bytes` is already private || public (64 bytes), which is the form ssh-agent wants.
+    let secret = Zeroizing::new(pair.to_bytes().to_vec());
     let mut body = Zeroizing::new(vec![17u8]);
     put(&mut body, b"ssh-ed25519");
     put(&mut body, pair.public.as_ref());
