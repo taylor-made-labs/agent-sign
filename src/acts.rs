@@ -266,6 +266,10 @@ pub struct TrustFile {
     pub assigners: Vec<(String, [u8; 32])>,
     /// Revoked identities of any kind.
     pub revoked: Vec<String>,
+    /// Revoked single keys, as `SHA256:<base64>` fingerprints (the form
+    /// `ssh-keygen -l` prints), whoever they were listed for. An identity
+    /// with several keys (the launcher, after restarts) loses only these.
+    pub revoked_keys: Vec<String>,
 }
 
 impl TrustFile {
@@ -341,6 +345,17 @@ impl TrustFile {
                         trust.revoked.push(t[1].to_string());
                     }
                 }
+                "revoked-key" => {
+                    if t.len() != 2 || !fingerprint_ok(t[1]) {
+                        return Err(at(
+                            "expected `revoked-key SHA256:<fingerprint>` (as `ssh-keygen -l` prints it)"
+                                .into(),
+                        ));
+                    }
+                    if !trust.revoked_keys.iter().any(|r| r == t[1]) {
+                        trust.revoked_keys.push(t[1].to_string());
+                    }
+                }
                 other => return Err(at(format!("unknown word {other:?}"))),
             }
         }
@@ -351,6 +366,11 @@ impl TrustFile {
         self.revoked.iter().any(|r| r == identity)
     }
 
+    fn is_key_revoked(&self, key: &[u8; 32]) -> bool {
+        let fingerprint = key_fingerprint(key);
+        self.revoked_keys.contains(&fingerprint)
+    }
+
     /// The keys listed for an assigner identity.
     pub fn assigner_keys(&self, identity: &str) -> Vec<[u8; 32]> {
         self.assigners
@@ -359,6 +379,28 @@ impl TrustFile {
             .map(|(_, k)| *k)
             .collect()
     }
+}
+
+/// A key's fingerprint as `ssh-keygen -l` prints it: `SHA256:` and the
+/// unpadded base64 of the SHA-256 of the key's wire form. It names one key
+/// in a trust file (`revoked-key`) and on the launcher's trust line.
+pub fn key_fingerprint(key: &[u8; 32]) -> String {
+    let Ok(verifying) = VerifyingKey::from_bytes(key) else {
+        return String::new();
+    };
+    let digest = Sha256::digest(crate::crypto::ed25519_wire(&verifying));
+    format!(
+        "SHA256:{}",
+        base64::engine::general_purpose::STANDARD_NO_PAD.encode(digest)
+    )
+}
+
+fn fingerprint_ok(text: &str) -> bool {
+    text.strip_prefix("SHA256:").is_some_and(|b| {
+        b.len() == 43
+            && b.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '+' || c == '/')
+    })
 }
 
 fn claim(
@@ -390,15 +432,8 @@ pub fn load_trust(path: &Path) -> Result<(TrustFile, String), Verdict> {
             None,
         ));
     }
-    let bytes = match std::fs::File::open(path) {
+    let bytes = match open_private_regular(path, "the trust file") {
         Ok(f) => {
-            if !f.metadata().is_ok_and(|m| m.is_file()) {
-                return Err(Verdict::cannot_run(
-                    "error",
-                    "the trust file isn't a regular file".into(),
-                    None,
-                ));
-            }
             let mut v = Vec::new();
             f.take(MAX_TRUST_BYTES as u64 + 1)
                 .read_to_end(&mut v)
@@ -411,19 +446,15 @@ pub fn load_trust(path: &Path) -> Result<(TrustFile, String), Verdict> {
                 })?;
             v
         }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+        Err(OpenRefusal::Missing) => {
             return Err(Verdict::cannot_run(
                 "no_trust_file",
                 format!("there is no trust file at {}", path.display()),
                 None,
             ));
         }
-        Err(e) => {
-            return Err(Verdict::cannot_run(
-                "error",
-                format!("couldn't open the trust file ({e})"),
-                None,
-            ));
+        Err(OpenRefusal::Refused(why)) => {
+            return Err(Verdict::cannot_run("error", why, None));
         }
     };
     let digest = hex(&Sha256::digest(&bytes));
@@ -449,6 +480,56 @@ pub fn load_trust(path: &Path) -> Result<(TrustFile, String), Verdict> {
             Some(digest),
         )),
     }
+}
+
+/// Why [`open_private_regular`] gave no file.
+pub enum OpenRefusal {
+    /// There is nothing at the path.
+    Missing,
+    /// Something is there that must not be used, and why.
+    Refused(String),
+}
+
+/// Opens `path` (`what` names it in a refusal) for reading only if it is a
+/// regular file that is not a symbolic link and that no one but its owner
+/// can write (no group or world write bit). A trust file or a payload that
+/// another account, or a link someone swapped in, could change under the
+/// reader is not a file to sign or to trust. The final component is opened
+/// with `O_NOFOLLOW` and the checks are made on the opened descriptor, so
+/// nothing can be swapped between the check and the read.
+pub fn open_private_regular(path: &Path, what: &str) -> Result<std::fs::File, OpenRefusal> {
+    use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+    let file = match std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(OpenRefusal::Missing),
+        Err(e) if e.raw_os_error() == Some(libc::ELOOP) => {
+            return Err(OpenRefusal::Refused(format!(
+                "{what} {} is a symbolic link, which is refused (give the real file)",
+                path.display()
+            )));
+        }
+        Err(e) => {
+            return Err(OpenRefusal::Refused(format!("couldn't open {what} ({e})")));
+        }
+    };
+    let meta = file
+        .metadata()
+        .map_err(|e| OpenRefusal::Refused(format!("couldn't examine {what} ({e})")))?;
+    if !meta.is_file() {
+        return Err(OpenRefusal::Refused(format!("{what} isn't a regular file")));
+    }
+    if meta.mode() & 0o022 != 0 {
+        return Err(OpenRefusal::Refused(format!(
+            "{what} {} is writable by its group or by everyone (mode {:o}), which is refused: run `chmod go-w` on it",
+            path.display(),
+            meta.mode() & 0o7777
+        )));
+    }
+    Ok(file)
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -627,6 +708,15 @@ fn check_member(
             "the signature does not match these bytes".into(),
         ));
     }
+    if trust.is_key_revoked(&key) {
+        return Err((
+            "revoked",
+            format!(
+                "the signing key {} is revoked in the trust file",
+                key_fingerprint(&key)
+            ),
+        ));
+    }
     let Some(line) = &member.certificate.0 else {
         // An assigner: known by its key in the trust file, and by nothing else.
         return match trust.assigners.iter().find(|(_, k)| *k == key) {
@@ -778,12 +868,21 @@ pub fn check_payload_len(len: usize) -> Result<(), String> {
 /// when dropped. Whoever can ask the service's socket (in one-account mode,
 /// any process of the service's account outside a session) can have it sign:
 /// it vouches for the machine's launcher, not for a person.
-pub struct LauncherKey(SigningKey);
+pub struct LauncherKey(SigningKey, u64);
 
 impl LauncherKey {
     /// A new random key.
     pub fn generate() -> Self {
-        Self(SigningKey::generate(&mut OsRng))
+        let started = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        Self(SigningKey::generate(&mut OsRng), started)
+    }
+
+    /// The key's fingerprint ([`key_fingerprint`]): its own id on its trust
+    /// line, and what `revoked-key` names to revoke it alone.
+    pub fn fingerprint(&self) -> String {
+        key_fingerprint(&self.0.verifying_key().to_bytes())
     }
 
     /// The key as an OpenSSH public key line.
@@ -798,7 +897,11 @@ impl LauncherKey {
 }
 
 /// The lines `act trust-lines` prints for a service: its authority and, when
-/// it has one, the launcher's assigner key.
+/// it has one, the launcher's assigner key. The launcher's identity stays
+/// `harness:launcher` at every start (role-commitments' assigner policy
+/// names it); each start's key is told apart by its fingerprint, the last
+/// word of its line, so an old key can be revoked alone with `revoked-key`.
+/// A comment above the line marks it as the current one.
 pub fn trust_lines(
     domain: &str,
     authority_line: &str,
@@ -806,7 +909,16 @@ pub fn trust_lines(
 ) -> Vec<String> {
     let mut lines = vec![format!("authority {domain} {authority_line}")];
     if let Some(l) = launcher {
-        lines.push(format!("assigner {LAUNCHER_ASSIGNER} {}", l.public_line()));
+        let id = l.fingerprint();
+        lines.push(format!(
+            "# current launcher key (made when this service started, unix time {}); \
+             an older one is revoked alone with: revoked-key {id}",
+            l.1
+        ));
+        lines.push(format!(
+            "assigner {LAUNCHER_ASSIGNER} {} {id}",
+            l.public_line()
+        ));
     }
     lines
 }
@@ -891,6 +1003,28 @@ mod tests {
             signature: armored,
             certificate: CertField(cert),
         }
+    }
+
+    #[test]
+    fn a_launcher_key_has_its_own_fingerprint_on_its_line_and_revoked_key_takes_it() {
+        let (a, b) = (LauncherKey::generate(), LauncherKey::generate());
+        assert_ne!(a.fingerprint(), b.fingerprint());
+        assert!(fingerprint_ok(&a.fingerprint()));
+        let lines = trust_lines("agents.test", "ssh-ed25519 AAAA", Some(&a));
+        let line = lines.last().unwrap();
+        assert!(line.starts_with("assigner harness:launcher "), "{line}");
+        assert!(line.ends_with(&a.fingerprint()), "{line}");
+        assert!(lines[lines.len() - 2].contains("current"));
+        let text = format!(
+            "{TRUST_HEADER}\nassigner harness:launcher {}\nassigner harness:launcher {}\nrevoked-key {}\n",
+            a.public_line(),
+            b.public_line(),
+            a.fingerprint()
+        );
+        let trust = TrustFile::parse(&text).unwrap();
+        assert!(trust.is_key_revoked(&a.0.verifying_key().to_bytes()));
+        assert!(!trust.is_key_revoked(&b.0.verifying_key().to_bytes()));
+        assert!(TrustFile::parse(&format!("{TRUST_HEADER}\nrevoked-key nonsense\n")).is_err());
     }
 
     #[test]

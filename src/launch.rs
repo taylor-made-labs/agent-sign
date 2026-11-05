@@ -23,7 +23,22 @@
 //!   account's user services (systemd, D-Bus), which would run programs
 //!   outside the sandbox;
 //! - the caller's environment without any identity claim
-//!   ([`is_identity_claim`]), plus `AGENT_SIGN_CHANNEL_FD`.
+//!   ([`is_identity_claim`]) and without any ssh-agent or gpg-agent variable
+//!   ([`is_agent_variable`]), plus `AGENT_SIGN_CHANNEL_FD`;
+//! - no way to reach an agent that belongs to a person (fix round 1, F1: a
+//!   session once signed as Taylor through his ssh-agent). Four layers, each
+//!   enough against the one before it failing: no `SSH_AUTH_SOCK`; the
+//!   usual homes of agent sockets (`~/.ssh`, `~/.1password`, `~/.gnupg`)
+//!   hidden behind empty folders, as `/run/user/<uid>` is; a seccomp filter
+//!   ([`seccomp_filter`]) that refuses creating any Unix-domain socket (so
+//!   no path, abstract name or custom location can be connected to; the
+//!   session's own channel is a descriptor it already has and needs no new
+//!   socket) and `io_uring` (which can create sockets past the filter); and
+//!   no inherited descriptor but the channel (everything else the launcher
+//!   was given is closed on exec). The cost, said plainly: a program in a
+//!   session can't talk over Unix sockets of its own (a local database
+//!   socket, a language server on a socket); pipes, TCP and `socketpair`
+//!   work;
 //!
 //! The launcher closes its own copy of the channel once the program has it,
 //! makes itself non-dumpable, passes standard input, output, error and the
@@ -118,14 +133,97 @@ pub fn is_identity_claim(name: &str) -> bool {
         || name == crate::ssh_sign::EVENT_TOKEN_VAR
 }
 
-/// `vars` without the identity claims ([`is_identity_claim`]).
+/// Whether the variable `name` points at an agent that holds someone's
+/// keys: an ssh-agent or a gpg-agent. A session never gets one.
+pub fn is_agent_variable(name: &str) -> bool {
+    matches!(name, "SSH_AUTH_SOCK" | "SSH_AGENT_PID" | "GPG_AGENT_INFO")
+}
+
+/// `vars` without the identity claims ([`is_identity_claim`]) and the agent
+/// variables ([`is_agent_variable`]).
 pub fn scrubbed_env(
     vars: impl IntoIterator<Item = (OsString, OsString)>,
 ) -> Vec<(OsString, OsString)> {
     vars.into_iter()
-        .filter(|(k, _)| k.to_str().is_some_and(|k| !is_identity_claim(k)))
+        .filter(|(k, _)| {
+            k.to_str()
+                .is_some_and(|k| !is_identity_claim(k) && !is_agent_variable(k))
+        })
         .collect()
 }
+
+/// One classic-BPF instruction (`struct sock_filter`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BpfInsn {
+    code: u16,
+    jt: u8,
+    jf: u8,
+    k: u32,
+}
+
+/// The seccomp filter every session runs under (the module documentation,
+/// third layer): `socket(AF_UNIX, ...)` fails with `EAFNOSUPPORT`, the
+/// `io_uring` calls and the x32 system-call range fail with `EPERM`, a call
+/// from another architecture than this build's fails with `EPERM`; all else
+/// is allowed. `socketpair` is allowed: it makes two already-connected ends
+/// and connects to nothing outside. None of this reads a path, which a
+/// filter can't safely do. Empty on an architecture this isn't written for,
+/// and the launcher then refuses to start a session.
+#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+pub fn seccomp_filter() -> Vec<BpfInsn> {
+    #[cfg(target_arch = "x86_64")]
+    const ARCH: u32 = 0xC000_003E; // AUDIT_ARCH_X86_64
+    #[cfg(target_arch = "aarch64")]
+    const ARCH: u32 = 0xC000_00B7; // AUDIT_ARCH_AARCH64
+    const LD_W_ABS: u16 = 0x20;
+    const JEQ_K: u16 = 0x15;
+    const JGE_K: u16 = 0x35;
+    const RET_K: u16 = 0x06;
+    const ALLOW: u32 = 0x7fff_0000;
+    const ERRNO: u32 = 0x0005_0000;
+    let i = |code, jt, jf, k| BpfInsn { code, jt, jf, k };
+    vec![
+        i(LD_W_ABS, 0, 0, 4),                               // 0 architecture
+        i(JEQ_K, 1, 0, ARCH),                               // 1
+        i(RET_K, 0, 0, ERRNO | libc::EPERM as u32),         // 2 another architecture
+        i(LD_W_ABS, 0, 0, 0),                               // 3 system call number
+        i(JGE_K, 5, 0, 0x4000_0000),                        // 4 x32 range -> 10
+        i(JEQ_K, 4, 0, libc::SYS_io_uring_setup as u32),    // 5 -> 10
+        i(JEQ_K, 3, 0, libc::SYS_io_uring_enter as u32),    // 6 -> 10
+        i(JEQ_K, 2, 0, libc::SYS_io_uring_register as u32), // 7 -> 10
+        i(JEQ_K, 2, 0, libc::SYS_socket as u32),            // 8 -> 11
+        i(RET_K, 0, 0, ALLOW),                              // 9
+        i(RET_K, 0, 0, ERRNO | libc::EPERM as u32),         // 10 refused
+        i(LD_W_ABS, 0, 0, 16),                              // 11 socket's domain
+        i(JEQ_K, 1, 0, libc::AF_UNIX as u32),               // 12 -> 14
+        i(RET_K, 0, 0, ALLOW),                              // 13
+        i(RET_K, 0, 0, ERRNO | libc::EAFNOSUPPORT as u32),  // 14
+    ]
+}
+
+/// See the other [`seccomp_filter`]: no filter is written for this
+/// architecture.
+#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+pub fn seccomp_filter() -> Vec<BpfInsn> {
+    Vec::new()
+}
+
+/// The filter as the bytes bubblewrap's `--seccomp` reads (the kernel's
+/// `struct sock_filter` array, native byte order).
+pub fn seccomp_bytes(filter: &[BpfInsn]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(filter.len() * 8);
+    for f in filter {
+        out.extend_from_slice(&f.code.to_ne_bytes());
+        out.push(f.jt);
+        out.push(f.jf);
+        out.extend_from_slice(&f.k.to_ne_bytes());
+    }
+    out
+}
+
+/// The places agent sockets and agent-held keys usually live inside a home
+/// folder: hidden from a session behind empty folders.
+pub const AGENT_HOMES: [&str; 3] = [".ssh", ".1password", ".gnupg"];
 
 /// What the sandbox gives a session (see the module documentation).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -150,7 +248,23 @@ pub struct Sandbox {
 /// private `/dev`, `/proc` and `/tmp`, then the writable working copy, then
 /// what stays read-only inside it.
 pub fn bwrap_args(sandbox: &Sandbox, program: &OsStr, args: &[OsString]) -> Vec<OsString> {
+    bwrap_args_with(sandbox, None, program, args)
+}
+
+/// [`bwrap_args`], and when `seccomp_fd` is given, bubblewrap loads the
+/// filter read from that descriptor ([`seccomp_filter`]) before it starts
+/// the program.
+pub fn bwrap_args_with(
+    sandbox: &Sandbox,
+    seccomp_fd: Option<i32>,
+    program: &OsStr,
+    args: &[OsString],
+) -> Vec<OsString> {
     let mut out: Vec<OsString> = Vec::new();
+    if let Some(fd) = seccomp_fd {
+        out.push("--seccomp".into());
+        out.push(fd.to_string().into());
+    }
     let mut push = |items: &[&OsStr]| out.extend(items.iter().map(|s| s.to_os_string()));
     push(&[
         OsStr::new("--die-with-parent"),
@@ -409,6 +523,54 @@ mod linux {
         }
     }
 
+    /// Marks every descriptor from 3 up that this process has open as
+    /// close-on-exec, so nothing the caller inherited reaches a program
+    /// started from here. (Standard input, output and error are the
+    /// session's own and pass through.)
+    fn close_inherited_on_exec() {
+        let Ok(dir) = std::fs::read_dir("/proc/self/fd") else {
+            return;
+        };
+        let fds: Vec<i32> = dir
+            .flatten()
+            .filter_map(|e| e.file_name().to_str().and_then(|n| n.parse().ok()))
+            .filter(|fd| *fd >= 3)
+            .collect();
+        for fd in fds {
+            // SAFETY: fcntl on a number that may or may not be open (the
+            // directory's own descriptor is gone by now); failure is fine.
+            unsafe {
+                let flags = libc::fcntl(fd, libc::F_GETFD);
+                if flags >= 0 {
+                    libc::fcntl(fd, libc::F_SETFD, flags | libc::FD_CLOEXEC);
+                }
+            }
+        }
+    }
+
+    /// A pipe already holding `bytes`, closed for writing, whose read end
+    /// is inheritable: bubblewrap reads its seccomp program from it.
+    fn filter_pipe(bytes: &[u8]) -> std::io::Result<std::os::fd::OwnedFd> {
+        use std::os::fd::FromRawFd;
+        let mut fds = [0i32; 2];
+        // SAFETY: pipe2 writes two descriptors into the array.
+        if unsafe { libc::pipe2(fds.as_mut_ptr(), libc::O_CLOEXEC) } != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        // SAFETY: both are fresh descriptors this function owns.
+        let (read, write) = unsafe {
+            (
+                std::os::fd::OwnedFd::from_raw_fd(fds[0]),
+                std::fs::File::from_raw_fd(fds[1]),
+            )
+        };
+        let mut write = write;
+        write.write_all(bytes)?;
+        drop(write);
+        crate::session::clear_cloexec(read.as_raw_fd())?;
+        Ok(read)
+    }
+
     pub(super) fn run(
         agent: &str,
         identity: Option<&str>,
@@ -422,6 +584,10 @@ mod linux {
         unsafe {
             libc::prctl(libc::PR_SET_DUMPABLE, 0, 0, 0, 0);
         }
+        // Whatever descriptors the caller left open (an ssh-agent
+        // connection, say) stay out of the session: only the channel and
+        // the sandbox's own filter, both opened below, are passed on.
+        close_inherited_on_exec();
         if let Some(path) = system_config() {
             return Err(system_mode_refusal(&path));
         }
@@ -457,10 +623,16 @@ mod linux {
         keep_read_only.retain(|p| p.exists());
         // SAFETY: getuid takes no arguments and can't fail.
         let uid = unsafe { libc::getuid() };
-        let masked: Vec<PathBuf> = [PathBuf::from(format!("/run/user/{uid}"))]
+        let mut masked: Vec<PathBuf> = [PathBuf::from(format!("/run/user/{uid}"))]
             .into_iter()
             .filter(|p| p.is_dir())
             .collect();
+        for name in AGENT_HOMES {
+            let p = home.join(name);
+            if p.is_dir() && !writable.iter().any(|w| w.starts_with(&p)) {
+                masked.push(p);
+            }
+        }
         let interactive = std::io::stdin().is_terminal();
         let sandbox = Sandbox {
             cwd: cwd.clone(),
@@ -493,8 +665,23 @@ mod linux {
                 libc::signal(sig, forward as *const () as libc::sighandler_t);
             }
         }
+        let filter = seccomp_filter();
+        if filter.is_empty() {
+            return Err(
+                "no seccomp filter is written for this architecture, and a session never runs \
+                 without one. Nothing was run"
+                    .into(),
+            );
+        }
+        let filter_fd = filter_pipe(&seccomp_bytes(&filter))
+            .map_err(|e| format!("couldn't hand the sandbox its filter ({e})"))?;
         let mut child = Command::new(&bwrap)
-            .args(bwrap_args(&sandbox, program, args))
+            .args(bwrap_args_with(
+                &sandbox,
+                Some(filter_fd.as_raw_fd()),
+                program,
+                args,
+            ))
             .env_clear()
             .envs(env)
             .spawn()
@@ -502,6 +689,7 @@ mod linux {
         CHILD.store(child.id() as i32, Ordering::SeqCst);
         // The session has its copy; this one closes now.
         drop(channel);
+        drop(filter_fd);
         let status = child
             .wait()
             .map_err(|e| format!("lost the session's program ({e})"))?;
@@ -547,6 +735,32 @@ mod tests {
         ] {
             assert!(!is_identity_claim(kept), "{kept}");
         }
+    }
+
+    #[test]
+    fn agent_variables_are_stripped() {
+        for v in ["SSH_AUTH_SOCK", "SSH_AGENT_PID", "GPG_AGENT_INFO"] {
+            assert!(is_agent_variable(v), "{v}");
+        }
+        let kept = scrubbed_env([
+            ("SSH_AUTH_SOCK".into(), "/x".into()),
+            ("HOME".into(), "/h".into()),
+        ]);
+        assert_eq!(kept, vec![(OsString::from("HOME"), OsString::from("/h"))]);
+    }
+
+    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[test]
+    fn the_seccomp_filter_is_well_formed_and_every_jump_lands_inside_it() {
+        let f = seccomp_filter();
+        assert_eq!(seccomp_bytes(&f).len(), f.len() * 8);
+        for (i, insn) in f.iter().enumerate() {
+            if insn.code & 0x07 == 0x05 {
+                assert!(i + 1 + (insn.jt as usize) < f.len(), "jt at {i}");
+                assert!(i + 1 + (insn.jf as usize) < f.len(), "jf at {i}");
+            }
+        }
+        assert_eq!(f.last().map(|i| i.code), Some(0x06));
     }
 
     #[test]

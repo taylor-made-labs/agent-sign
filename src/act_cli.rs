@@ -16,7 +16,11 @@
 //!
 //! A session can't pick its identity or sign as an assigner: no option
 //! exists for it, `--assigner` is refused when the process is a launched
-//! session, and the service refuses it again whatever the client says.
+//! session ([`session_evidence`]: judged from the process, its descriptors
+//! and its namespaces, never from the environment alone, and before any
+//! ssh-agent is touched), the sandbox gives a session no way to reach an
+//! agent anyway ([`crate::launch`]), and the service refuses the launcher
+//! again whatever the client says.
 
 use std::io::Read;
 use std::path::Path;
@@ -97,10 +101,13 @@ fn payload(file: Option<&str>) -> Result<Vec<u8>, String> {
             if !Path::new(f).is_absolute() {
                 return Err("--payload-file must be an absolute path".into());
             }
-            let file = std::fs::File::open(f).map_err(|e| format!("couldn't open {f} ({e})"))?;
-            if !file.metadata().is_ok_and(|m| m.is_file()) {
-                return Err(format!("{f} isn't a regular file"));
-            }
+            let file = match acts::open_private_regular(Path::new(f), "the payload file") {
+                Ok(file) => file,
+                Err(acts::OpenRefusal::Missing) => {
+                    return Err(format!("couldn't open {f} (no such file)"));
+                }
+                Err(acts::OpenRefusal::Refused(why)) => return Err(why),
+            };
             read_capped(file, acts::MAX_PAYLOAD)
         }
         None => read_capped(std::io::stdin().lock(), acts::MAX_PAYLOAD),
@@ -133,6 +140,54 @@ fn in_session() -> bool {
     crate::session::Channel::from_env().is_some()
 }
 
+/// Why this process looks like part of a launched session, if it does. Any
+/// one sign is enough, and none rests on an environment variable alone
+/// (a session can drop its environment):
+/// - it holds a session channel, under whatever variable or none: a
+///   sequenced-packet Unix socket to the service's account (every
+///   descriptor from 3 up is looked at);
+/// - it runs in a user namespace of its own (bubblewrap makes one for each
+///   session, and a process outside the initial namespace is not one that
+///   signs for a person);
+/// - the first process of its PID namespace is `bwrap`.
+///
+/// Fails closed in the cases it can't tell. Signing as a person is for a
+/// process on Taylor's own device, in the initial namespaces.
+pub fn session_evidence() -> Option<String> {
+    if in_session() {
+        return Some("it holds a session channel".into());
+    }
+    if let Ok(dir) = std::fs::read_dir("/proc/self/fd") {
+        for entry in dir.flatten() {
+            let fd = entry
+                .file_name()
+                .to_str()
+                .and_then(|n| n.parse::<i32>().ok());
+            if let Some(fd) = fd
+                && fd >= 3
+                && crate::session::Channel::check(fd).is_ok()
+            {
+                return Some(format!("descriptor {fd} is a session channel"));
+            }
+        }
+    }
+    match std::fs::read_to_string("/proc/self/uid_map") {
+        Ok(map) => {
+            if map.split_whitespace().collect::<Vec<_>>() != ["0", "0", "4294967295"] {
+                return Some("it runs in a user namespace of its own".into());
+            }
+        }
+        Err(_) if cfg!(target_os = "linux") => {
+            return Some("it can't tell which user namespace it is in".into());
+        }
+        Err(_) => {}
+    }
+    if std::fs::read_to_string("/proc/1/comm").is_ok_and(|c| c.trim() == "bwrap") {
+        return Some("the first process of its PID namespace is bubblewrap".into());
+    }
+    None
+}
+
 fn sign(args: &[String]) -> ExitCode {
     let Ok(opts) = options(args, &["--payload-file", "--assigner", "--trust-file"]) else {
         return usage();
@@ -144,10 +199,10 @@ fn sign(args: &[String]) -> ExitCode {
         }
         return sign_as_session(file);
     };
-    if in_session() {
-        return refuse(
-            "a launched session can't sign as an assigner (it signs only as the identity it was launched with)",
-        );
+    if let Some(why) = session_evidence() {
+        return refuse(format!(
+            "a launched session can't sign as an assigner (it signs only as the identity it was launched with): {why}"
+        ));
     }
     if assigner == acts::LAUNCHER_ASSIGNER {
         if opt(&opts, "--trust-file").is_some() {

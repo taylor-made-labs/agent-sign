@@ -687,9 +687,25 @@ no_trust_file, error`.
 
 **Trust file** (`agent-sign/acts-trust/1`; `#` comments and blank lines are ignored). After the header line: `authority
 <domain> <public key line>` (a certificate authority for agents' sessions), `assigner <person:..|harness:..> <public key
-line>`, and `revoked <identity>`. A file with another header, an unknown word, a malformed line, one key for two
-identities, or a key listed under two kinds is refused whole. `agent-sign act trust-lines` prints the running service's
-`authority` and `assigner harness:launcher` lines; add Taylor's key and any `revoked` lines by hand.
+line>`, `revoked <identity>`, and `revoked-key SHA256:<fingerprint>` (one key alone, named as `ssh-keygen -l` prints
+it). A file with another header, an unknown word, a malformed line, one key for two identities, or a key listed under
+two kinds is refused whole. `act verify` and `act sign` also refuse a trust file or a payload file that is a symbolic
+link or that is writable by its group or by everyone (verify: exit 2, reason `error`, with the cause; sign: non-zero,
+nothing printed); `chmod go-w` it. `agent-sign act trust-lines` prints the running service's `authority` and
+`assigner harness:launcher` lines; add Taylor's key and any `revoked` lines by hand.
+
+**The launcher's identity never changes, its key does.** The launcher's key is new at each start, and its identity stays
+exactly `harness:launcher` (role-commitments' assigner policy names that identity, so it can't change on every restart).
+Each key has its own id on its trust line, its fingerprint as the last word, and a comment above the line marks the
+current one:
+
+```
+# current launcher key (made when this service started, unix time 1793800000); an older one is revoked alone with: revoked-key SHA256:...
+assigner harness:launcher ssh-ed25519 AAAA... SHA256:...
+```
+
+Keep the old lines in the trust file so old acts still verify, and add `revoked-key <fingerprint>` for any old key you
+want to stop trusting: the current key keeps working.
 
 **Credential**: `agent-sign act credential` (inside an identified session) prints a fresh signature over the time, in
 the namespace `agent-sign/credential/1`, which is how a session shows a consumer who it is; `agent-sign act
@@ -711,8 +727,15 @@ stop verifying against it.
 
 **What this does not give you.** In one-account mode, any process of the service's account outside a session can have the
 launcher sign (the same limit as launching a session): the launcher's signature vouches for the machine's launcher, not
-for a person. Taylor's key is as safe as his ssh-agent; a session that is handed his agent's socket is not stopped by
-agent-sign from using it, only from asking agent-sign to. System mode takes no `--identity` and has no acts yet: the
+for a person. Taylor's key stays in his own ssh-agent, and a launched session can't reach it
+(fix round 1, F1): the session has no `SSH_AUTH_SOCK`, `SSH_AGENT_PID` or `GPG_AGENT_INFO`; `~/.ssh`, `~/.1password`,
+`~/.gnupg` and `/run/user/<uid>` are hidden behind empty folders; a seccomp filter refuses creating any Unix-domain
+socket (so no path, abstract name or custom location can be connected to), and `io_uring`; and only the session's channel
+is passed on as a descriptor. `act sign --assigner ...` also refuses to run in a session, judged from the process (a
+session channel held under any name, a user namespace of its own, bubblewrap as the first process), not from the
+environment, and before any agent is touched. The cost: a program in a session can't use Unix sockets of its own
+(`socketpair`, pipes and TCP work). One account is still one account: a process outside any session can reach Taylor's
+agent, as it always could. System mode takes no `--identity` and has no acts yet: the
 launcher, not the caller, must decide a session's identity there, and a root-owned trust file with the launcher's key in
 OpenBao is the sitting that follows (the three `system_*` tests, which are `#[ignore]`d until then).
 
