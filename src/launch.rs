@@ -588,6 +588,13 @@ mod linux {
         // connection, say) stay out of the session: only the channel and
         // the sandbox's own filter, both opened below, are passed on.
         close_inherited_on_exec();
+        if crate::act_cli::session_evidence(false).is_some() {
+            return Err(
+                "a launched session can't launch another session: only a process outside any \
+                 sandbox does. Nothing was run"
+                    .into(),
+            );
+        }
         if let Some(path) = system_config() {
             return Err(system_mode_refusal(&path));
         }

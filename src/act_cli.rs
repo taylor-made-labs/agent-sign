@@ -146,14 +146,16 @@ fn in_session() -> bool {
 /// - it holds a session channel, under whatever variable or none: a
 ///   sequenced-packet Unix socket to the service's account (every
 ///   descriptor from 3 up is looked at);
-/// - it runs in a user namespace of its own (bubblewrap makes one for each
-///   session, and a process outside the initial namespace is not one that
-///   signs for a person);
-/// - the first process of its PID namespace is `bwrap`.
+/// - the first process of its PID namespace is `bwrap`;
+/// - when `strict` (signing as a person): it runs in a user namespace of its
+///   own (bubblewrap makes one for each session, and a process outside the
+///   initial namespace is not one that signs for a person).
 ///
-/// Fails closed in the cases it can't tell. Signing as a person is for a
-/// process on Taylor's own device, in the initial namespaces.
-pub fn session_evidence() -> Option<String> {
+/// Fails closed, when `strict`, in the cases it can't tell. Signing as a
+/// person is for a process on Taylor's own device, in the initial
+/// namespaces. The launcher asks without `strict`, so a launch from inside
+/// some other container still works.
+pub fn session_evidence(strict: bool) -> Option<String> {
     if in_session() {
         return Some("it holds a session channel".into());
     }
@@ -171,6 +173,16 @@ pub fn session_evidence() -> Option<String> {
             }
         }
     }
+    if strict && let Some(why) = user_namespace_evidence() {
+        return Some(why);
+    }
+    if std::fs::read_to_string("/proc/1/comm").is_ok_and(|c| c.trim() == "bwrap") {
+        return Some("the first process of its PID namespace is bubblewrap".into());
+    }
+    None
+}
+
+fn user_namespace_evidence() -> Option<String> {
     match std::fs::read_to_string("/proc/self/uid_map") {
         Ok(map) => {
             if map.split_whitespace().collect::<Vec<_>>() != ["0", "0", "4294967295"] {
@@ -181,9 +193,6 @@ pub fn session_evidence() -> Option<String> {
             return Some("it can't tell which user namespace it is in".into());
         }
         Err(_) => {}
-    }
-    if std::fs::read_to_string("/proc/1/comm").is_ok_and(|c| c.trim() == "bwrap") {
-        return Some("the first process of its PID namespace is bubblewrap".into());
     }
     None
 }
@@ -199,7 +208,7 @@ fn sign(args: &[String]) -> ExitCode {
         }
         return sign_as_session(file);
     };
-    if let Some(why) = session_evidence() {
+    if let Some(why) = session_evidence(true) {
         return refuse(format!(
             "a launched session can't sign as an assigner (it signs only as the identity it was launched with): {why}"
         ));
