@@ -226,10 +226,40 @@ pub fn working_copy_refusal(writable: &[PathBuf], home: &Path, state: &Path) -> 
 /// account of its own ([`crate::launch_client`]).
 #[cfg(target_os = "linux")]
 pub fn run(agent: &str, program: &OsStr, args: &[OsString]) -> ExitCode {
+    run_with_identity(agent, None, program, args)
+}
+
+/// [`run`], and when `identity` is given (`agent:<name>`), the session also
+/// signs acts as that identity ([`crate::acts`]). The identity is checked
+/// here before anything starts, and again by the service. System mode takes
+/// none: there the launcher, not the caller, would have to decide it, and
+/// that is not built.
+#[cfg(target_os = "linux")]
+pub fn run_with_identity(
+    agent: &str,
+    identity: Option<&str>,
+    program: &OsStr,
+    args: &[OsString],
+) -> ExitCode {
+    if let Some(identity) = identity
+        && let Err(why) = crate::acts::check_agent_identity(identity)
+    {
+        eprintln!("agent-sign launch: {why}; nothing was run");
+        return ExitCode::from(1);
+    }
     if let Some(path) = system_config() {
+        if identity.is_some() {
+            eprintln!(
+                "agent-sign launch: --identity is not available in system mode ({} exists): the \
+                 launcher, not the caller, must decide a session's act identity, and that is not \
+                 built; nothing was run",
+                path.display()
+            );
+            return ExitCode::from(1);
+        }
         return crate::launch_client::run(&path, agent, program, args);
     }
-    match linux::run(agent, program, args) {
+    match linux::run(agent, identity, program, args) {
         Ok(code) => code,
         Err(why) => {
             eprintln!("agent-sign launch: {why}");
@@ -241,7 +271,18 @@ pub fn run(agent: &str, program: &OsStr, args: &[OsString]) -> ExitCode {
 /// Off Linux there are no PID namespaces, so no session could be kept apart
 /// from other processes: nothing is run, and nothing pretends otherwise.
 #[cfg(not(target_os = "linux"))]
-pub fn run(_agent: &str, _program: &OsStr, _args: &[OsString]) -> ExitCode {
+pub fn run(agent: &str, program: &OsStr, args: &[OsString]) -> ExitCode {
+    run_with_identity(agent, None, program, args)
+}
+
+/// See the Linux [`run_with_identity`]: off Linux nothing is run.
+#[cfg(not(target_os = "linux"))]
+pub fn run_with_identity(
+    _agent: &str,
+    _identity: Option<&str>,
+    _program: &OsStr,
+    _args: &[OsString],
+) -> ExitCode {
     eprintln!(
         "agent-sign launch: no attested session on this system: it has no PID namespaces, so \
          agent-sign can't keep a launched session apart from other processes. Nothing was run. \
@@ -331,6 +372,7 @@ mod linux {
     /// which must stay open for the session's life.
     fn start_session(
         agent: &str,
+        identity: Option<&str>,
     ) -> Result<(String, std::os::fd::OwnedFd, std::os::unix::net::UnixStream), String> {
         let socket = crate::protocol::client_socket_path();
         let mut reg = crate::protocol::connect_waiting(&socket, crate::protocol::connect_wait())
@@ -340,9 +382,15 @@ mod linux {
                     socket.display()
                 )
             })?;
-        let req = serde_json::to_string(&Request::LaunchSession {
-            agent: agent.to_string(),
-        })
+        let req = match identity {
+            Some(identity) => serde_json::to_string(&Request::LaunchActSession {
+                agent: agent.to_string(),
+                identity: identity.to_string(),
+            }),
+            None => serde_json::to_string(&Request::LaunchSession {
+                agent: agent.to_string(),
+            }),
+        }
         .map_err(|e| e.to_string())?;
         reg.write_all(format!("{req}\n").as_bytes())
             .map_err(|e| format!("couldn't ask the service for a session ({e})"))?;
@@ -361,7 +409,12 @@ mod linux {
         }
     }
 
-    pub(super) fn run(agent: &str, program: &OsStr, args: &[OsString]) -> Result<ExitCode, String> {
+    pub(super) fn run(
+        agent: &str,
+        identity: Option<&str>,
+        program: &OsStr,
+        args: &[OsString],
+    ) -> Result<ExitCode, String> {
         // Before anything is held: nothing of this account outside a session
         // may take the registration or the channel out of this process.
         // SAFETY: prctl with these arguments only changes this process's
@@ -417,7 +470,7 @@ mod linux {
             new_session: !interactive,
         };
 
-        let (principal, channel, _registration) = start_session(agent)?;
+        let (principal, channel, _registration) = start_session(agent, identity)?;
         crate::session::clear_cloexec(channel.as_raw_fd())
             .map_err(|e| format!("couldn't hand the session its channel ({e})"))?;
         let mut env = scrubbed_env(std::env::vars_os());

@@ -43,6 +43,47 @@ pub struct Config {
     pub identity: IdentityConfig,
     #[serde(default)]
     pub approvals: ApprovalsConfig,
+    #[serde(default)]
+    pub acts: ActsConfig,
+}
+
+/// `[acts]`: signed acts ([`crate::acts`]). Off by default; read only from
+/// the user's own file (a repository's `.agent-sign.toml` can't turn it on),
+/// since it decides whether the service signs as the launcher at all.
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct ActsConfig {
+    /// Whether the service signs acts: launches with `--identity`, signs for
+    /// those sessions, and as the launcher.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Where the launcher's assigner key lives: `"memory"` (made anew at
+    /// each start, never written anywhere; the default when acts are on) or
+    /// `"openbao"` (system mode; not built in this version, so the service
+    /// refuses to start with it rather than quietly use another home). No
+    /// key file setting exists, and any other value stops the service.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub launcher_assigner: Option<String>,
+}
+
+impl ActsConfig {
+    /// Whether these settings read: a `launcher_assigner` needs
+    /// `enabled = true` and must be `memory` or `openbao`.
+    pub fn check(&self) -> Result<(), String> {
+        match (self.enabled, self.launcher_assigner.as_deref()) {
+            (false, Some(_)) => {
+                Err("[acts] launcher_assigner is set, but [acts] enabled isn't true".to_string())
+            }
+            (true, Some("memory" | "openbao")) | (_, None) => Ok(()),
+            (true, Some(other)) => Err(format!(
+                "[acts] launcher_assigner = {other:?} is not a place agent-sign keeps a key: use \"memory\" or \"openbao\" (there is no key file setting)"
+            )),
+        }
+    }
+
+    /// The launcher key's home when acts are on: the setting, or `memory`.
+    pub fn launcher_home(&self) -> &str {
+        self.launcher_assigner.as_deref().unwrap_or("memory")
+    }
 }
 
 /// `[approvals]`: the suite's model layer's way to have a commit signed
@@ -685,7 +726,11 @@ const RETIRED_KEYS: &[(&str, &str)] = &[("security", "auto_revoke_on_branch_dele
 
 /// Keys [`Config`] reads that its defaults leave out (an unset `Option`
 /// isn't serialized), by table, so [`known_keys`] still knows them.
-const OPTIONAL_KEYS: &[(&str, &str)] = &[("identity", "machine"), ("approvals", "commitments_key")];
+const OPTIONAL_KEYS: &[(&str, &str)] = &[
+    ("identity", "machine"),
+    ("approvals", "commitments_key"),
+    ("acts", "launcher_assigner"),
+];
 
 /// Every table and key [`Config`] reads, from its own defaults (each field
 /// serializes, so none is missed), plus [`RETIRED_KEYS`] and
@@ -861,6 +906,7 @@ impl Config {
         config.validate_selected_security()?;
         config.identity.check_against(&config.human)?;
         config.approvals.check(&config.identity)?;
+        config.acts.check()?;
         Ok(config)
     }
 
@@ -1115,6 +1161,7 @@ impl Config {
         config.validate_selected_security()?;
         config.identity.check_against(&config.human)?;
         config.approvals.check(&config.identity)?;
+        config.acts.check()?;
         Ok(config)
     }
 }

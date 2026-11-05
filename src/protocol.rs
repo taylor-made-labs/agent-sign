@@ -57,6 +57,17 @@ pub fn wide_leases_note(leases: &[LeaseInfo]) -> Option<String> {
     ))
 }
 
+/// What a launched session asks to have signed ([`Request::SignAct`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ActKind {
+    /// The exact bytes the request carries, in the act namespace.
+    Act,
+    /// A credential the service itself makes: it stamps the time and
+    /// builds the bytes, so a session can't pick what is signed in the
+    /// credential namespace. The request's payload is ignored.
+    Credential,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", content = "payload")]
 pub enum Request {
@@ -156,6 +167,31 @@ pub enum Request {
         unit: String,
         agent: String,
     },
+    /// Like [`Request::LaunchSession`], and the session also signs acts as
+    /// `identity` (`agent:<name>`, from `agent-sign launch --identity`;
+    /// [`crate::acts`]). Refused unless `[acts] enabled`. A separate
+    /// request, so older programs and their request shapes are unchanged.
+    LaunchActSession {
+        agent: String,
+        identity: String,
+    },
+    /// A launched session's signature over `payload_b64` (an act) or over
+    /// its own fresh credential (`kind`), as the identity its launcher
+    /// gave it. Taken only on a session's channel; the identity is the
+    /// session's, never the request's.
+    SignAct {
+        payload_b64: String,
+        kind: ActKind,
+    },
+    /// The launcher signs `payload_b64` as an assigner
+    /// (`harness:launcher`). Taken only from a process of the service's own
+    /// account outside any session.
+    SignActAsLauncher {
+        payload_b64: String,
+    },
+    /// The service's `authority` and `assigner harness:launcher` trust
+    /// lines (`agent-sign act trust-lines`). Not taken from a session.
+    ActTrustLines,
     /// Who this launched session is: answered [`Response::SessionIdentity`]
     /// only to a launched session (a stream over its channel in one-account
     /// mode; a process of its slot account in its unit in system mode).
@@ -232,6 +268,18 @@ pub enum Response {
     /// in on.
     SessionIdentity {
         identity: AgentIdentity,
+    },
+    /// An act or credential signature: the armored SSHSIG, the signer's
+    /// certificate line (none for an assigner), and for a credential the
+    /// time the service stamped.
+    ActSigned {
+        signature: String,
+        certificate: Option<String>,
+        issued_at: Option<u64>,
+    },
+    /// The service's trust lines for acts.
+    ActTrustLines {
+        lines: Vec<String>,
     },
     Success,
     Error {

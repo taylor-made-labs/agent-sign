@@ -17,6 +17,8 @@ compile_error!(
 );
 
 pub mod accounts;
+pub mod act_cli;
+pub mod acts;
 pub mod agents_ca;
 pub mod approval;
 pub mod attestation;
