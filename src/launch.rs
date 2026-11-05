@@ -167,9 +167,12 @@ pub struct BpfInsn {
 /// from another architecture than this build's fails with `EPERM`; all else
 /// is allowed. `socketpair` is allowed: it makes two already-connected ends
 /// and connects to nothing outside. None of this reads a path, which a
-/// filter can't safely do. Empty on an architecture this isn't written for,
+/// filter can't safely do. Empty off Linux and on an architecture this isn't written for,
 /// and the launcher then refuses to start a session.
-#[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+#[cfg(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+))]
 pub fn seccomp_filter() -> Vec<BpfInsn> {
     #[cfg(target_arch = "x86_64")]
     const ARCH: u32 = 0xC000_003E; // AUDIT_ARCH_X86_64
@@ -203,7 +206,10 @@ pub fn seccomp_filter() -> Vec<BpfInsn> {
 
 /// See the other [`seccomp_filter`]: no filter is written for this
 /// architecture.
-#[cfg(not(any(target_arch = "x86_64", target_arch = "aarch64")))]
+#[cfg(not(all(
+    target_os = "linux",
+    any(target_arch = "x86_64", target_arch = "aarch64")
+)))]
 pub fn seccomp_filter() -> Vec<BpfInsn> {
     Vec::new()
 }
@@ -756,7 +762,10 @@ mod tests {
         assert_eq!(kept, vec![(OsString::from("HOME"), OsString::from("/h"))]);
     }
 
-    #[cfg(any(target_arch = "x86_64", target_arch = "aarch64"))]
+    #[cfg(all(
+        target_os = "linux",
+        any(target_arch = "x86_64", target_arch = "aarch64")
+    ))]
     #[test]
     fn the_seccomp_filter_is_well_formed_and_every_jump_lands_inside_it() {
         let f = seccomp_filter();
