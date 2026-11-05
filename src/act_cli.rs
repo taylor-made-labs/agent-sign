@@ -98,6 +98,9 @@ fn payload(file: Option<&str>) -> Result<Vec<u8>, String> {
                 return Err("--payload-file must be an absolute path".into());
             }
             let file = std::fs::File::open(f).map_err(|e| format!("couldn't open {f} ({e})"))?;
+            if !file.metadata().is_ok_and(|m| m.is_file()) {
+                return Err(format!("{f} isn't a regular file"));
+            }
             read_capped(file, acts::MAX_PAYLOAD)
         }
         None => read_capped(std::io::stdin().lock(), acts::MAX_PAYLOAD),

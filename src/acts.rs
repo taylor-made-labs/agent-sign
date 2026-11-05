@@ -392,6 +392,13 @@ pub fn load_trust(path: &Path) -> Result<(TrustFile, String), Verdict> {
     }
     let bytes = match std::fs::File::open(path) {
         Ok(f) => {
+            if !f.metadata().is_ok_and(|m| m.is_file()) {
+                return Err(Verdict::cannot_run(
+                    "error",
+                    "the trust file isn't a regular file".into(),
+                    None,
+                ));
+            }
             let mut v = Vec::new();
             f.take(MAX_TRUST_BYTES as u64 + 1)
                 .read_to_end(&mut v)
