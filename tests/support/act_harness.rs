@@ -379,6 +379,9 @@ impl ActWorld {
     pub fn write(&self, what: &str, bytes: &[u8]) -> PathBuf {
         let p = self.fresh(what);
         fs::write(&p, bytes).unwrap();
+        // 0600 whatever the umask: act verify and act sign refuse a group- or world-writable trust or payload
+        // file (fix round 1, F4), and this account's umask is 0002.
+        fs::set_permissions(&p, std::os::unix::fs::PermissionsExt::from_mode(0o600)).unwrap();
         p
     }
 
