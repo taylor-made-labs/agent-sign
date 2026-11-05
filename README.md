@@ -661,6 +661,69 @@ attach a debugger to it, not even the program that started it. Only the
 administrator (root) can. If the service can't turn this protection on, it
 doesn't start, rather than make keys other programs could read.
 
+## Signed acts
+
+agent-sign can sign, and check, the exact bytes of an **act**: any statement that something happened or was decided
+(role-commitments' role assignments are the first user). It signs as one of three signers and says who signed from the
+trust file and the certificate alone, never from text in the signature. It knows identities and keys; it never knows
+what an act means.
+
+| signer | how it signs | identity |
+|---|---|---|
+| an agent | `agent-sign act sign [--payload-file ABS]`, inside a session launched with `agent-sign launch --agent <name> --identity agent:<id> -- ...`; the service signs with the session's in-memory key and attaches the session's certificate | `agent:<id>`, given by whoever launched the session; nothing in the session can choose or change it. A session launched without `--identity` signs no acts |
+| Taylor (a person) | `agent-sign act sign --assigner person:taylor --trust-file ABS` outside any session, through the person's own ssh-agent (`SSH_AUTH_SOCK`); the key never reaches agent-sign | `person:taylor`, because the trust file lists that key |
+| the launcher | `agent-sign act sign --assigner harness:launcher`, outside any session; the service signs | `harness:launcher` |
+
+The bytes are 1 to 65536 long, from standard input or the file, and the signature is an SSH signature in the namespace
+`agent-sign/act/1`, so a git commit signature, a credential or anything else is another domain and never an act. The
+output is one JSON object, `{schema, signature, certificate}` (an assigner's certificate is `null`).
+
+**Check**: `agent-sign act verify --format json --trust-file ABS [--now UNIX]` reads `{"payload_b64", "signature"}` on
+standard input and prints `{verified, signer, kind, reason, detail, trust_sha256}`. Exit 0 only when verified, 1 for any
+other verdict about a signature, 2 when the check cannot run (no, relative or bad trust file). `kind` is `agent` or
+`assigner`; `trust_sha256` is the digest of the exact trust-file bytes read. The reasons are `ok, bad_signature,
+wrong_namespace, untrusted_key, untrusted_authority, outside_window, revoked, no_act_identity, malformed, stale,
+no_trust_file, error`.
+
+**Trust file** (`agent-sign/acts-trust/1`; `#` comments and blank lines are ignored). After the header line: `authority
+<domain> <public key line>` (a certificate authority for agents' sessions), `assigner <person:..|harness:..> <public key
+line>`, and `revoked <identity>`. A file with another header, an unknown word, a malformed line, one key for two
+identities, or a key listed under two kinds is refused whole. `agent-sign act trust-lines` prints the running service's
+`authority` and `assigner harness:launcher` lines; add Taylor's key and any `revoked` lines by hand.
+
+**Credential**: `agent-sign act credential` (inside an identified session) prints a fresh signature over the time, in
+the namespace `agent-sign/credential/1`, which is how a session shows a consumer who it is; `agent-sign act
+verify-credential` checks it (stale after 300 s, or dated more than 60 s ahead). Only agents have credentials. The
+service stamps the time and builds the bytes, so a session can't pick what it signs in that domain.
+
+**Settings** (`~/.agent-sign/config.toml`; off by default, and a repository's `.agent-sign.toml` can't change them):
+
+```toml
+[acts]
+enabled = true
+launcher_assigner = "memory"   # the launcher's key is made in memory at each start and written nowhere
+```
+
+`"openbao"` is the planned second home for the launcher's key (system mode); this version refuses to start with it
+rather than quietly keep the key elsewhere. No setting names a key file. Each start makes a new authority and a new
+launcher key, so the trust file is remade (`act trust-lines`) after a restart, and signatures from before the restart
+stop verifying against it.
+
+**What this does not give you.** In one-account mode, any process of the service's account outside a session can have the
+launcher sign (the same limit as launching a session): the launcher's signature vouches for the machine's launcher, not
+for a person. Taylor's key is as safe as his ssh-agent; a session that is handed his agent's socket is not stopped by
+agent-sign from using it, only from asking agent-sign to. System mode takes no `--identity` and has no acts yet: the
+launcher, not the caller, must decide a session's identity there, and a root-owned trust file with the launcher's key in
+OpenBao is the sitting that follows (the three `system_*` tests, which are `#[ignore]`d until then).
+
+## How this fits
+
+agent-sign signs git commits and acts and keeps leases: "may this agent sign on this branch until it is merged". The lease
+decision is the same kind of decision as role-commitments' ("what may this holder do in this work, until it is done"), made
+a second time in the signer. **The lease decision is moving to role-commitments, and agent-sign will keep only
+enforcement**: signing what it is told is allowed, in its sandbox, and saying who signed. Leases are unchanged by signed
+acts and still work as described below; the migration is its own thread.
+
 ## Leases
 
 | Setting in `~/.agent-sign/config.toml`, under `[security]` | Default | What it does |

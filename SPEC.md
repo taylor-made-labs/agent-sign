@@ -629,6 +629,29 @@ signatures, so agent commits show there as Unverified; before 28 Oct 2026
 the installer registered the shared agent key on the person's account, which
 made agent commits show as Verified for the person.
 
+### 4.7 Signed acts
+
+Added with signed acts v0 (EVALS.md). The service signs, and `agent-sign act verify` checks, the exact bytes of an act
+(1 to 65536) in the SSH-signature namespace `agent-sign/act/1`; credentials use `agent-sign/credential/1`, commits `git`.
+Invariants:
+
+- **A1.** An agent signs only as the identity its launcher gave its session (`LaunchActSession`, `agent:<name>`), kept by
+  the service with the session; no request, option, variable or file names or changes it. A session launched without an
+  identity signs no acts.
+- **A2.** Only a process outside any session, of the service's own account, has the launcher sign (`SignActAsLauncher`:
+  same-uid and not-in-another-PID-namespace, the test launching uses). A session's channel takes `SignAct` only. Taylor's
+  signature is made by his own ssh-agent and checked against the key the trust file lists before it is printed.
+- **A3.** The verifier decides the signer from the trust file (an assigner's key) or from a certificate signed by a listed
+  authority whose one principal is `agent:<name>` (an agent), never from text in the signature member. A signature in
+  another namespace is `wrong_namespace`. A certificate must be for the key that signed, valid at the time checked.
+- **A4.** No private key reaches a file: agents' session keys and the launcher's key live in the service's memory (the
+  launcher key's other home, OpenBao, is not built and the service refuses to start with it); Taylor's stays in his agent.
+- **A5.** Everything about a verdict is closed: an unknown key, duplicate key, bad base64, or oversize input is refused;
+  a trust file with a mistake is refused whole (exit 2).
+
+Protocol additions: `LaunchActSession`, `SignAct`, `SignActAsLauncher`, `ActTrustLines`; config `[acts]` (`enabled`,
+`launcher_assigner`). Code: `src/acts.rs` (identities, trust file, SSHSIG, verdicts), `src/act_cli.rs` (the command).
+
 ## 5. Threat model
 
 agent-sign's current protections assume an agent that cooperates: it runs `git`
